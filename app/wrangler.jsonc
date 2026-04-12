@@ -14,9 +14,7 @@
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["SecretsStore"] }
   ],
-  // KV namespace for storing OAuth credentials from dynamic registration.
-  // Create with: wrangler kv namespace create CONFIG_KV
-  // Then paste the id here.
+  // Create KV with: wrangler kv namespace create CONFIG_KV
   "kv_namespaces": [
     { "binding": "CONFIG_KV", "id": "placeholder-create-with-wrangler-kv-namespace-create" }
   ],
@@ -25,5 +23,28 @@
   },
   "secrets": {
     "required": ["BETTER_AUTH_SECRET", "ENCRYPTION_KEY"]
+  },
+  "env": {
+    "preview": {
+      "name": "sigillo-app-preview",
+      "durable_objects": {
+        "bindings": [
+          { "name": "SECRETS_STORE", "class_name": "SecretsStore" }
+        ]
+      },
+      "migrations": [
+        { "tag": "v1", "new_sqlite_classes": ["SecretsStore"] }
+      ],
+      // Create KV with: wrangler kv namespace create CONFIG_KV --env preview
+      "kv_namespaces": [
+        { "binding": "CONFIG_KV", "id": "placeholder-preview" }
+      ],
+      "vars": {
+        "PROVIDER_URL": "https://auth.preview.sigillo.dev"
+      },
+      "secrets": {
+        "required": ["BETTER_AUTH_SECRET", "ENCRYPTION_KEY"]
+      }
+    }
   }
 }

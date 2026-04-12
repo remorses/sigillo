@@ -4,8 +4,6 @@
 import { Spiceflow } from 'spiceflow'
 import { Head, Link } from 'spiceflow/react'
 import { z } from 'zod'
-import type { Env } from './secrets-store.ts'
-
 export const app = new Spiceflow()
   .state('env', {} as Env)
 

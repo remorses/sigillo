@@ -19,5 +19,30 @@
   },
   "secrets": {
     "required": ["BETTER_AUTH_SECRET", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]
+  },
+  "routes": [
+    { "pattern": "auth.sigillo.dev", "custom_domain": true }
+  ],
+  "env": {
+    "preview": {
+      "name": "sigillo-provider-preview",
+      "durable_objects": {
+        "bindings": [
+          { "name": "AUTH_STORE", "class_name": "AuthStore" }
+        ]
+      },
+      "migrations": [
+        { "tag": "v1", "new_sqlite_classes": ["AuthStore"] }
+      ],
+      "vars": {
+        "BETTER_AUTH_URL": "https://auth.preview.sigillo.dev"
+      },
+      "secrets": {
+        "required": ["BETTER_AUTH_SECRET", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]
+      },
+      "routes": [
+        { "pattern": "auth.preview.sigillo.dev", "custom_domain": true, "zone_name": "sigillo.dev" }
+      ]
+    }
   }
 }

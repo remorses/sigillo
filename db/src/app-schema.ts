@@ -96,7 +96,7 @@ export const secret = sqliteCore.sqliteTable('secret', {
   sqliteCore.index('secret_project_id_idx').on(table.projectId),
 ])
 
-// ── Relations ───────────────────────────────────────────────────────
+// ── Relations (v2 API) ──────────────────────────────────────────────
 
 export const relations = defineRelations(
   { user, session, account, verification, project, projectMember, secret },
@@ -108,45 +108,24 @@ export const relations = defineRelations(
       memberships: r.many.projectMember(),
     },
     session: {
-      user: r.one.user({
-        from: r.session.userId,
-        to: r.user.id,
-      }),
+      user: r.one.user({ from: r.session.userId, to: r.user.id }),
     },
     account: {
-      user: r.one.user({
-        from: r.account.userId,
-        to: r.user.id,
-      }),
+      user: r.one.user({ from: r.account.userId, to: r.user.id }),
     },
     verification: {},
     project: {
-      creator: r.one.user({
-        from: r.project.createdBy,
-        to: r.user.id,
-      }),
+      creator: r.one.user({ from: r.project.createdBy, to: r.user.id }),
       members: r.many.projectMember(),
       secrets: r.many.secret(),
     },
     projectMember: {
-      project: r.one.project({
-        from: r.projectMember.projectId,
-        to: r.project.id,
-      }),
-      user: r.one.user({
-        from: r.projectMember.userId,
-        to: r.user.id,
-      }),
+      project: r.one.project({ from: r.projectMember.projectId, to: r.project.id }),
+      user: r.one.user({ from: r.projectMember.userId, to: r.user.id }),
     },
     secret: {
-      project: r.one.project({
-        from: r.secret.projectId,
-        to: r.project.id,
-      }),
-      creator: r.one.user({
-        from: r.secret.createdBy,
-        to: r.user.id,
-      }),
+      project: r.one.project({ from: r.secret.projectId, to: r.project.id }),
+      creator: r.one.user({ from: r.secret.createdBy, to: r.user.id }),
     },
   }),
 )

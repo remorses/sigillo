@@ -3,8 +3,6 @@
 
 import { Spiceflow } from 'spiceflow'
 import { Head, Link } from 'spiceflow/react'
-import type { Env } from './auth-store.ts'
-
 export const app = new Spiceflow()
   .state('env', {} as Env)
 

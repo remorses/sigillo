@@ -9,13 +9,13 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "types": "wrangler types",
-    "deploy": "wrangler deploy",
-    "deploy:preview": "wrangler deploy --env preview"
+    "deploy": "wrangler deploy --env preview",
+    "deploy:prod": "wrangler deploy"
   },
   "dependencies": {
     "better-auth": "latest",
     "db": "workspace:^",
-    "drizzle-orm": "latest",
+    "drizzle-orm": "1.0.0-beta.21",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "spiceflow": "rsc",

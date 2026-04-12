@@ -17,6 +17,10 @@
     "./src/*": {
       "types": "./src/*.ts",
       "default": "./src/*.ts"
+    },
+    "./src/*.ts": {
+      "types": "./src/*.ts",
+      "default": "./src/*.ts"
     }
   },
   "scripts": {
@@ -25,8 +29,8 @@
     "db:generate:app": "drizzle-kit generate --config drizzle.app.config.ts"
   },
   "devDependencies": {
-    "drizzle-kit": "^0.31.10",
-    "drizzle-orm": "^0.45.2",
+    "drizzle-kit": "1.0.0-beta.21",
+    "drizzle-orm": "1.0.0-beta.21",
     "typescript": "^6.0.2",
     "ulid": "^3.0.2"
   }

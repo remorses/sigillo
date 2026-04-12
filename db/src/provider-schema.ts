@@ -1,9 +1,6 @@
 // Schema for the provider Durable Object (middleman OAuth provider).
 // BetterAuth core tables (user, session, account, verification) plus
 // oauthProvider plugin tables (oauthClient, oauthConsent, oauthToken, etc.)
-// are managed by BetterAuth's drizzle adapter — it creates/migrates them
-// automatically. We define the secrets-free tables here for drizzle-kit
-// migration generation targeting durable-sqlite.
 
 import { defineRelations } from 'drizzle-orm'
 import * as sqliteCore from 'drizzle-orm/sqlite-core'
@@ -62,8 +59,6 @@ export const verification = sqliteCore.sqliteTable('verification', {
 })
 
 // ── oauthProvider plugin tables ─────────────────────────────────────
-// These are created by BetterAuth's oauthProvider plugin. We define them
-// here so drizzle-kit can generate migrations for DO SQLite.
 
 export const oauthClient = sqliteCore.sqliteTable('oauth_client', {
   id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
@@ -136,7 +131,7 @@ export const jwks = sqliteCore.sqliteTable('jwks', {
   createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
 })
 
-// ── Relations ───────────────────────────────────────────────────────
+// ── Relations (v2 API) ──────────────────────────────────────────────
 
 export const relations = defineRelations(
   { user, session, account, verification, oauthClient, oauthConsent, oauthToken, oauthCode, jwks },
@@ -147,34 +142,19 @@ export const relations = defineRelations(
       oauthConsents: r.many.oauthConsent(),
     },
     session: {
-      user: r.one.user({
-        from: r.session.userId,
-        to: r.user.id,
-      }),
+      user: r.one.user({ from: r.session.userId, to: r.user.id }),
     },
     account: {
-      user: r.one.user({
-        from: r.account.userId,
-        to: r.user.id,
-      }),
+      user: r.one.user({ from: r.account.userId, to: r.user.id }),
     },
     oauthConsent: {
-      user: r.one.user({
-        from: r.oauthConsent.userId,
-        to: r.user.id,
-      }),
+      user: r.one.user({ from: r.oauthConsent.userId, to: r.user.id }),
     },
     oauthToken: {
-      user: r.one.user({
-        from: r.oauthToken.userId,
-        to: r.user.id,
-      }),
+      user: r.one.user({ from: r.oauthToken.userId, to: r.user.id }),
     },
     oauthCode: {
-      user: r.one.user({
-        from: r.oauthCode.userId,
-        to: r.user.id,
-      }),
+      user: r.one.user({ from: r.oauthCode.userId, to: r.user.id }),
     },
     verification: {},
     oauthClient: {},

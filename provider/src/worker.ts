@@ -4,11 +4,10 @@
 
 import { app } from './app.tsx'
 import { createAuth } from './auth.ts'
-import type { AuthStore } from './auth-store.ts'
 
 export { AuthStore } from './auth-store.ts'
 
-function getAuthStoreStub(env: Env): DurableObjectStub<AuthStore> {
+function getAuthStoreStub(env: Env) {
   const id = env.AUTH_STORE.idFromName('main')
   return env.AUTH_STORE.get(id)
 }
