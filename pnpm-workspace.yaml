@@ -1,0 +1,4 @@
+packages:
+  - db
+  - provider
+  - app

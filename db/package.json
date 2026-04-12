@@ -1,0 +1,33 @@
+{
+  "name": "db",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Drizzle schemas and migrations for sigillo Durable Object databases",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./src": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./src/*": {
+      "types": "./src/*.ts",
+      "default": "./src/*.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "db:generate:provider": "drizzle-kit generate --config drizzle.provider.config.ts",
+    "db:generate:app": "drizzle-kit generate --config drizzle.app.config.ts"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.10",
+    "drizzle-orm": "^0.45.2",
+    "typescript": "^6.0.2",
+    "ulid": "^3.0.2"
+  }
+}

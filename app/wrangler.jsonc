@@ -1,0 +1,29 @@
+{
+  "name": "sigillo-app",
+  "compatibility_date": "2025-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "dist/server/index.js",
+  "rules": [
+    { "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "SECRETS_STORE", "class_name": "SecretsStore" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["SecretsStore"] }
+  ],
+  // KV namespace for storing OAuth credentials from dynamic registration.
+  // Create with: wrangler kv namespace create CONFIG_KV
+  // Then paste the id here.
+  "kv_namespaces": [
+    { "binding": "CONFIG_KV", "id": "placeholder-create-with-wrangler-kv-namespace-create" }
+  ],
+  "vars": {
+    "PROVIDER_URL": "https://auth.sigillo.dev"
+  },
+  "secrets": {
+    "required": ["BETTER_AUTH_SECRET", "ENCRYPTION_KEY"]
+  }
+}

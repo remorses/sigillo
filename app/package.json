@@ -1,0 +1,34 @@
+{
+  "name": "sigillo-app",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Self-hostable secret sharing app — authenticates via sigillo provider",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "types": "wrangler types",
+    "deploy": "wrangler deploy",
+    "deploy:preview": "wrangler deploy --env preview"
+  },
+  "dependencies": {
+    "better-auth": "latest",
+    "db": "workspace:^",
+    "drizzle-orm": "latest",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "spiceflow": "rsc",
+    "ulid": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
+    "typescript": "latest",
+    "vite": "latest",
+    "wrangler": "latest"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "noEmit": true,
+    "lib": ["ESNext", "DOM"],
+    "types": []
+  },
+  "include": ["src", "worker-configuration.d.ts"]
+}

@@ -1,0 +1,36 @@
+{
+  "name": "sigillo-provider",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Middleman OAuth provider for sigillo — exposes Google auth via BetterAuth oauthProvider",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "types": "wrangler types",
+    "deploy": "wrangler deploy",
+    "deploy:preview": "wrangler deploy --env preview"
+  },
+  "dependencies": {
+    "@better-auth/oauth-provider": "latest",
+    "better-auth": "latest",
+    "db": "workspace:^",
+    "drizzle-orm": "latest",
+    "libsqlproxy": "latest",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "spiceflow": "rsc",
+    "ulid": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
+    "typescript": "latest",
+    "vite": "latest",
+    "wrangler": "latest"
+  }
+}

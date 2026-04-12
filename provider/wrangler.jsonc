@@ -1,0 +1,23 @@
+{
+  "name": "sigillo-provider",
+  "compatibility_date": "2025-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "dist/server/index.js",
+  "rules": [
+    { "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "AUTH_STORE", "class_name": "AuthStore" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["AuthStore"] }
+  ],
+  "vars": {
+    "BETTER_AUTH_URL": "https://auth.sigillo.dev"
+  },
+  "secrets": {
+    "required": ["BETTER_AUTH_SECRET", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]
+  }
+}

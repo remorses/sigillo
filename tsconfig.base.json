@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "ESNext",
+    "lib": ["ESNext"],
+    "declaration": true,
+    "declarationMap": true,
+    "noEmit": false,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "useUnknownInCatchVariables": false,
+    "jsx": "react-jsx"
+  }
+}
