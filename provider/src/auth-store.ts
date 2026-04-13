@@ -1,6 +1,12 @@
 // AuthStore Durable Object — single instance holding all provider auth data.
 // Uses drizzle DO SQLite for BetterAuth tables + oauthProvider tables.
 // Exposes RPC methods for auth handling and libsqlproxy — no fetch() override.
+//
+// BetterAuth config:
+// - oauthProvider plugin: exposes OAuth 2.1 / OIDC endpoints
+// - jwt plugin: signs tokens for oauthProvider
+// - Google social provider: the only login method
+// - Dynamic client registration: self-hosted apps register programmatically
 
 import { DurableObject } from 'cloudflare:workers'
 import * as durable from 'drizzle-orm/durable-sqlite'
@@ -9,7 +15,10 @@ import * as migrator from 'drizzle-orm/durable-sqlite/migrator'
 import migrations from '../../db/drizzle-provider/migrations.js'
 import * as schema from 'db/src/provider-schema.ts'
 import { createLibsqlHandler, durableObjectExecutor } from 'libsqlproxy'
-import { createAuth } from './auth.ts'
+import { betterAuth } from 'better-auth'
+import { jwt } from 'better-auth/plugins'
+import { oauthProvider } from '@better-auth/oauth-provider'
+import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 
 export class AuthStore extends DurableObject<Env> {
   db: durable.DrizzleSqliteDODatabase<typeof schema, typeof schema.relations>
@@ -24,7 +33,30 @@ export class AuthStore extends DurableObject<Env> {
 
   // RPC: handle BetterAuth /api/auth/* and /.well-known/* requests
   async authHandler(request: Request): Promise<Response> {
-    const auth = createAuth({ db: this.db, env: this.env })
+    const auth = betterAuth({
+      baseURL: this.env.BETTER_AUTH_URL,
+      secret: this.env.BETTER_AUTH_SECRET,
+      database: drizzleAdapter(this.db, { provider: 'sqlite' }),
+      socialProviders: {
+        google: {
+          clientId: this.env.GOOGLE_CLIENT_ID,
+          clientSecret: this.env.GOOGLE_CLIENT_SECRET,
+        },
+      },
+      plugins: [
+        jwt(),
+        oauthProvider({
+          loginPage: '/sign-in',
+          consentPage: '/consent',
+          // Dynamic client registration (RFC 7591) — self-hosted apps call this
+          allowDynamicClientRegistration: true,
+          // Allow unauthenticated registration so deploy-time setup works
+          allowUnauthenticatedClientRegistration: true,
+          scopes: ['openid', 'email', 'profile', 'offline_access'],
+          clientRegistrationDefaultScopes: ['openid', 'email', 'profile'],
+        }),
+      ],
+    })
     return auth.handler(request)
   }
 
