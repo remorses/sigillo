@@ -2,7 +2,7 @@
   "name": "sigillo-app",
   "compatibility_date": "2025-01-01",
   "compatibility_flags": ["nodejs_compat"],
-  "main": "dist/server/index.js",
+  "main": "spiceflow/cloudflare-entrypoint",
   "rules": [
     { "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }
   ],

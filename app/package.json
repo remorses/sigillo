@@ -9,8 +9,8 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "types": "wrangler types",
-    "deploy": "wrangler deploy --env preview",
-    "deploy:prod": "wrangler deploy"
+    "deploy": "CLOUDFLARE_ENV=preview vite build && wrangler deploy --env preview",
+    "deploy:prod": "vite build && wrangler deploy"
   },
   "dependencies": {
     "better-auth": "latest",
@@ -23,6 +23,7 @@
     "zod": "latest"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.31.2",
     "@types/node": "^25.6.0",
     "@types/react": "latest",
     "@types/react-dom": "latest",

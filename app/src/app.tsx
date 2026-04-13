@@ -1,11 +1,15 @@
 // Spiceflow entry for the self-hosted secret sharing app.
 // Pages for secrets management UI, API routes for CRUD, setup endpoint.
+// Also serves as the Cloudflare Worker entry via the default export.
 
 import { Spiceflow } from 'spiceflow'
 import { Head, Link } from 'spiceflow/react'
 import { z } from 'zod'
+import { getSecretsStoreStub } from './get-stub.ts'
+
+export { SecretsStore } from './secrets-store.ts'
+
 export const app = new Spiceflow()
-  .state('env', {} as Env)
 
   // ── Root layout ───────────────────────────────────────────────
   .layout('/*', async ({ children }) => {
@@ -64,11 +68,10 @@ export const app = new Spiceflow()
   .route({
     method: 'POST',
     path: '/api/setup',
-    async handler({ request, state }) {
+    async handler({ request }) {
       const url = new URL(request.url)
       const appUrl = `${url.protocol}//${url.host}`
-      const id = state.env!.SECRETS_STORE.idFromName('main')
-      const stub = state.env!.SECRETS_STORE.get(id)
+      const stub = getSecretsStoreStub()
       const result = await stub.setup({ appUrl })
       return { ok: true, clientId: result.clientId }
     },
@@ -125,3 +128,19 @@ export const app = new Spiceflow()
   })
 
 export type App = typeof app
+
+// Cloudflare Worker entry — routes auth to DO, everything else to Spiceflow
+export default {
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url)
+
+    // Forward auth requests to BetterAuth inside the DO via RPC
+    if (url.pathname.startsWith('/api/auth')) {
+      const stub = getSecretsStoreStub()
+      return stub.authHandler(request)
+    }
+
+    // Everything else goes through Spiceflow
+    return app.handle(request)
+  },
+} satisfies ExportedHandler<Env>

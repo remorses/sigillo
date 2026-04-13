@@ -1,10 +1,15 @@
 // Spiceflow entry for the middleman OAuth provider.
 // Renders login + consent pages, serves BetterAuth API, health check.
+// Also serves as the Cloudflare Worker entry via the default export.
 
 import { Spiceflow } from 'spiceflow'
 import { Head, Link } from 'spiceflow/react'
+import { env } from 'cloudflare:workers'
+import { getAuthStoreStub } from './get-stub.ts'
+
+export { AuthStore } from './auth-store.ts'
+
 export const app = new Spiceflow()
-  .state('env', {} as Env)
 
   // ── Root layout ───────────────────────────────────────────────
   .layout('/*', async ({ children }) => {
@@ -77,6 +82,22 @@ export const app = new Spiceflow()
   })
 
 export type App = typeof app
+
+// Cloudflare Worker entry — routes auth/OIDC to DO, everything else to Spiceflow
+export default {
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url)
+
+    // Forward auth API + OIDC discovery to BetterAuth inside the DO via RPC
+    if (url.pathname.startsWith('/api/auth') || url.pathname.startsWith('/.well-known/')) {
+      const stub = getAuthStoreStub()
+      return stub.authHandler(request)
+    }
+
+    // Everything else goes through Spiceflow (pages, health, etc.)
+    return app.handle(request)
+  },
+} satisfies ExportedHandler<Env>
 
 // ── Client component for consent buttons ────────────────────────
 // This will be extracted to a separate 'use client' file later
