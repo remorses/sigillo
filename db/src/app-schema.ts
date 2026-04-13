@@ -79,6 +79,8 @@ export const orgMember = sqliteCore.sqliteTable('org_member', {
 ])
 
 // ── Secrets domain tables ───────────────────────────────────────────
+// Doppler-style hierarchy: org → project → environment → secret
+// Each project gets default environments: development, preview, production
 
 export const project = sqliteCore.sqliteTable('project', {
   id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
@@ -90,9 +92,20 @@ export const project = sqliteCore.sqliteTable('project', {
   sqliteCore.index('project_org_id_idx').on(table.orgId),
 ])
 
-export const secret = sqliteCore.sqliteTable('secret', {
+export const environment = sqliteCore.sqliteTable('environment', {
   id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
   projectId: sqliteCore.text('project_id').notNull().references(() => project.id, { onDelete: 'cascade' }),
+  name: sqliteCore.text('name').notNull(),
+  slug: sqliteCore.text('slug').notNull(),
+  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
+  updatedAt: sqliteCore.integer('updated_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
+}, (table) => [
+  sqliteCore.index('environment_project_id_idx').on(table.projectId),
+])
+
+export const secret = sqliteCore.sqliteTable('secret', {
+  id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
+  environmentId: sqliteCore.text('environment_id').notNull().references(() => environment.id, { onDelete: 'cascade' }),
   name: sqliteCore.text('name').notNull(),
   // Encrypted with Web Crypto AES-GCM, stored as base64
   valueEncrypted: sqliteCore.text('value_encrypted').notNull(),
@@ -102,8 +115,15 @@ export const secret = sqliteCore.sqliteTable('secret', {
   createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
   updatedAt: sqliteCore.integer('updated_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
 }, (table) => [
-  sqliteCore.index('secret_project_id_idx').on(table.projectId),
+  sqliteCore.index('secret_environment_id_idx').on(table.environmentId),
 ])
+
+// Default environments created for every new project
+export const DEFAULT_ENVIRONMENTS = [
+  { name: 'Development', slug: 'development' },
+  { name: 'Preview', slug: 'preview' },
+  { name: 'Production', slug: 'production' },
+] as const
 
 // ── Config key-value table ──────────────────────────────────────────
 // Simple key-value store for app config (e.g. OAuth client_id from
@@ -137,7 +157,7 @@ export const deviceCode = sqliteCore.sqliteTable('device_code', {
 // ── Relations (v2 API) ──────────────────────────────────────────────
 
 export const relations = defineRelations(
-  { user, session, account, verification, org, orgMember, project, secret, config, deviceCode },
+  { user, session, account, verification, org, orgMember, project, environment, secret, config, deviceCode },
   (r) => ({
     user: {
       sessions: r.many.session(),
@@ -168,10 +188,14 @@ export const relations = defineRelations(
     },
     project: {
       org: r.one.org({ from: r.project.orgId, to: r.org.id }),
+      environments: r.many.environment(),
+    },
+    environment: {
+      project: r.one.project({ from: r.environment.projectId, to: r.project.id }),
       secrets: r.many.secret(),
     },
     secret: {
-      project: r.one.project({ from: r.secret.projectId, to: r.project.id }),
+      environment: r.one.environment({ from: r.secret.environmentId, to: r.environment.id }),
       creator: r.one.user({ from: r.secret.createdBy, to: r.user.id }),
     },
     config: {},

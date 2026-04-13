@@ -35,6 +35,16 @@ CREATE TABLE `device_code` (
 	CONSTRAINT `fk_device_code_user_id_user_id_fk` FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON DELETE CASCADE
 );
 --> statement-breakpoint
+CREATE TABLE `environment` (
+	`id` text PRIMARY KEY,
+	`project_id` text NOT NULL,
+	`name` text NOT NULL,
+	`slug` text NOT NULL,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
+	CONSTRAINT `fk_environment_project_id_project_id_fk` FOREIGN KEY (`project_id`) REFERENCES `project`(`id`) ON DELETE CASCADE
+);
+--> statement-breakpoint
 CREATE TABLE `org` (
 	`id` text PRIMARY KEY,
 	`name` text NOT NULL,
@@ -63,14 +73,14 @@ CREATE TABLE `project` (
 --> statement-breakpoint
 CREATE TABLE `secret` (
 	`id` text PRIMARY KEY,
-	`project_id` text NOT NULL,
+	`environment_id` text NOT NULL,
 	`name` text NOT NULL,
 	`value_encrypted` text NOT NULL,
 	`iv` text NOT NULL,
 	`created_by` text NOT NULL,
 	`created_at` integer NOT NULL,
 	`updated_at` integer NOT NULL,
-	CONSTRAINT `fk_secret_project_id_project_id_fk` FOREIGN KEY (`project_id`) REFERENCES `project`(`id`) ON DELETE CASCADE,
+	CONSTRAINT `fk_secret_environment_id_environment_id_fk` FOREIGN KEY (`environment_id`) REFERENCES `environment`(`id`) ON DELETE CASCADE,
 	CONSTRAINT `fk_secret_created_by_user_id_fk` FOREIGN KEY (`created_by`) REFERENCES `user`(`id`) ON DELETE CASCADE
 );
 --> statement-breakpoint
@@ -107,8 +117,9 @@ CREATE TABLE `verification` (
 --> statement-breakpoint
 CREATE INDEX `account_user_id_idx` ON `account` (`user_id`);--> statement-breakpoint
 CREATE INDEX `device_code_user_id_idx` ON `device_code` (`user_id`);--> statement-breakpoint
+CREATE INDEX `environment_project_id_idx` ON `environment` (`project_id`);--> statement-breakpoint
 CREATE INDEX `org_member_org_id_idx` ON `org_member` (`org_id`);--> statement-breakpoint
 CREATE INDEX `org_member_user_id_idx` ON `org_member` (`user_id`);--> statement-breakpoint
 CREATE INDEX `project_org_id_idx` ON `project` (`org_id`);--> statement-breakpoint
-CREATE INDEX `secret_project_id_idx` ON `secret` (`project_id`);--> statement-breakpoint
+CREATE INDEX `secret_environment_id_idx` ON `secret` (`environment_id`);--> statement-breakpoint
 CREATE INDEX `session_user_id_idx` ON `session` (`user_id`);

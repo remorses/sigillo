@@ -131,48 +131,132 @@ export const app = new Spiceflow()
     },
   })
 
-  // ── API: List secrets ─────────────────────────────────────────
+  // ── API: Projects ──────────────────────────────────────────────
   .route({
-    method: 'GET',
-    path: '/api/projects/:projectId/secrets',
-    async handler({ params }) {
-      // TODO: query DO for secrets list (names only, not values)
-      return { projectId: params.projectId, secrets: [] as string[] }
+    method: 'POST',
+    path: '/api/projects',
+    request: z.object({
+      name: z.string().min(1),
+      orgId: z.string().min(1),
+    }),
+    async handler({ request }) {
+      const body = await request.json()
+      const stub = getSecretsStoreStub()
+      const session = await stub.getSession(request)
+      if (!session) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 })
+      const project = await stub.createProject({ name: body.name, orgId: body.orgId })
+      return { ok: true, ...project }
     },
   })
 
-  // ── API: Create secret ────────────────────────────────────────
+  .route({
+    method: 'GET',
+    path: '/api/projects',
+    async handler({ request }) {
+      const url = new URL(request.url)
+      const orgId = url.searchParams.get('orgId')
+      if (!orgId) return new Response(JSON.stringify({ error: 'orgId required' }), { status: 400 })
+      const stub = getSecretsStoreStub()
+      const projects = await stub.listProjects({ orgId })
+      return { projects }
+    },
+  })
+
+  .route({
+    method: 'DELETE',
+    path: '/api/projects/:id',
+    async handler({ params }) {
+      const stub = getSecretsStoreStub()
+      const deleted = await stub.deleteProject({ id: params.id })
+      if (!deleted) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
+      return { ok: true, id: deleted.id }
+    },
+  })
+
+  // ── API: Environments ─────────────────────────────────────────
+  .route({
+    method: 'GET',
+    path: '/api/projects/:projectId/environments',
+    async handler({ params }) {
+      const stub = getSecretsStoreStub()
+      const environments = await stub.listEnvironments({ projectId: params.projectId })
+      return { projectId: params.projectId, environments }
+    },
+  })
+
   .route({
     method: 'POST',
-    path: '/api/projects/:projectId/secrets',
+    path: '/api/projects/:projectId/environments',
+    request: z.object({
+      name: z.string().min(1),
+      slug: z.string().min(1),
+    }),
+    async handler({ request, params }) {
+      const body = await request.json()
+      const stub = getSecretsStoreStub()
+      const env = await stub.createEnvironment({ projectId: params.projectId, name: body.name, slug: body.slug })
+      return { ok: true, ...env }
+    },
+  })
+
+  .route({
+    method: 'DELETE',
+    path: '/api/environments/:id',
+    async handler({ params }) {
+      const stub = getSecretsStoreStub()
+      const deleted = await stub.deleteEnvironment({ id: params.id })
+      if (!deleted) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
+      return { ok: true, id: deleted.id }
+    },
+  })
+
+  // ── API: Secrets (scoped to environment) ──────────────────────
+  .route({
+    method: 'GET',
+    path: '/api/environments/:environmentId/secrets',
+    async handler({ params }) {
+      const stub = getSecretsStoreStub()
+      const secrets = await stub.listSecrets({ environmentId: params.environmentId })
+      return { environmentId: params.environmentId, secrets }
+    },
+  })
+
+  .route({
+    method: 'POST',
+    path: '/api/environments/:environmentId/secrets',
     request: z.object({
       name: z.string().min(1),
       value: z.string().min(1),
     }),
     async handler({ request, params }) {
       const body = await request.json()
-      // TODO: encrypt and store in DO
-      return { ok: true, projectId: params.projectId, name: body.name }
+      const stub = getSecretsStoreStub()
+      const session = await stub.getSession(request)
+      if (!session) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 })
+      const secret = await stub.createSecret({ environmentId: params.environmentId, name: body.name, value: body.value, createdBy: session.userId })
+      return { ok: true, environmentId: params.environmentId, id: secret.id, name: secret.name }
     },
   })
 
-  // ── API: Read secret ──────────────────────────────────────────
   .route({
     method: 'GET',
     path: '/api/secrets/:id',
     async handler({ params }) {
-      // TODO: decrypt and return from DO
-      return { id: params.id, value: '' }
+      const stub = getSecretsStoreStub()
+      const secret = await stub.getSecret({ id: params.id })
+      if (!secret) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
+      return secret
     },
   })
 
-  // ── API: Delete secret ────────────────────────────────────────
   .route({
     method: 'DELETE',
     path: '/api/secrets/:id',
     async handler({ params }) {
-      // TODO: delete from DO
-      return { ok: true, id: params.id }
+      const stub = getSecretsStoreStub()
+      const deleted = await stub.deleteSecret({ id: params.id })
+      if (!deleted) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
+      return { ok: true, id: deleted.id }
     },
   })
 

@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "ee1bb82b-5032-41f0-8d0c-c4c88e1651e7",
+  "id": "3ae01357-55af-40e9-9382-5d5b45a85d82",
   "prevIds": [
     "00000000-0000-0000-0000-000000000000"
   ],
@@ -16,6 +16,10 @@
     },
     {
       "name": "device_code",
+      "entityType": "tables"
+    },
+    {
+      "name": "environment",
       "entityType": "tables"
     },
     {
@@ -314,6 +318,66 @@
       "generated": null,
       "name": "id",
       "entityType": "columns",
+      "table": "environment"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "project_id",
+      "entityType": "columns",
+      "table": "environment"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "name",
+      "entityType": "columns",
+      "table": "environment"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "slug",
+      "entityType": "columns",
+      "table": "environment"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "environment"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "table": "environment"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
       "table": "org"
     },
     {
@@ -462,7 +526,7 @@
       "autoincrement": false,
       "default": null,
       "generated": null,
-      "name": "project_id",
+      "name": "environment_id",
       "entityType": "columns",
       "table": "secret"
     },
@@ -768,6 +832,21 @@
     },
     {
       "columns": [
+        "project_id"
+      ],
+      "tableTo": "project",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_environment_project_id_project_id_fk",
+      "entityType": "fks",
+      "table": "environment"
+    },
+    {
+      "columns": [
         "org_id"
       ],
       "tableTo": "org",
@@ -813,16 +892,16 @@
     },
     {
       "columns": [
-        "project_id"
+        "environment_id"
       ],
-      "tableTo": "project",
+      "tableTo": "environment",
       "columnsTo": [
         "id"
       ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
-      "name": "fk_secret_project_id_project_id_fk",
+      "name": "fk_secret_environment_id_environment_id_fk",
       "entityType": "fks",
       "table": "secret"
     },
@@ -881,6 +960,15 @@
       "nameExplicit": false,
       "name": "device_code_pk",
       "table": "device_code",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "environment_pk",
+      "table": "environment",
       "entityType": "pks"
     },
     {
@@ -977,6 +1065,20 @@
     {
       "columns": [
         {
+          "value": "project_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "environment_project_id_idx",
+      "entityType": "indexes",
+      "table": "environment"
+    },
+    {
+      "columns": [
+        {
           "value": "org_id",
           "isExpression": false
         }
@@ -1019,14 +1121,14 @@
     {
       "columns": [
         {
-          "value": "project_id",
+          "value": "environment_id",
           "isExpression": false
         }
       ],
       "isUnique": false,
       "where": null,
       "origin": "manual",
-      "name": "secret_project_id_idx",
+      "name": "secret_environment_id_idx",
       "entityType": "indexes",
       "table": "secret"
     },

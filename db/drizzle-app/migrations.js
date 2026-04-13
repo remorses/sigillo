@@ -1,8 +1,8 @@
-import m0000 from './20260413121458_pink_living_tribunal/migration.sql';
+import m0000 from './20260413123119_naive_hammerhead/migration.sql';
 
   export default {
     migrations: {
-      "20260413121458_pink_living_tribunal": m0000
+      "20260413123119_naive_hammerhead": m0000
 }
   }
   
