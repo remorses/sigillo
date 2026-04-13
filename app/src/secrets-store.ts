@@ -18,7 +18,7 @@ import * as migrator from 'drizzle-orm/durable-sqlite/migrator'
 import migrations from '../../db/drizzle-app/migrations.js'
 import * as schema from 'db/src/app-schema.ts'
 import { betterAuth } from 'better-auth'
-import { genericOAuth } from 'better-auth/plugins'
+import { genericOAuth, deviceAuthorization } from 'better-auth/plugins'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 
 export class SecretsStore extends DurableObject<Env> {
@@ -57,6 +57,11 @@ export class SecretsStore extends DurableObject<Env> {
               pkce: true,
             },
           ],
+        }),
+        // RFC 8628 device flow — CLI/agents call /api/auth/device/code,
+        // user enters code at /device page and signs in via provider
+        deviceAuthorization({
+          verificationUri: '/device',
         }),
       ],
     })

@@ -59,6 +59,54 @@ export const app = new Spiceflow()
     )
   })
 
+  // ── Device flow verification page ──────────────────────────────
+  // CLI/agents get a user_code and send the user here to enter it.
+  // User must be logged in (via provider) to approve the device code.
+  .page('/device', async () => {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <div style={{ textAlign: 'center', maxWidth: 400 }}>
+          <h1>Device Login</h1>
+          <p>Enter the code shown on your CLI or agent:</p>
+          <form method="POST" action="/api/auth/device/verify" style={{ marginTop: 24 }}>
+            <input
+              name="user_code"
+              placeholder="ABCD-EFGH"
+              style={{
+                padding: '12px 16px',
+                fontSize: 24,
+                fontFamily: 'monospace',
+                textAlign: 'center',
+                letterSpacing: 4,
+                textTransform: 'uppercase',
+                border: '2px solid #ddd',
+                borderRadius: 8,
+                width: '100%',
+                boxSizing: 'border-box',
+              }}
+            />
+            <button
+              type="submit"
+              style={{
+                marginTop: 16,
+                padding: '12px 24px',
+                background: '#4285f4',
+                color: 'white',
+                border: 'none',
+                borderRadius: 8,
+                cursor: 'pointer',
+                fontWeight: 600,
+                width: '100%',
+              }}
+            >
+              Verify Code
+            </button>
+          </form>
+        </div>
+      </div>
+    )
+  })
+
   // ── Project detail ────────────────────────────────────────────
   .page('/projects/:id', async ({ params }) => {
     return (

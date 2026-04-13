@@ -131,28 +131,10 @@ export const jwks = sqliteCore.sqliteTable('jwks', {
   createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
 })
 
-// ── deviceCode table (device authorization plugin, RFC 8628) ────────
-// Stores pending device codes for CLI/agent login flows.
-
-export const deviceCode = sqliteCore.sqliteTable('device_code', {
-  id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
-  deviceCode: sqliteCore.text('device_code').notNull().unique(),
-  userCode: sqliteCore.text('user_code').notNull().unique(),
-  userId: sqliteCore.text('user_id').references(() => user.id, { onDelete: 'cascade' }),
-  expiresAt: sqliteCore.integer('expires_at', { mode: 'number' }).notNull(),
-  status: sqliteCore.text('status', { enum: ['pending', 'approved', 'denied', 'expired'] }).notNull().default('pending'),
-  lastPolledAt: sqliteCore.integer('last_polled_at', { mode: 'number' }),
-  pollingInterval: sqliteCore.integer('polling_interval', { mode: 'number' }),
-  clientId: sqliteCore.text('client_id'),
-  scope: sqliteCore.text('scope'),
-}, (table) => [
-  sqliteCore.index('device_code_user_id_idx').on(table.userId),
-])
-
 // ── Relations (v2 API) ──────────────────────────────────────────────
 
 export const relations = defineRelations(
-  { user, session, account, verification, oauthClient, oauthConsent, oauthToken, oauthCode, jwks, deviceCode },
+  { user, session, account, verification, oauthClient, oauthConsent, oauthToken, oauthCode, jwks },
   (r) => ({
     user: {
       sessions: r.many.session(),
@@ -177,8 +159,5 @@ export const relations = defineRelations(
     verification: {},
     oauthClient: {},
     jwks: {},
-    deviceCode: {
-      user: r.one.user({ from: r.deviceCode.userId, to: r.user.id }),
-    },
   }),
 )

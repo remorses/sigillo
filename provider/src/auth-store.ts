@@ -7,7 +7,6 @@
 // - jwt plugin: signs tokens for oauthProvider
 // - Google social provider: the only login method
 // - Dynamic client registration: self-hosted apps register programmatically
-// - deviceAuthorization plugin: RFC 8628 device flow for CLI/agent login
 
 import { DurableObject } from 'cloudflare:workers'
 import * as durable from 'drizzle-orm/durable-sqlite'
@@ -17,7 +16,7 @@ import migrations from '../../db/drizzle-provider/migrations.js'
 import * as schema from 'db/src/provider-schema.ts'
 import { createLibsqlHandler, durableObjectExecutor } from 'libsqlproxy'
 import { betterAuth } from 'better-auth'
-import { jwt, deviceAuthorization } from 'better-auth/plugins'
+import { jwt } from 'better-auth/plugins'
 import { oauthProvider } from '@better-auth/oauth-provider'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 
@@ -46,9 +45,6 @@ export class AuthStore extends DurableObject<Env> {
       },
       plugins: [
         jwt(),
-        deviceAuthorization({
-          verificationUri: '/device',
-        }),
         oauthProvider({
           loginPage: '/sign-in',
           consentPage: '/consent',
