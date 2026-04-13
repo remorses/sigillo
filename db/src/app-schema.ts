@@ -58,27 +58,36 @@ export const verification = sqliteCore.sqliteTable('verification', {
   updatedAt: sqliteCore.integer('updated_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
 })
 
+// ── Org tables ──────────────────────────────────────────────────────
+
+export const org = sqliteCore.sqliteTable('org', {
+  id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
+  name: sqliteCore.text('name').notNull(),
+  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
+  updatedAt: sqliteCore.integer('updated_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
+})
+
+export const orgMember = sqliteCore.sqliteTable('org_member', {
+  id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
+  orgId: sqliteCore.text('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  userId: sqliteCore.text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  role: sqliteCore.text('role', { enum: ['admin', 'member'] }).notNull().default('member'),
+  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
+}, (table) => [
+  sqliteCore.index('org_member_org_id_idx').on(table.orgId),
+  sqliteCore.index('org_member_user_id_idx').on(table.userId),
+])
+
 // ── Secrets domain tables ───────────────────────────────────────────
 
 export const project = sqliteCore.sqliteTable('project', {
   id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
   name: sqliteCore.text('name').notNull(),
-  createdBy: sqliteCore.text('created_by').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  orgId: sqliteCore.text('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
   createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
   updatedAt: sqliteCore.integer('updated_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
 }, (table) => [
-  sqliteCore.index('project_created_by_idx').on(table.createdBy),
-])
-
-export const projectMember = sqliteCore.sqliteTable('project_member', {
-  id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
-  projectId: sqliteCore.text('project_id').notNull().references(() => project.id, { onDelete: 'cascade' }),
-  userId: sqliteCore.text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
-  role: sqliteCore.text('role', { enum: ['owner', 'admin', 'member'] }).notNull().default('member'),
-  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
-}, (table) => [
-  sqliteCore.index('project_member_project_id_idx').on(table.projectId),
-  sqliteCore.index('project_member_user_id_idx').on(table.userId),
+  sqliteCore.index('project_org_id_idx').on(table.orgId),
 ])
 
 export const secret = sqliteCore.sqliteTable('secret', {
@@ -128,13 +137,15 @@ export const deviceCode = sqliteCore.sqliteTable('device_code', {
 // ── Relations (v2 API) ──────────────────────────────────────────────
 
 export const relations = defineRelations(
-  { user, session, account, verification, project, projectMember, secret, config, deviceCode },
+  { user, session, account, verification, org, orgMember, project, secret, config, deviceCode },
   (r) => ({
     user: {
       sessions: r.many.session(),
       accounts: r.many.account(),
-      projects: r.many.project(),
-      memberships: r.many.projectMember(),
+      orgs: r.many.org({
+        from: r.user.id.through(r.orgMember.userId),
+        to: r.org.id.through(r.orgMember.orgId),
+      }),
     },
     session: {
       user: r.one.user({ from: r.session.userId, to: r.user.id }),
@@ -143,14 +154,21 @@ export const relations = defineRelations(
       user: r.one.user({ from: r.account.userId, to: r.user.id }),
     },
     verification: {},
-    project: {
-      creator: r.one.user({ from: r.project.createdBy, to: r.user.id }),
-      members: r.many.projectMember(),
-      secrets: r.many.secret(),
+    org: {
+      members: r.many.orgMember(),
+      projects: r.many.project(),
+      users: r.many.user({
+        from: r.org.id.through(r.orgMember.orgId),
+        to: r.user.id.through(r.orgMember.userId),
+      }),
     },
-    projectMember: {
-      project: r.one.project({ from: r.projectMember.projectId, to: r.project.id }),
-      user: r.one.user({ from: r.projectMember.userId, to: r.user.id }),
+    orgMember: {
+      org: r.one.org({ from: r.orgMember.orgId, to: r.org.id }),
+      user: r.one.user({ from: r.orgMember.userId, to: r.user.id }),
+    },
+    project: {
+      org: r.one.org({ from: r.project.orgId, to: r.org.id }),
+      secrets: r.many.secret(),
     },
     secret: {
       project: r.one.project({ from: r.secret.projectId, to: r.project.id }),
