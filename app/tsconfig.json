@@ -5,7 +5,12 @@
     "outDir": "dist",
     "noEmit": true,
     "lib": ["ESNext", "DOM"],
-    "types": []
+    "types": [],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "paths": {
+      "sigillo-app/src/*": ["./src/*"]
+    }
   },
   "include": ["src", "worker-configuration.d.ts"]
 }

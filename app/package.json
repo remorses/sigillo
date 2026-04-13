@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "description": "Self-hostable secret sharing app — authenticates via sigillo provider",
+  "exports": {
+    "./package.json": "./package.json",
+    "./src/*": "./src/*"
+  },
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
@@ -13,12 +17,21 @@
     "deploy:prod": "vite build && wrangler deploy"
   },
   "dependencies": {
+    "@base-ui/react": "^1.4.0",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@tailwindcss/vite": "^4.2.2",
+    "@tanstack/react-table": "^8.21.3",
     "better-auth": "latest",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "db": "workspace:^",
     "drizzle-orm": "1.0.0-beta.21",
+    "lucide-react": "^1.8.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "spiceflow": "rsc",
+    "tailwind-merge": "^3.5.0",
+    "tailwindcss": "^4.2.2",
     "ulid": "latest",
     "zod": "latest"
   },

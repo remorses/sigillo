@@ -1,12 +1,20 @@
 // Spiceflow entry for the self-hosted secret sharing app.
 // Pages for secrets management UI, API routes for CRUD, setup endpoint.
 // Also serves as the Cloudflare Worker entry via the default export.
+//
+// UI: shadcn components with sidebar layout.
+// - Sidebar: org dropdown, project list, new org/project forms via server actions
+// - Main area: environments table + secrets table (Doppler-style hidden values)
 
+import './globals.css'
 import { Spiceflow } from 'spiceflow'
-import { Head, Link } from 'spiceflow/react'
+import { Head, Link, ProgressBar } from 'spiceflow/react'
 import { env } from 'cloudflare:workers'
 import { z } from 'zod'
 import type { SecretsStore } from './secrets-store.ts'
+import { Sidebar } from 'sigillo-app/src/components/sidebar'
+import { ProjectPage } from 'sigillo-app/src/components/project-page'
+import { CreateOrgForm } from 'sigillo-app/src/components/create-org-form'
 
 export { SecretsStore } from './secrets-store.ts'
 
@@ -15,10 +23,96 @@ function getSecretsStoreStub() {
   return env.SECRETS_STORE.get(id) as DurableObjectStub<SecretsStore>
 }
 
-export const app = new Spiceflow()
+// ── Server action helpers (used in pages) ───────────────────────
 
-  // ── Root layout ───────────────────────────────────────────────
-  .layout('/*', async ({ children }) => {
+async function createProjectAction(_prev: string, formData: FormData) {
+  'use server'
+  const name = formData.get('name') as string
+  const orgId = formData.get('orgId') as string
+  if (!name) return 'Name is required'
+  if (!orgId) return 'No org selected'
+  const stub = getSecretsStoreStub()
+  const project = await stub.createProject({ name, orgId })
+  return `Created:${project.id}`
+}
+
+async function createSecretAction(_prev: string, formData: FormData) {
+  'use server'
+  const name = formData.get('name') as string
+  const value = formData.get('value') as string
+  const environmentId = formData.get('environmentId') as string
+  if (!name || !value) return 'Key and value are required'
+  const stub = getSecretsStoreStub()
+  await stub.createSecret({ environmentId, name, value, createdBy: 'system' })
+  return `Created ${name}`
+}
+
+async function deleteSecretAction(id: string) {
+  'use server'
+  const stub = getSecretsStoreStub()
+  await stub.deleteSecret({ id })
+}
+
+async function fetchSecretsForEnv(envId: string) {
+  'use server'
+  const stub = getSecretsStoreStub()
+  return stub.listSecrets({ environmentId: envId })
+}
+
+async function deleteEnvAction(id: string) {
+  'use server'
+  const stub = getSecretsStoreStub()
+  await stub.deleteEnvironment({ id })
+}
+
+async function createEnvAction(_prev: string, formData: FormData) {
+  'use server'
+  const name = formData.get('name') as string
+  const slug = formData.get('slug') as string
+  const projectId = formData.get('projectId') as string
+  if (!name || !slug) return 'Name and slug are required'
+  const stub = getSecretsStoreStub()
+  await stub.createEnvironment({ projectId, name, slug })
+  return `Created ${name}`
+}
+
+export const app = new Spiceflow({
+  // Allow tunnel origins for server actions (CSRF check)
+  allowedActionOrigins: [/\.kimaki\.dev$/],
+})
+
+  // ── Root layout with sidebar ──────────────────────────────────
+  .layout('/*', async ({ children, request }) => {
+    const url = new URL(request.url)
+    const orgId = url.searchParams.get('orgId')
+
+    // Load orgs and projects for the sidebar
+    const stub = getSecretsStoreStub()
+    let orgs: { id: string; name: string; role: string }[] = []
+    let projects: { id: string; name: string }[] = []
+
+    try {
+      // TODO: scope to authenticated user
+      orgs = await stub.listUserOrgs({ userId: 'system' })
+    } catch {
+      // No orgs yet
+    }
+
+    const effectiveOrgId = orgId || orgs[0]?.id || null
+
+    if (effectiveOrgId) {
+      try {
+        const result = await stub.listProjects({ orgId: effectiveOrgId })
+        projects = result.map((p) => ({ id: p.id, name: p.name }))
+      } catch {
+        // No projects yet
+      }
+    }
+
+    // Extract current project id from pathname
+    const projectMatch = url.pathname.match(/^\/projects\/(.+)/)
+    const currentProjectId = projectMatch?.[1] || null
+
     return (
       <html lang="en">
         <Head>
@@ -26,13 +120,24 @@ export const app = new Spiceflow()
           <Head.Meta name="viewport" content="width=device-width, initial-scale=1.0" />
           <Head.Title>Sigillo — Secret Manager</Head.Title>
         </Head>
-        <body style={{ fontFamily: 'system-ui, sans-serif', margin: 0, padding: '0 20px' }}>
-          <nav style={{ padding: '16px 0', borderBottom: '1px solid #eee' }}>
-            <Link href={app.href('/')}>
-              <strong>Sigillo</strong>
-            </Link>
-          </nav>
-          {children}
+        <body className="min-h-screen bg-background font-sans antialiased">
+          <ProgressBar />
+          <div className="flex min-h-screen">
+            <Sidebar
+              orgs={orgs}
+              projects={projects}
+              currentOrgId={effectiveOrgId}
+              currentProjectId={currentProjectId}
+              createProjectAction={createProjectAction}
+            />
+            <main className="flex-1 p-6 overflow-auto">
+              {children ?? (
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  Page not found
+                </div>
+              )}
+            </main>
+          </div>
         </body>
       </html>
     )
@@ -41,63 +146,109 @@ export const app = new Spiceflow()
   // ── Dashboard ─────────────────────────────────────────────────
   .page('/', async () => {
     return (
-      <div style={{ maxWidth: 800, margin: '40px auto' }}>
-        <h1>Dashboard</h1>
-        <p>Your self-hosted secret manager.</p>
-        <Link href={app.href('/projects')}>View Projects</Link>
+      <div className="max-w-3xl">
+        <h1 className="text-2xl font-bold tracking-tight mb-2">Dashboard</h1>
+        <p className="text-muted-foreground">
+          Select an organization and project from the sidebar, or create new ones to get started.
+        </p>
       </div>
     )
   })
 
-  // ── Projects list ─────────────────────────────────────────────
-  .page('/projects', async () => {
+  // ── New Organization page ───────────────────────────────────────
+  .page('/new-org', async () => {
+    async function createOrgAction(_prev: string, formData: FormData) {
+      'use server'
+      const name = formData.get('name') as string
+      if (!name) return 'Name is required'
+      const stub = getSecretsStoreStub()
+      // TODO: get userId from session
+      const org = await stub.createOrg({ name, userId: 'system' })
+      return `Created:${org.id}`
+    }
+
     return (
-      <div style={{ maxWidth: 800, margin: '40px auto' }}>
-        <h1>Projects</h1>
-        <p>Manage your secret projects.</p>
+      <div className="max-w-md mx-auto py-12">
+        <h1 className="text-2xl font-bold tracking-tight mb-2">New Organization</h1>
+        <p className="text-muted-foreground mb-6">
+          Organizations group your projects and team members.
+        </p>
+        <CreateOrgForm action={createOrgAction} />
+      </div>
+    )
+  })
+
+  // ── Project detail ────────────────────────────────────────────
+  .page('/projects/:id', async ({ params, request }) => {
+    const stub = getSecretsStoreStub()
+    const url = new URL(request.url)
+    const orgId = url.searchParams.get('orgId') || ''
+
+    // Load project info
+    const allProjects = await stub.listProjects({ orgId })
+    const project = allProjects.find((p) => p.id === params.id)
+    if (!project) {
+      return (
+        <div className="text-center py-12">
+          <h1 className="text-xl font-semibold mb-2">Project not found</h1>
+          <Link href="/" className="text-primary hover:underline">Back to dashboard</Link>
+        </div>
+      )
+    }
+
+    // Load environments
+    const environments = await stub.listEnvironments({ projectId: params.id })
+
+    // Select first environment by default
+    const initialEnvId = environments[0]?.id || null
+
+    // Load secrets for the initial environment
+    let initialSecrets: { id: string; name: string; createdAt: number; updatedAt: number; createdBy: { id: string; name: string } | null }[] = []
+    if (initialEnvId) {
+      initialSecrets = await stub.listSecrets({ environmentId: initialEnvId })
+    }
+
+    // Wrap createEnvAction to inject projectId
+    async function createEnvForProject(_prev: string, formData: FormData) {
+      'use server'
+      formData.set('projectId', params.id)
+      return createEnvAction(_prev, formData)
+    }
+
+    return (
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight mb-6">{project.name}</h1>
+        <ProjectPage
+          projectName={project.name}
+          environments={environments}
+          initialEnvId={initialEnvId}
+          initialSecrets={initialSecrets}
+          fetchSecretsForEnv={fetchSecretsForEnv}
+          deleteSecretAction={deleteSecretAction}
+          createSecretAction={createSecretAction}
+          deleteEnvAction={deleteEnvAction}
+          createEnvAction={createEnvForProject}
+        />
       </div>
     )
   })
 
   // ── Device flow verification page ──────────────────────────────
-  // CLI/agents get a user_code and send the user here to enter it.
-  // User must be logged in (via provider) to approve the device code.
   .page('/device', async () => {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
-        <div style={{ textAlign: 'center', maxWidth: 400 }}>
-          <h1>Device Login</h1>
-          <p>Enter the code shown on your CLI or agent:</p>
-          <form method="POST" action="/api/auth/device/verify" style={{ marginTop: 24 }}>
+      <div className="flex justify-center items-center min-h-[60vh]">
+        <div className="text-center max-w-sm">
+          <h1 className="text-2xl font-bold mb-2">Device Login</h1>
+          <p className="text-muted-foreground mb-6">Enter the code shown on your CLI or agent:</p>
+          <form method="POST" action="/api/auth/device/verify" className="flex flex-col gap-4">
             <input
               name="user_code"
               placeholder="ABCD-EFGH"
-              style={{
-                padding: '12px 16px',
-                fontSize: 24,
-                fontFamily: 'monospace',
-                textAlign: 'center',
-                letterSpacing: 4,
-                textTransform: 'uppercase',
-                border: '2px solid #ddd',
-                borderRadius: 8,
-                width: '100%',
-                boxSizing: 'border-box',
-              }}
+              className="h-12 rounded-lg border border-input bg-background px-4 text-center text-2xl font-mono tracking-[0.25em] uppercase focus:outline-none focus:ring-2 focus:ring-ring"
             />
             <button
               type="submit"
-              style={{
-                marginTop: 16,
-                padding: '12px 24px',
-                background: '#4285f4',
-                color: 'white',
-                border: 'none',
-                borderRadius: 8,
-                cursor: 'pointer',
-                fontWeight: 600,
-                width: '100%',
-              }}
+              className="h-10 rounded-lg bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-colors cursor-pointer"
             >
               Verify Code
             </button>
@@ -107,18 +258,7 @@ export const app = new Spiceflow()
     )
   })
 
-  // ── Project detail ────────────────────────────────────────────
-  .page('/projects/:id', async ({ params }) => {
-    return (
-      <div style={{ maxWidth: 800, margin: '40px auto' }}>
-        <h1>Project {params.id}</h1>
-        <p>Secrets for this project.</p>
-      </div>
-    )
-  })
-
   // ── API: Setup ────────────────────────────────────────────────
-  // Registers with the middleman provider via the DO's setup RPC method.
   .route({
     method: 'POST',
     path: '/api/setup',
@@ -128,6 +268,35 @@ export const app = new Spiceflow()
       const stub = getSecretsStoreStub()
       const result = await stub.setup({ appUrl })
       return { ok: true, clientId: result.clientId }
+    },
+  })
+
+  // ── API: Orgs ─────────────────────────────────────────────────
+  .route({
+    method: 'POST',
+    path: '/api/orgs',
+    request: z.object({
+      name: z.string().min(1),
+    }),
+    async handler({ request }) {
+      const body = await request.json()
+      const stub = getSecretsStoreStub()
+      const session = await stub.getSession(request)
+      if (!session) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 })
+      const org = await stub.createOrg({ name: body.name, userId: session.userId })
+      return { ok: true, ...org }
+    },
+  })
+
+  .route({
+    method: 'GET',
+    path: '/api/orgs',
+    async handler({ request }) {
+      const stub = getSecretsStoreStub()
+      const session = await stub.getSession(request)
+      if (!session) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 })
+      const orgs = await stub.listUserOrgs({ userId: session.userId })
+      return { orgs }
     },
   })
 

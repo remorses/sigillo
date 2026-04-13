@@ -123,6 +123,38 @@ export class SecretsStore extends DurableObject<Env> {
     return { clientId: client.client_id }
   }
 
+  // ── Org CRUD ───────────────────────────────────────────────────
+
+  async createOrg({ name, userId }: { name: string; userId: string }) {
+    const [org] = this.db.insert(schema.org).values({ name })
+      .returning({ id: schema.org.id, name: schema.org.name }).all()
+    // Add creator as admin — ensure user exists first
+    const existingUser = this.db.query.user.findFirst({ where: { id: userId } }).sync()
+    if (existingUser) {
+      this.db.insert(schema.orgMember).values({ orgId: org!.id, userId, role: 'admin' }).run()
+    } else {
+      // Create a default system user for unauthenticated setup
+      this.db.insert(schema.user).values({ id: userId, name: 'System', email: `${userId}@sigillo.local` }).onConflictDoNothing().run()
+      this.db.insert(schema.orgMember).values({ orgId: org!.id, userId, role: 'admin' }).run()
+    }
+    return org!
+  }
+
+  async listUserOrgs({ userId }: { userId: string }) {
+    // Get all orgs the user is a member of
+    const members = this.db.query.orgMember.findMany({
+      where: { userId },
+      with: { org: true },
+    }).sync()
+    return members.filter((m) => m.org != null).map((m) => ({
+      id: m.org!.id!,
+      name: m.org!.name!,
+      role: m.role,
+      createdAt: m.org!.createdAt!,
+      updatedAt: m.org!.updatedAt!,
+    }))
+  }
+
   // ── Project CRUD ───────────────────────────────────────────────
   // Creating a project also creates the default environments (development, preview, production)
 
@@ -178,10 +210,28 @@ export class SecretsStore extends DurableObject<Env> {
   async listSecrets({ environmentId }: { environmentId: string }) {
     const rows = this.db.query.secret.findMany({
       where: { environmentId },
+      with: { creator: { columns: { id: true, name: true } } },
       orderBy: { createdAt: 'desc' },
     }).sync()
-    // Return names + ids only, never encrypted values
-    return rows.map((r) => ({ id: r.id, name: r.name, createdAt: r.createdAt, updatedAt: r.updatedAt }))
+    // Return names + ids + timestamps, never encrypted values
+    return rows.map((r) => ({ id: r.id, name: r.name, createdAt: r.createdAt, updatedAt: r.updatedAt, createdBy: r.creator }))
+  }
+
+  async updateSecret({ id, name, value }: { id: string; name?: string; value?: string }) {
+    if (name !== undefined) {
+      this.db.update(schema.secret)
+        .set({ name, updatedAt: Date.now() })
+        .where(orm.eq(schema.secret.id, id))
+        .run()
+    }
+    if (value !== undefined) {
+      const { encrypted, iv } = await this.encrypt({ plaintext: value })
+      this.db.update(schema.secret)
+        .set({ valueEncrypted: encrypted, iv, updatedAt: Date.now() })
+        .where(orm.eq(schema.secret.id, id))
+        .run()
+    }
+    return { id }
   }
 
   async createSecret({ environmentId, name, value, createdBy }: { environmentId: string; name: string; value: string; createdBy: string }) {
