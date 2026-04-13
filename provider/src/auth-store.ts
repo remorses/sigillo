@@ -1,6 +1,6 @@
 // AuthStore Durable Object — single instance holding all provider auth data.
 // Uses drizzle DO SQLite for BetterAuth tables + oauthProvider tables.
-// Exposes libsqlproxy handler for external DB access (TablePlus, drizzle studio).
+// Exposes RPC methods for auth handling and libsqlproxy — no fetch() override.
 
 import { DurableObject } from 'cloudflare:workers'
 import * as durable from 'drizzle-orm/durable-sqlite'
@@ -9,6 +9,7 @@ import * as migrator from 'drizzle-orm/durable-sqlite/migrator'
 import migrations from '../../db/drizzle-provider/migrations.js'
 import * as schema from 'db/src/provider-schema.ts'
 import { createLibsqlHandler, durableObjectExecutor } from 'libsqlproxy'
+import { createAuth } from './auth.ts'
 
 export class AuthStore extends DurableObject<Env> {
   db: durable.DrizzleSqliteDODatabase<typeof schema, typeof schema.relations>
@@ -21,7 +22,13 @@ export class AuthStore extends DurableObject<Env> {
     })
   }
 
-  // libsqlproxy handler for external DB access via Hrana v2
+  // RPC: handle BetterAuth /api/auth/* and /.well-known/* requests
+  async authHandler(request: Request): Promise<Response> {
+    const auth = createAuth({ db: this.db, env: this.env })
+    return auth.handler(request)
+  }
+
+  // RPC: libsqlproxy handler for external DB access via Hrana v2
   async hranaHandler(request: Request): Promise<Response> {
     const handler = createLibsqlHandler(durableObjectExecutor(this.ctx.storage))
     return handler(request)

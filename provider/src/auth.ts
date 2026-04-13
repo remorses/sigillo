@@ -13,6 +13,7 @@ import { oauthProvider } from '@better-auth/oauth-provider'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import type * as durable from 'drizzle-orm/durable-sqlite'
 import type * as schema from 'db/src/provider-schema.ts'
+import {} from 'cloudflare:workers'
 
 export function createAuth({
   db,

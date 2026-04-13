@@ -1,5 +1,5 @@
 // Cloudflare Worker entry for the self-hosted secret sharing app.
-// Routes requests to BetterAuth (auth API) or Spiceflow (pages + API).
+// Routes requests to BetterAuth (via DO RPC) or Spiceflow (pages + API).
 
 import { app } from './app.tsx'
 export { SecretsStore } from './secrets-store.ts'
@@ -13,10 +13,10 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url)
 
-    // BetterAuth handles /api/auth/* routes
+    // Forward auth requests to BetterAuth inside the DO via RPC
     if (url.pathname.startsWith('/api/auth')) {
       const stub = getSecretsStoreStub(env)
-      return stub.fetch(request)
+      return stub.authHandler(request)
     }
 
     // Everything else goes through Spiceflow

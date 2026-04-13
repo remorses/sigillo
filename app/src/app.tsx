@@ -60,14 +60,16 @@ export const app = new Spiceflow()
   })
 
   // ── API: Setup ────────────────────────────────────────────────
+  // Registers with the middleman provider via the DO's setup RPC method.
   .route({
     method: 'POST',
     path: '/api/setup',
     async handler({ request, state }) {
-      const { registerWithProvider } = await import('./setup.ts')
       const url = new URL(request.url)
       const appUrl = `${url.protocol}//${url.host}`
-      const result = await registerWithProvider({ env: state.env!, appUrl })
+      const id = state.env!.SECRETS_STORE.idFromName('main')
+      const stub = state.env!.SECRETS_STORE.get(id)
+      const result = await stub.setup({ appUrl })
       return { ok: true, clientId: result.clientId }
     },
   })

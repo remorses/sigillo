@@ -96,10 +96,20 @@ export const secret = sqliteCore.sqliteTable('secret', {
   sqliteCore.index('secret_project_id_idx').on(table.projectId),
 ])
 
+// ── Config key-value table ──────────────────────────────────────────
+// Simple key-value store for app config (e.g. OAuth client_id from
+// dynamic registration). Replaces the need for a separate KV binding.
+
+export const config = sqliteCore.sqliteTable('config', {
+  key: sqliteCore.text('key').primaryKey().notNull(),
+  value: sqliteCore.text('value').notNull(),
+  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
+})
+
 // ── Relations (v2 API) ──────────────────────────────────────────────
 
 export const relations = defineRelations(
-  { user, session, account, verification, project, projectMember, secret },
+  { user, session, account, verification, project, projectMember, secret, config },
   (r) => ({
     user: {
       sessions: r.many.session(),
@@ -127,5 +137,6 @@ export const relations = defineRelations(
       project: r.one.project({ from: r.secret.projectId, to: r.project.id }),
       creator: r.one.user({ from: r.secret.createdBy, to: r.user.id }),
     },
+    config: {},
   }),
 )

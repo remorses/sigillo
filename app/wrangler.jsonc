@@ -14,10 +14,6 @@
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["SecretsStore"] }
   ],
-  // Create KV with: wrangler kv namespace create CONFIG_KV
-  "kv_namespaces": [
-    { "binding": "CONFIG_KV", "id": "placeholder-create-with-wrangler-kv-namespace-create" }
-  ],
   "vars": {
     "PROVIDER_URL": "https://auth.sigillo.dev"
   },
@@ -34,10 +30,6 @@
       },
       "migrations": [
         { "tag": "v1", "new_sqlite_classes": ["SecretsStore"] }
-      ],
-      // Create KV with: wrangler kv namespace create CONFIG_KV --env preview
-      "kv_namespaces": [
-        { "binding": "CONFIG_KV", "id": "placeholder-preview" }
       ],
       "vars": {
         "PROVIDER_URL": "https://auth.preview.sigillo.dev"

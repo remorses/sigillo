@@ -1,9 +1,12 @@
 // Cloudflare Worker entry for the middleman OAuth provider.
-// Routes requests to BetterAuth (auth API) or Spiceflow (pages).
+// Routes requests to BetterAuth (via DO RPC) or Spiceflow (pages).
 // Uses a single AuthStore DO instance (named "main") for all data.
+//
+// BetterAuth's oauthProvider handles these routes inside the DO:
+// - /api/auth/*           — core auth + oauth provider endpoints
+// - /.well-known/*        — OIDC discovery metadata
 
 import { app } from './app.tsx'
-import { createAuth } from './auth.ts'
 
 export { AuthStore } from './auth-store.ts'
 
@@ -16,12 +19,10 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url)
 
-    // BetterAuth handles /api/auth/* routes
-    if (url.pathname.startsWith('/api/auth')) {
+    // Forward auth API + OIDC discovery to BetterAuth inside the DO via RPC
+    if (url.pathname.startsWith('/api/auth') || url.pathname.startsWith('/.well-known/')) {
       const stub = getAuthStoreStub(env)
-      // Get the drizzle db from the DO — we need to call an RPC method
-      // that creates the auth instance and handles the request inside the DO
-      return stub.fetch(request)
+      return stub.authHandler(request)
     }
 
     // Everything else goes through Spiceflow (pages, health, etc.)

@@ -1,22 +1,28 @@
-// Dynamic client registration with the sigillo provider.
+// Dynamic client registration with the sigillo provider (RFC 7591).
 // Called once at first deployment via POST /api/setup.
-// Registers this self-hosted instance as an OAuth client with the middleman
-// and stores the received client_id + client_secret in Cloudflare KV.
+//
+// Registers as a PUBLIC client (token_endpoint_auth_method: "none").
+// BetterAuth's oauthProvider only allows unauthenticated registration
+// for public clients. Security comes from PKCE, not a client_secret.
+// Only the client_id is stored in the config table — no secret to leak.
+
+import { eq } from 'drizzle-orm'
+import * as schema from 'db/src/app-schema.ts'
+import type * as durable from 'drizzle-orm/durable-sqlite'
 
 export async function registerWithProvider({
+  db,
   env,
   appUrl,
 }: {
+  db: durable.DrizzleSqliteDODatabase<typeof schema, typeof schema.relations>
   env: Env
   appUrl: string
-}): Promise<{ clientId: string; clientSecret: string }> {
+}): Promise<{ clientId: string }> {
   // Check if already registered
-  const existingClientId = await env.CONFIG_KV.get('MIDDLEMAN_CLIENT_ID')
-  if (existingClientId) {
-    return {
-      clientId: existingClientId,
-      clientSecret: '(already stored)',
-    }
+  const existing = db.select().from(schema.config).where(eq(schema.config.key, 'middleman_client_id')).get()
+  if (existing) {
+    return { clientId: existing.value }
   }
 
   const callbackUrl = `${appUrl}/api/auth/oauth2/callback/sigillo`
@@ -30,7 +36,8 @@ export async function registerWithProvider({
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
       scope: 'openid email profile',
-      token_endpoint_auth_method: 'client_secret_post',
+      // Public client — no client_secret. Security via PKCE.
+      token_endpoint_auth_method: 'none',
     }),
   })
 
@@ -41,15 +48,10 @@ export async function registerWithProvider({
 
   const client = (await response.json()) as {
     client_id: string
-    client_secret: string
   }
 
-  // Store credentials in KV — client_secret is only returned once
-  await env.CONFIG_KV.put('MIDDLEMAN_CLIENT_ID', client.client_id)
-  await env.CONFIG_KV.put('MIDDLEMAN_CLIENT_SECRET', client.client_secret)
+  // Store client_id in config table
+  db.insert(schema.config).values({ key: 'middleman_client_id', value: client.client_id }).run()
 
-  return {
-    clientId: client.client_id,
-    clientSecret: client.client_secret,
-  }
+  return { clientId: client.client_id }
 }
