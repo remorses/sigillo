@@ -4,10 +4,16 @@
 
 import { Spiceflow } from 'spiceflow'
 import { Head, Link } from 'spiceflow/react'
+import { env } from 'cloudflare:workers'
 import { z } from 'zod'
-import { getSecretsStoreStub } from './get-stub.ts'
+import type { SecretsStore } from './secrets-store.ts'
 
 export { SecretsStore } from './secrets-store.ts'
+
+function getSecretsStoreStub() {
+  const id = env.SECRETS_STORE.idFromName('main')
+  return env.SECRETS_STORE.get(id) as DurableObjectStub<SecretsStore>
+}
 
 export const app = new Spiceflow()
 

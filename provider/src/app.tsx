@@ -5,9 +5,14 @@
 import { Spiceflow } from 'spiceflow'
 import { Head, Link } from 'spiceflow/react'
 import { env } from 'cloudflare:workers'
-import { getAuthStoreStub } from './get-stub.ts'
+import type { AuthStore } from './auth-store.ts'
 
 export { AuthStore } from './auth-store.ts'
+
+function getAuthStoreStub() {
+  const id = env.AUTH_STORE.idFromName('main')
+  return env.AUTH_STORE.get(id) as DurableObjectStub<AuthStore>
+}
 
 export const app = new Spiceflow()
 
