@@ -1,0 +1,4 @@
+[submodule "spiceflow"]
+	path = spiceflow
+	url = https://github.com/remorses/spiceflow.git
+	branch = main

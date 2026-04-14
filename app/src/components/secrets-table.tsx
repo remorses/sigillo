@@ -92,8 +92,9 @@ function SecretValueCell({
           }
         }}
         readOnly={!visible}
-        style={!visible ? { WebkitTextSecurity: 'disc', textSecurity: 'disc' } as React.CSSProperties : undefined}
-        className="h-7 min-w-0 flex-1 rounded-md border border-input bg-muted/50 px-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+        tabIndex={visible ? 0 : -1}
+        style={!visible ? { WebkitTextSecurity: 'disc', textSecurity: 'disc', pointerEvents: 'none' } as React.CSSProperties : undefined}
+        className={`h-7 min-w-0 flex-1 rounded-md border px-2 text-sm font-mono ${visible ? 'border-input bg-muted/50 focus:outline-none focus:ring-2 focus:ring-ring' : 'border-transparent bg-muted/50 cursor-default select-none'}`}
       />
       <button
         onClick={toggle}
