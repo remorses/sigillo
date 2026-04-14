@@ -5,7 +5,6 @@
 "use client";
 
 import { useState } from "react";
-import { EyeIcon, EyeOffIcon } from "lucide-react";
 import { getRouter } from "spiceflow/react";
 import { SecretsTable } from "sigillo-app/src/components/secrets-table";
 import {
@@ -15,6 +14,7 @@ import {
   SelectPopup,
   SelectItem,
 } from "sigillo-app/src/components/ui/select";
+import { Button } from "sigillo-app/src/components/ui/button";
 import type { App } from "../app.tsx";
 
 type Secret = {
@@ -57,13 +57,9 @@ export function ProjectPage({
         <h1 className="text-2xl font-bold tracking-tight">{projectName}</h1>
         <div className="flex items-center gap-2">
           {secrets.length > 0 && (
-            <button
-              onClick={() => setAllVisible((v) => !v)}
-              className="text-muted-foreground hover:text-foreground cursor-pointer p-1.5 rounded-md hover:bg-muted transition-colors"
-              title={allVisible ? "Hide all values" : "Reveal all values"}
-            >
-              {allVisible ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
-            </button>
+            <Button variant="ghost" size="sm" onClick={() => setAllVisible((v) => !v)}>
+              {allVisible ? "Hide all" : "Show all"}
+            </Button>
           )}
           <Select
             defaultValue={selectedEnvId || ""}
@@ -92,6 +88,7 @@ export function ProjectPage({
         <SecretsTable
           secrets={secrets}
           environmentId={selectedEnvId}
+          environments={environments}
           allVisible={allVisible}
         />
       ) : (
