@@ -172,6 +172,19 @@ export class SecretsStore extends DurableObject<Env> {
     return rows.map((r) => ({ id: r.id, name: r.name, createdAt: r.createdAt, updatedAt: r.updatedAt, createdBy: r.creator }))
   }
 
+  async listSecretsWithValues({ environmentId }: { environmentId: string }) {
+    const rows = this.db.query.secret.findMany({
+      where: { environmentId },
+      with: { creator: { columns: { id: true, name: true } } },
+      orderBy: { createdAt: 'desc' },
+    }).sync()
+    const secrets = await Promise.all(rows.map(async (r) => {
+      const value = await this.decrypt({ encrypted: r.valueEncrypted, iv: r.iv })
+      return { id: r.id, name: r.name, value, createdAt: r.createdAt, updatedAt: r.updatedAt, createdBy: r.creator }
+    }))
+    return secrets
+  }
+
   async updateSecret({ id, name, value }: { id: string; name?: string; value?: string }) {
     if (name !== undefined) {
       this.db.update(schema.secret)
