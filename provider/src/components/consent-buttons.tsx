@@ -1,37 +1,20 @@
 // Client component for the OAuth consent page.
-// POSTs JSON to BetterAuth's consent endpoint and follows the redirect.
+// Uses the type-safe BetterAuth client with oauthProviderClient plugin
+// which automatically sends oauth_query from the current URL.
 
 "use client"
 
 import { useState } from "react"
+import { authClient } from "../auth-client.ts"
 
 export function ConsentButtons() {
   const [loading, setLoading] = useState(false)
 
   async function handleConsent(accept: boolean) {
     setLoading(true)
-    try {
-      // BetterAuth requires the signed OAuth query params from the current URL.
-      // The oauthProviderClient normally handles this, but we pass it manually.
-      const oauthQuery = window.location.search.slice(1)
-      const res = await fetch("/api/auth/oauth2/consent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accept, oauth_query: oauthQuery }),
-        redirect: "follow",
-      })
-      // BetterAuth returns a redirect URL in the response
-      if (res.redirected) {
-        window.location.href = res.url
-        return
-      }
-      const data = (await res.json()) as { url?: string; redirectTo?: string }
-      if (data.url || data.redirectTo) {
-        window.location.href = (data.url || data.redirectTo)!
-      }
-    } catch {
-      setLoading(false)
-    }
+    // oauthProviderClient plugin automatically includes oauth_query
+    // from the signed query params in the current URL
+    await authClient.oauth2.consent({ accept })
   }
 
   return (

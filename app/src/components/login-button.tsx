@@ -1,32 +1,20 @@
 // Client component for the login page sign-in button.
-// Calls BetterAuth's genericOAuth sign-in endpoint which returns a redirect
-// URL to the provider, then navigates the browser there.
+// Uses the type-safe BetterAuth client to trigger the genericOAuth flow.
 
 "use client"
 
 import { useState } from "react"
+import { authClient } from "../auth-client.ts"
 
 export function LoginButton() {
   const [loading, setLoading] = useState(false)
 
   async function handleSignIn() {
     setLoading(true)
-    try {
-      const res = await fetch("/api/auth/sign-in/oauth2", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          providerId: "sigillo",
-          callbackURL: "/",
-        }),
-      })
-      const data = (await res.json()) as { url?: string }
-      if (data.url) {
-        window.location.href = data.url
-      }
-    } catch {
-      setLoading(false)
-    }
+    await authClient.signIn.oauth2({
+      providerId: "sigillo",
+      callbackURL: "/",
+    })
   }
 
   return (

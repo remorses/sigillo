@@ -1,30 +1,22 @@
 // Client component for the provider sign-in page.
-// POSTs to BetterAuth's social sign-in endpoint and redirects to Google OAuth.
+// Uses the type-safe BetterAuth client to trigger Google social sign-in.
 
 "use client"
 
 import { useState } from "react"
+import { authClient } from "../auth-client.ts"
 
 export function GoogleSignInButton() {
   const [loading, setLoading] = useState(false)
 
   async function handleSignIn() {
     setLoading(true)
-    try {
-      const res = await fetch("/api/auth/sign-in/social", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // Preserve the full current URL (including OAuth query params) as the
-        // callback so BetterAuth can resume the authorization flow after login.
-        body: JSON.stringify({ provider: "google", callbackURL: window.location.href }),
-      })
-      const data = (await res.json()) as { url?: string }
-      if (data.url) {
-        window.location.href = data.url
-      }
-    } catch {
-      setLoading(false)
-    }
+    await authClient.signIn.social({
+      provider: "google",
+      // Preserve the full current URL (including OAuth query params) so
+      // BetterAuth can resume the authorization flow after Google login.
+      callbackURL: window.location.href,
+    })
   }
 
   return (
