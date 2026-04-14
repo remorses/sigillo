@@ -19,6 +19,37 @@ import { Sidebar, NewProjectButton } from 'sigillo-app/src/components/sidebar'
 import { ProjectPage } from 'sigillo-app/src/components/project-page'
 import { CreateOrgForm } from 'sigillo-app/src/components/create-org-form'
 
+// Auth helper: extracts session from request via DO RPC.
+// Returns session or redirects to login for pages, returns 401 for API routes.
+async function requireApiSession(stub: DurableObjectStub<SecretsStore>, request: Request) {
+  const session = await stub.getSession(request)
+  if (!session) throw new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'content-type': 'application/json' } })
+  return session
+}
+
+async function requirePageSession(stub: DurableObjectStub<SecretsStore>, request: Request) {
+  const session = await stub.getSession(request)
+  if (!session) throw redirect('/login')
+  return session
+}
+
+// Verifies the user is a member of the given org. Throws 403 Response for API routes.
+async function requireApiOrgMember(stub: DurableObjectStub<SecretsStore>, userId: string, orgId: string) {
+  try {
+    return await stub.requireOrgMember({ userId, orgId })
+  } catch {
+    throw new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { 'content-type': 'application/json' } })
+  }
+}
+
+async function requirePageOrgMember(stub: DurableObjectStub<SecretsStore>, userId: string, orgId: string) {
+  try {
+    return await stub.requireOrgMember({ userId, orgId })
+  } catch {
+    throw redirect('/')
+  }
+}
+
 
 
 
@@ -61,22 +92,17 @@ export const app = new Spiceflow({
     const stub = getSecretsStoreStub()
     const { orgId, projectId } = params
 
-    // Load orgs, projects, and user session in parallel — all independent
-    const [orgsResult, projectsResult, sessionResult] = await Promise.allSettled([
-      stub.listUserOrgs({ userId: 'system' }),
+    const session = await requirePageSession(stub, request)
+    await requirePageOrgMember(stub, session.userId, orgId)
+
+    // Load orgs + projects in parallel — both independent, session already resolved
+    const [orgs, allProjects] = await Promise.all([
+      stub.listUserOrgs({ userId: session.userId }),
       stub.listProjects({ orgId }),
-      stub.getSession(request),
     ])
 
-    const orgs = orgsResult.status === 'fulfilled' ? orgsResult.value : []
-    const projects = projectsResult.status === 'fulfilled'
-      ? projectsResult.value.map((p) => ({ id: p.id, name: p.name }))
-      : []
-    let user: { name: string; email: string; image?: string | null } | null = null
-    if (sessionResult.status === 'fulfilled' && sessionResult.value) {
-      const u = sessionResult.value.user
-      user = { name: u.name || 'User', email: u.email || '' }
-    }
+    const projects = allProjects.map((p) => ({ id: p.id, name: p.name }))
+    const user = { name: session.user.name || 'User', email: session.user.email || '' }
 
     return (
       <div className="isolate relative flex max-w-[1200px] mx-auto min-h-[min(400px,100vh)]">
@@ -97,9 +123,11 @@ export const app = new Spiceflow({
   // ── Root redirect → first org ─────────────────────────────────
   .get('/', async ({ request }) => {
     const stub = getSecretsStoreStub()
+    const session = await stub.getSession(request)
+    if (!session) return redirect('/login')
     const base = new URL(request.url)
     try {
-      const orgs = await stub.listUserOrgs({ userId: 'system' })
+      const orgs = await stub.listUserOrgs({ userId: session.userId })
       if (orgs[0]) {
         return Response.redirect(new URL(`/orgs/${orgs[0].id}`, base).toString(), 302)
       }
@@ -110,6 +138,8 @@ export const app = new Spiceflow({
   // ── Org root redirect → first project ─────────────────────────
   .get('/orgs/:orgId', async ({ params, request }) => {
     const stub = getSecretsStoreStub()
+    const session = await requirePageSession(stub, request)
+    await requirePageOrgMember(stub, session.userId, params.orgId)
     const base = new URL(request.url)
     try {
       const projects = await stub.listProjects({ orgId: params.orgId })
@@ -123,28 +153,21 @@ export const app = new Spiceflow({
   // ── Org page (redirects to first project, or shows empty state) ─
   .page('/orgs/:orgId', async ({ params, request }) => {
     const stub = getSecretsStoreStub()
+    const session = await requirePageSession(stub, request)
+    await requirePageOrgMember(stub, session.userId, params.orgId)
 
-    const [orgsResult, projectsResult, sessionResult] = await Promise.allSettled([
-      stub.listUserOrgs({ userId: 'system' }),
+    const [orgs, projects] = await Promise.all([
+      stub.listUserOrgs({ userId: session.userId }),
       stub.listProjects({ orgId: params.orgId }),
-      stub.getSession(request),
     ])
 
-    const projects = projectsResult.status === 'fulfilled'
-      ? projectsResult.value.map((p) => ({ id: p.id, name: p.name }))
-      : []
+    const projectList = projects.map((p) => ({ id: p.id, name: p.name }))
 
-    if (projects[0]) {
-      return redirect(`/orgs/${params.orgId}/projects/${projects[0].id}`)
+    if (projectList[0]) {
+      return redirect(`/orgs/${params.orgId}/projects/${projectList[0].id}`)
     }
 
-    const orgs = orgsResult.status === 'fulfilled' ? orgsResult.value : []
-
-    let user: { name: string; email: string; image?: string | null } | null = null
-    if (sessionResult.status === 'fulfilled' && sessionResult.value) {
-      const u = sessionResult.value.user
-      user = { name: u.name || 'User', email: u.email || '' }
-    }
+    const user = { name: session.user.name || 'User', email: session.user.email || '' }
 
     return (
       <div className="isolate relative flex max-w-[1200px] mx-auto min-h-[min(400px,100vh)]">
@@ -163,7 +186,9 @@ export const app = new Spiceflow({
 
 
   // ── New Organization page (standalone, no sidebar) ─────────────
-  .page('/new-org', async () => {
+  .page('/new-org', async ({ request }) => {
+    const stub = getSecretsStoreStub()
+    await requirePageSession(stub, request)
     return (
       <div className="max-w-md mx-auto py-12">
         <h1 className="text-2xl font-bold tracking-tight mb-2">New Organization</h1>
@@ -178,6 +203,7 @@ export const app = new Spiceflow({
   // ── Project root redirect → first env ─────────────────────────
   // .page() registers both GET and POST, so this handles full-page loads,
   // client-side RSC navigation, and server action POSTs.
+  // Auth is already checked by the parent layout for /orgs/:orgId/projects/:projectId/*
   .page('/orgs/:orgId/projects/:id', async ({ params }) => {
     const stub = getSecretsStoreStub()
     const environments = await stub.listEnvironments({ projectId: params.id })
@@ -259,6 +285,26 @@ export const app = new Spiceflow({
     )
   })
 
+  // ── Login page (standalone, no sidebar) ─────────────────────────
+  // Shows a sign-in button. If already logged in, redirects to dashboard.
+  // The button triggers a client-side fetch to BetterAuth's genericOAuth
+  // endpoint which returns a redirect URL to the provider.
+  .page('/login', async ({ request }) => {
+    const stub = getSecretsStoreStub()
+    const session = await stub.getSession(request)
+    if (session) return redirect('/')
+    const { LoginButton } = await import('sigillo-app/src/components/login-button')
+    return (
+      <div className="flex justify-center items-center min-h-[60vh]">
+        <div className="text-center max-w-sm">
+          <h1 className="text-2xl font-bold tracking-tight mb-2">Sigillo</h1>
+          <p className="text-muted-foreground mb-6">Sign in to manage your secrets</p>
+          <LoginButton />
+        </div>
+      </div>
+    )
+  })
+
   // ── API: Orgs ─────────────────────────────────────────────────
   .route({
     method: 'POST',
@@ -299,8 +345,8 @@ export const app = new Spiceflow({
     async handler({ request }) {
       const body = await request.json()
       const stub = getSecretsStoreStub()
-      const session = await stub.getSession(request)
-      if (!session) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 })
+      const session = await requireApiSession(stub, request)
+      await requireApiOrgMember(stub, session.userId, body.orgId)
       const project = await stub.createProject({ name: body.name, orgId: body.orgId })
       return { ok: true, ...project }
     },
@@ -314,6 +360,8 @@ export const app = new Spiceflow({
       const orgId = url.searchParams.get('orgId')
       if (!orgId) return new Response(JSON.stringify({ error: 'orgId required' }), { status: 400 })
       const stub = getSecretsStoreStub()
+      const session = await requireApiSession(stub, request)
+      await requireApiOrgMember(stub, session.userId, orgId)
       const projects = await stub.listProjects({ orgId })
       return { projects }
     },
@@ -322,8 +370,12 @@ export const app = new Spiceflow({
   .route({
     method: 'DELETE',
     path: '/api/projects/:id',
-    async handler({ params }) {
+    async handler({ params, request }) {
       const stub = getSecretsStoreStub()
+      const session = await requireApiSession(stub, request)
+      const orgId = await stub.getOrgIdForProject({ projectId: params.id })
+      if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
+      await requireApiOrgMember(stub, session.userId, orgId)
       const deleted = await stub.deleteProject({ id: params.id })
       if (!deleted) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
       return { ok: true, id: deleted.id }
@@ -334,8 +386,12 @@ export const app = new Spiceflow({
   .route({
     method: 'GET',
     path: '/api/projects/:projectId/environments',
-    async handler({ params }) {
+    async handler({ params, request }) {
       const stub = getSecretsStoreStub()
+      const session = await requireApiSession(stub, request)
+      const orgId = await stub.getOrgIdForProject({ projectId: params.projectId })
+      if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
+      await requireApiOrgMember(stub, session.userId, orgId)
       const environments = await stub.listEnvironments({ projectId: params.projectId })
       return { projectId: params.projectId, environments }
     },
@@ -351,6 +407,10 @@ export const app = new Spiceflow({
     async handler({ request, params }) {
       const body = await request.json()
       const stub = getSecretsStoreStub()
+      const session = await requireApiSession(stub, request)
+      const orgId = await stub.getOrgIdForProject({ projectId: params.projectId })
+      if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
+      await requireApiOrgMember(stub, session.userId, orgId)
       const envResult = await stub.createEnvironment({ projectId: params.projectId, name: body.name, slug: body.slug })
       return { ok: true, ...envResult }
     },
@@ -359,8 +419,12 @@ export const app = new Spiceflow({
   .route({
     method: 'DELETE',
     path: '/api/environments/:id',
-    async handler({ params }) {
+    async handler({ params, request }) {
       const stub = getSecretsStoreStub()
+      const session = await requireApiSession(stub, request)
+      const orgId = await stub.getOrgIdForEnvironment({ environmentId: params.id })
+      if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
+      await requireApiOrgMember(stub, session.userId, orgId)
       const deleted = await stub.deleteEnvironment({ id: params.id })
       if (!deleted) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
       return { ok: true, id: deleted.id }
@@ -371,8 +435,12 @@ export const app = new Spiceflow({
   .route({
     method: 'GET',
     path: '/api/environments/:environmentId/secrets',
-    async handler({ params }) {
+    async handler({ params, request }) {
       const stub = getSecretsStoreStub()
+      const session = await requireApiSession(stub, request)
+      const orgId = await stub.getOrgIdForEnvironment({ environmentId: params.environmentId })
+      if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
+      await requireApiOrgMember(stub, session.userId, orgId)
       const secrets = await stub.listSecrets({ environmentId: params.environmentId })
       return { environmentId: params.environmentId, secrets }
     },
@@ -388,8 +456,10 @@ export const app = new Spiceflow({
     async handler({ request, params }) {
       const body = await request.json()
       const stub = getSecretsStoreStub()
-      const session = await stub.getSession(request)
-      if (!session) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 })
+      const session = await requireApiSession(stub, request)
+      const orgId = await stub.getOrgIdForEnvironment({ environmentId: params.environmentId })
+      if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
+      await requireApiOrgMember(stub, session.userId, orgId)
       const secret = await stub.createSecret({ environmentId: params.environmentId, name: body.name, value: body.value, createdBy: session.userId })
       return { ok: true, environmentId: params.environmentId, id: secret.id, name: secret.name }
     },
@@ -398,8 +468,12 @@ export const app = new Spiceflow({
   .route({
     method: 'GET',
     path: '/api/secrets/:id',
-    async handler({ params }) {
+    async handler({ params, request }) {
       const stub = getSecretsStoreStub()
+      const session = await requireApiSession(stub, request)
+      const orgId = await stub.getOrgIdForSecret({ secretId: params.id })
+      if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
+      await requireApiOrgMember(stub, session.userId, orgId)
       const secret = await stub.getSecret({ id: params.id })
       if (!secret) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
       return secret
@@ -409,8 +483,12 @@ export const app = new Spiceflow({
   .route({
     method: 'DELETE',
     path: '/api/secrets/:id',
-    async handler({ params }) {
+    async handler({ params, request }) {
       const stub = getSecretsStoreStub()
+      const session = await requireApiSession(stub, request)
+      const orgId = await stub.getOrgIdForSecret({ secretId: params.id })
+      if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
+      await requireApiOrgMember(stub, session.userId, orgId)
       const deleted = await stub.deleteSecret({ id: params.id })
       if (!deleted) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
       return { ok: true, id: deleted.id }

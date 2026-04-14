@@ -16,6 +16,18 @@ function getAuthStoreStub() {
 
 export const app = new Spiceflow()
 
+  // ── BetterAuth middleware ──────────────────────────────────────
+  // Forward /api/auth/* requests to the DO's BetterAuth handler.
+  // This replaces the custom fetch handler — all routing goes through spiceflow.
+  .use(async ({ request }, next) => {
+    const url = new URL(request.url)
+    if (url.pathname.startsWith('/api/auth')) {
+      const stub = getAuthStoreStub()
+      return stub.authHandler(request)
+    }
+    return next()
+  })
+
   // ── Root layout ───────────────────────────────────────────────
   .layout('/*', async ({ children }) => {
     return (
@@ -81,25 +93,38 @@ export const app = new Spiceflow()
     )
   })
 
+  // ── Well-known endpoints ─────────────────────────────────────
+  // BetterAuth oauthProvider requires these to be exposed as separate
+  // routes — they are NOT served by auth.handler() automatically.
+  // Issuer path is /api/auth, so:
+  //   OIDC:    [issuer-path]/.well-known/openid-configuration
+  //   OAuth AS: /.well-known/oauth-authorization-server[issuer-path]
+  .get('/api/auth/.well-known/openid-configuration', async () => {
+    const stub = getAuthStoreStub()
+    return Response.json(await stub.getOpenIdConfig())
+  })
+  .get('/.well-known/oauth-authorization-server/api/auth', async () => {
+    const stub = getAuthStoreStub()
+    return Response.json(await stub.getOAuthServerConfig())
+  })
+  // Also serve at root for clients that ignore the issuer path
+  .get('/.well-known/openid-configuration', async () => {
+    const stub = getAuthStoreStub()
+    return Response.json(await stub.getOpenIdConfig())
+  })
+
   // ── Health check ──────────────────────────────────────────────
   .get('/health', () => {
+    return { ok: true, service: 'sigillo-provider' }
+  })
+  .get('/', () => {
     return { ok: true, service: 'sigillo-provider' }
   })
 
 export type App = typeof app
 
-// Cloudflare Worker entry — routes auth/OIDC to DO, everything else to Spiceflow
 export default {
   async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url)
-
-    // Forward auth API + OIDC discovery to BetterAuth inside the DO via RPC
-    if (url.pathname.startsWith('/api/auth') || url.pathname.startsWith('/.well-known/')) {
-      const stub = getAuthStoreStub()
-      return stub.authHandler(request)
-    }
-
-    // Everything else goes through Spiceflow (pages, health, etc.)
     return app.handle(request)
   },
 } satisfies ExportedHandler<Env>

@@ -5,3 +5,4 @@ dist
 tmp
 .wrangler
 .dev.vars
+.env*

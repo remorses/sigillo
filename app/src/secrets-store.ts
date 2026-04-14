@@ -78,6 +78,48 @@ export class SecretsStore extends DurableObject<Env> {
     return { userId: session.user.id, user: { id: session.user.id, name: session.user.name, email: session.user.email } }
   }
 
+  // ── Authorization helpers ───────────────────────────────────────
+  // These resolve the org ownership chain for nested resources so
+  // callers can verify org membership before accessing data.
+
+  async requireSession(request: Request): Promise<{ userId: string; user: { id: string; name: string; email: string } }> {
+    const session = await this.getSession(request)
+    if (!session) throw new Error('UNAUTHORIZED')
+    return session
+  }
+
+  async requireOrgMember({ userId, orgId }: { userId: string; orgId: string }): Promise<{ role: string }> {
+    const member = this.db.query.orgMember.findFirst({
+      where: { userId, orgId },
+    }).sync()
+    if (!member) throw new Error('FORBIDDEN')
+    return { role: member.role }
+  }
+
+  async getOrgIdForProject({ projectId }: { projectId: string }): Promise<string | null> {
+    const project = this.db.query.project.findFirst({
+      where: { id: projectId },
+      columns: { orgId: true },
+    }).sync()
+    return project?.orgId ?? null
+  }
+
+  async getOrgIdForEnvironment({ environmentId }: { environmentId: string }): Promise<string | null> {
+    const env = this.db.query.environment.findFirst({
+      where: { id: environmentId },
+      with: { project: { columns: { orgId: true } } },
+    }).sync()
+    return env?.project?.orgId ?? null
+  }
+
+  async getOrgIdForSecret({ secretId }: { secretId: string }): Promise<string | null> {
+    const row = this.db.query.secret.findFirst({
+      where: { id: secretId },
+      with: { environment: { with: { project: { columns: { orgId: true } } } } },
+    }).sync()
+    return row?.environment?.project?.orgId ?? null
+  }
+
   // ── Org CRUD ───────────────────────────────────────────────────
 
   async createOrg({ name, userId }: { name: string; userId: string }) {

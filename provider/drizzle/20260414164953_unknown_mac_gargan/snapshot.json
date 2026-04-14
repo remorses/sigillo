@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "5226bb24-88ac-41d0-9905-9431fd848b53",
+  "id": "7d41a7f8-e92e-46a5-a5d7-2a4d93bf4202",
   "prevIds": [
-    "3ae01357-55af-40e9-9382-5d5b45a85d82"
+    "00000000-0000-0000-0000-000000000000"
   ],
   "ddl": [
     {
@@ -11,27 +11,23 @@
       "entityType": "tables"
     },
     {
-      "name": "device_code",
+      "name": "jwks",
       "entityType": "tables"
     },
     {
-      "name": "environment",
+      "name": "oauth_access_token",
       "entityType": "tables"
     },
     {
-      "name": "org",
+      "name": "oauth_client",
       "entityType": "tables"
     },
     {
-      "name": "org_member",
+      "name": "oauth_consent",
       "entityType": "tables"
     },
     {
-      "name": "project",
-      "entityType": "tables"
-    },
-    {
-      "name": "secret",
+      "name": "oauth_refresh_token",
       "entityType": "tables"
     },
     {
@@ -184,7 +180,7 @@
       "generated": null,
       "name": "id",
       "entityType": "columns",
-      "table": "device_code"
+      "table": "jwks"
     },
     {
       "type": "text",
@@ -192,9 +188,9 @@
       "autoincrement": false,
       "default": null,
       "generated": null,
-      "name": "device_code",
+      "name": "public_key",
       "entityType": "columns",
-      "table": "device_code"
+      "table": "jwks"
     },
     {
       "type": "text",
@@ -202,9 +198,59 @@
       "autoincrement": false,
       "default": null,
       "generated": null,
-      "name": "user_code",
+      "name": "private_key",
       "entityType": "columns",
-      "table": "device_code"
+      "table": "jwks"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "jwks"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "oauth_access_token"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "token",
+      "entityType": "columns",
+      "table": "oauth_access_token"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "client_id",
+      "entityType": "columns",
+      "table": "oauth_access_token"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "oauth_access_token"
     },
     {
       "type": "text",
@@ -214,7 +260,27 @@
       "generated": null,
       "name": "user_id",
       "entityType": "columns",
-      "table": "device_code"
+      "table": "oauth_access_token"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "reference_id",
+      "entityType": "columns",
+      "table": "oauth_access_token"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "refresh_id",
+      "entityType": "columns",
+      "table": "oauth_access_token"
     },
     {
       "type": "integer",
@@ -224,47 +290,47 @@
       "generated": null,
       "name": "expires_at",
       "entityType": "columns",
-      "table": "device_code"
+      "table": "oauth_access_token"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "oauth_access_token"
     },
     {
       "type": "text",
       "notNull": true,
       "autoincrement": false,
-      "default": "'pending'",
-      "generated": null,
-      "name": "status",
-      "entityType": "columns",
-      "table": "device_code"
-    },
-    {
-      "type": "integer",
-      "notNull": false,
-      "autoincrement": false,
       "default": null,
       "generated": null,
-      "name": "last_polled_at",
+      "name": "scopes",
       "entityType": "columns",
-      "table": "device_code"
-    },
-    {
-      "type": "integer",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "polling_interval",
-      "entityType": "columns",
-      "table": "device_code"
+      "table": "oauth_access_token"
     },
     {
       "type": "text",
       "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "oauth_client"
+    },
+    {
+      "type": "text",
+      "notNull": true,
       "autoincrement": false,
       "default": null,
       "generated": null,
       "name": "client_id",
       "entityType": "columns",
-      "table": "device_code"
+      "table": "oauth_client"
     },
     {
       "type": "text",
@@ -272,39 +338,99 @@
       "autoincrement": false,
       "default": null,
       "generated": null,
-      "name": "scope",
+      "name": "client_secret",
       "entityType": "columns",
-      "table": "device_code"
+      "table": "oauth_client"
     },
     {
       "type": "text",
       "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "id",
-      "entityType": "columns",
-      "table": "environment"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "project_id",
-      "entityType": "columns",
-      "table": "environment"
-    },
-    {
-      "type": "text",
-      "notNull": true,
       "autoincrement": false,
       "default": null,
       "generated": null,
       "name": "name",
       "entityType": "columns",
-      "table": "environment"
+      "table": "oauth_client"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "uri",
+      "entityType": "columns",
+      "table": "oauth_client"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "icon",
+      "entityType": "columns",
+      "table": "oauth_client"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "contacts",
+      "entityType": "columns",
+      "table": "oauth_client"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "tos",
+      "entityType": "columns",
+      "table": "oauth_client"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "policy",
+      "entityType": "columns",
+      "table": "oauth_client"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "software_id",
+      "entityType": "columns",
+      "table": "oauth_client"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "software_version",
+      "entityType": "columns",
+      "table": "oauth_client"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "software_statement",
+      "entityType": "columns",
+      "table": "oauth_client"
     },
     {
       "type": "text",
@@ -312,29 +438,179 @@
       "autoincrement": false,
       "default": null,
       "generated": null,
-      "name": "slug",
+      "name": "redirect_uris",
       "entityType": "columns",
-      "table": "environment"
+      "table": "oauth_client"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "post_logout_redirect_uris",
+      "entityType": "columns",
+      "table": "oauth_client"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "token_endpoint_auth_method",
+      "entityType": "columns",
+      "table": "oauth_client"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "grant_types",
+      "entityType": "columns",
+      "table": "oauth_client"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "response_types",
+      "entityType": "columns",
+      "table": "oauth_client"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "scopes",
+      "entityType": "columns",
+      "table": "oauth_client"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "type",
+      "entityType": "columns",
+      "table": "oauth_client"
     },
     {
       "type": "integer",
-      "notNull": true,
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "public",
+      "entityType": "columns",
+      "table": "oauth_client"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": "false",
+      "generated": null,
+      "name": "disabled",
+      "entityType": "columns",
+      "table": "oauth_client"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "skip_consent",
+      "entityType": "columns",
+      "table": "oauth_client"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "enable_end_session",
+      "entityType": "columns",
+      "table": "oauth_client"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "subject_type",
+      "entityType": "columns",
+      "table": "oauth_client"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "require_pkce",
+      "entityType": "columns",
+      "table": "oauth_client"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "user_id",
+      "entityType": "columns",
+      "table": "oauth_client"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "reference_id",
+      "entityType": "columns",
+      "table": "oauth_client"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "metadata",
+      "entityType": "columns",
+      "table": "oauth_client"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
       "autoincrement": false,
       "default": null,
       "generated": null,
       "name": "created_at",
       "entityType": "columns",
-      "table": "environment"
+      "table": "oauth_client"
     },
     {
       "type": "integer",
-      "notNull": true,
+      "notNull": false,
       "autoincrement": false,
       "default": null,
       "generated": null,
       "name": "updated_at",
       "entityType": "columns",
-      "table": "environment"
+      "table": "oauth_client"
     },
     {
       "type": "text",
@@ -344,7 +620,7 @@
       "generated": null,
       "name": "id",
       "entityType": "columns",
-      "table": "org"
+      "table": "oauth_consent"
     },
     {
       "type": "text",
@@ -352,29 +628,59 @@
       "autoincrement": false,
       "default": null,
       "generated": null,
-      "name": "name",
+      "name": "client_id",
       "entityType": "columns",
-      "table": "org"
+      "table": "oauth_consent"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "user_id",
+      "entityType": "columns",
+      "table": "oauth_consent"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "reference_id",
+      "entityType": "columns",
+      "table": "oauth_consent"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "scopes",
+      "entityType": "columns",
+      "table": "oauth_consent"
     },
     {
       "type": "integer",
-      "notNull": true,
+      "notNull": false,
       "autoincrement": false,
       "default": null,
       "generated": null,
       "name": "created_at",
       "entityType": "columns",
-      "table": "org"
+      "table": "oauth_consent"
     },
     {
       "type": "integer",
-      "notNull": true,
+      "notNull": false,
       "autoincrement": false,
       "default": null,
       "generated": null,
       "name": "updated_at",
       "entityType": "columns",
-      "table": "org"
+      "table": "oauth_consent"
     },
     {
       "type": "text",
@@ -384,7 +690,7 @@
       "generated": null,
       "name": "id",
       "entityType": "columns",
-      "table": "org_member"
+      "table": "oauth_refresh_token"
     },
     {
       "type": "text",
@@ -392,9 +698,29 @@
       "autoincrement": false,
       "default": null,
       "generated": null,
-      "name": "org_id",
+      "name": "token",
       "entityType": "columns",
-      "table": "org_member"
+      "table": "oauth_refresh_token"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "client_id",
+      "entityType": "columns",
+      "table": "oauth_refresh_token"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "oauth_refresh_token"
     },
     {
       "type": "text",
@@ -404,27 +730,7 @@
       "generated": null,
       "name": "user_id",
       "entityType": "columns",
-      "table": "org_member"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": "'member'",
-      "generated": null,
-      "name": "role",
-      "entityType": "columns",
-      "table": "org_member"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "created_at",
-      "entityType": "columns",
-      "table": "org_member"
+      "table": "oauth_refresh_token"
     },
     {
       "type": "text",
@@ -432,29 +738,9 @@
       "autoincrement": false,
       "default": null,
       "generated": null,
-      "name": "id",
+      "name": "reference_id",
       "entityType": "columns",
-      "table": "project"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "name",
-      "entityType": "columns",
-      "table": "project"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "org_id",
-      "entityType": "columns",
-      "table": "project"
+      "table": "oauth_refresh_token"
     },
     {
       "type": "integer",
@@ -462,99 +748,49 @@
       "autoincrement": false,
       "default": null,
       "generated": null,
-      "name": "created_at",
+      "name": "expires_at",
       "entityType": "columns",
-      "table": "project"
+      "table": "oauth_refresh_token"
     },
     {
       "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "updated_at",
-      "entityType": "columns",
-      "table": "project"
-    },
-    {
-      "type": "text",
       "notNull": false,
       "autoincrement": false,
       "default": null,
       "generated": null,
-      "name": "id",
-      "entityType": "columns",
-      "table": "secret"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "environment_id",
-      "entityType": "columns",
-      "table": "secret"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "name",
-      "entityType": "columns",
-      "table": "secret"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "value_encrypted",
-      "entityType": "columns",
-      "table": "secret"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "iv",
-      "entityType": "columns",
-      "table": "secret"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "created_by",
-      "entityType": "columns",
-      "table": "secret"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
       "name": "created_at",
       "entityType": "columns",
-      "table": "secret"
+      "table": "oauth_refresh_token"
     },
     {
       "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "revoked",
+      "entityType": "columns",
+      "table": "oauth_refresh_token"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "auth_time",
+      "entityType": "columns",
+      "table": "oauth_refresh_token"
+    },
+    {
+      "type": "text",
       "notNull": true,
       "autoincrement": false,
       "default": null,
       "generated": null,
-      "name": "updated_at",
+      "name": "scopes",
       "entityType": "columns",
-      "table": "secret"
+      "table": "oauth_refresh_token"
     },
     {
       "type": "text",
@@ -783,48 +1019,18 @@
     },
     {
       "columns": [
-        "user_id"
+        "session_id"
       ],
-      "tableTo": "user",
+      "tableTo": "session",
       "columnsTo": [
         "id"
       ],
       "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
+      "onDelete": "SET NULL",
       "nameExplicit": false,
-      "name": "fk_device_code_user_id_user_id_fk",
+      "name": "fk_oauth_access_token_session_id_session_id_fk",
       "entityType": "fks",
-      "table": "device_code"
-    },
-    {
-      "columns": [
-        "project_id"
-      ],
-      "tableTo": "project",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "nameExplicit": false,
-      "name": "fk_environment_project_id_project_id_fk",
-      "entityType": "fks",
-      "table": "environment"
-    },
-    {
-      "columns": [
-        "org_id"
-      ],
-      "tableTo": "org",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "nameExplicit": false,
-      "name": "fk_org_member_org_id_org_id_fk",
-      "entityType": "fks",
-      "table": "org_member"
+      "table": "oauth_access_token"
     },
     {
       "columns": [
@@ -835,45 +1041,30 @@
         "id"
       ],
       "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
+      "onDelete": "NO ACTION",
       "nameExplicit": false,
-      "name": "fk_org_member_user_id_user_id_fk",
+      "name": "fk_oauth_access_token_user_id_user_id_fk",
       "entityType": "fks",
-      "table": "org_member"
+      "table": "oauth_access_token"
     },
     {
       "columns": [
-        "org_id"
+        "refresh_id"
       ],
-      "tableTo": "org",
+      "tableTo": "oauth_refresh_token",
       "columnsTo": [
         "id"
       ],
       "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
+      "onDelete": "NO ACTION",
       "nameExplicit": false,
-      "name": "fk_project_org_id_org_id_fk",
+      "name": "fk_oauth_access_token_refresh_id_oauth_refresh_token_id_fk",
       "entityType": "fks",
-      "table": "project"
+      "table": "oauth_access_token"
     },
     {
       "columns": [
-        "environment_id"
-      ],
-      "tableTo": "environment",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "nameExplicit": false,
-      "name": "fk_secret_environment_id_environment_id_fk",
-      "entityType": "fks",
-      "table": "secret"
-    },
-    {
-      "columns": [
-        "created_by"
+        "user_id"
       ],
       "tableTo": "user",
       "columnsTo": [
@@ -882,9 +1073,54 @@
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
-      "name": "fk_secret_created_by_user_id_fk",
+      "name": "fk_oauth_client_user_id_user_id_fk",
       "entityType": "fks",
-      "table": "secret"
+      "table": "oauth_client"
+    },
+    {
+      "columns": [
+        "user_id"
+      ],
+      "tableTo": "user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_oauth_consent_user_id_user_id_fk",
+      "entityType": "fks",
+      "table": "oauth_consent"
+    },
+    {
+      "columns": [
+        "session_id"
+      ],
+      "tableTo": "session",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "nameExplicit": false,
+      "name": "fk_oauth_refresh_token_session_id_session_id_fk",
+      "entityType": "fks",
+      "table": "oauth_refresh_token"
+    },
+    {
+      "columns": [
+        "user_id"
+      ],
+      "tableTo": "user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_oauth_refresh_token_user_id_user_id_fk",
+      "entityType": "fks",
+      "table": "oauth_refresh_token"
     },
     {
       "columns": [
@@ -915,8 +1151,8 @@
         "id"
       ],
       "nameExplicit": false,
-      "name": "device_code_pk",
-      "table": "device_code",
+      "name": "jwks_pk",
+      "table": "jwks",
       "entityType": "pks"
     },
     {
@@ -924,8 +1160,8 @@
         "id"
       ],
       "nameExplicit": false,
-      "name": "environment_pk",
-      "table": "environment",
+      "name": "oauth_access_token_pk",
+      "table": "oauth_access_token",
       "entityType": "pks"
     },
     {
@@ -933,8 +1169,8 @@
         "id"
       ],
       "nameExplicit": false,
-      "name": "org_pk",
-      "table": "org",
+      "name": "oauth_client_pk",
+      "table": "oauth_client",
       "entityType": "pks"
     },
     {
@@ -942,8 +1178,8 @@
         "id"
       ],
       "nameExplicit": false,
-      "name": "org_member_pk",
-      "table": "org_member",
+      "name": "oauth_consent_pk",
+      "table": "oauth_consent",
       "entityType": "pks"
     },
     {
@@ -951,17 +1187,8 @@
         "id"
       ],
       "nameExplicit": false,
-      "name": "project_pk",
-      "table": "project",
-      "entityType": "pks"
-    },
-    {
-      "columns": [
-        "id"
-      ],
-      "nameExplicit": false,
-      "name": "secret_pk",
-      "table": "secret",
+      "name": "oauth_refresh_token_pk",
+      "table": "oauth_refresh_token",
       "entityType": "pks"
     },
     {
@@ -1015,37 +1242,9 @@
       "isUnique": false,
       "where": null,
       "origin": "manual",
-      "name": "device_code_user_id_idx",
+      "name": "oauth_access_token_user_id_idx",
       "entityType": "indexes",
-      "table": "device_code"
-    },
-    {
-      "columns": [
-        {
-          "value": "project_id",
-          "isExpression": false
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "origin": "manual",
-      "name": "environment_project_id_idx",
-      "entityType": "indexes",
-      "table": "environment"
-    },
-    {
-      "columns": [
-        {
-          "value": "org_id",
-          "isExpression": false
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "origin": "manual",
-      "name": "org_member_org_id_idx",
-      "entityType": "indexes",
-      "table": "org_member"
+      "table": "oauth_access_token"
     },
     {
       "columns": [
@@ -1057,37 +1256,23 @@
       "isUnique": false,
       "where": null,
       "origin": "manual",
-      "name": "org_member_user_id_idx",
+      "name": "oauth_consent_user_id_idx",
       "entityType": "indexes",
-      "table": "org_member"
+      "table": "oauth_consent"
     },
     {
       "columns": [
         {
-          "value": "org_id",
+          "value": "user_id",
           "isExpression": false
         }
       ],
       "isUnique": false,
       "where": null,
       "origin": "manual",
-      "name": "project_org_id_idx",
+      "name": "oauth_refresh_token_user_id_idx",
       "entityType": "indexes",
-      "table": "project"
-    },
-    {
-      "columns": [
-        {
-          "value": "environment_id",
-          "isExpression": false
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "origin": "manual",
-      "name": "secret_environment_id_idx",
-      "entityType": "indexes",
-      "table": "secret"
+      "table": "oauth_refresh_token"
     },
     {
       "columns": [
@@ -1105,21 +1290,21 @@
     },
     {
       "columns": [
-        "device_code"
+        "token"
       ],
       "nameExplicit": false,
-      "name": "device_code_device_code_unique",
+      "name": "oauth_access_token_token_unique",
       "entityType": "uniques",
-      "table": "device_code"
+      "table": "oauth_access_token"
     },
     {
       "columns": [
-        "user_code"
+        "client_id"
       ],
       "nameExplicit": false,
-      "name": "device_code_user_code_unique",
+      "name": "oauth_client_client_id_unique",
       "entityType": "uniques",
-      "table": "device_code"
+      "table": "oauth_client"
     },
     {
       "columns": [

@@ -31,9 +31,8 @@ export class AuthStore extends DurableObject<Env> {
     })
   }
 
-  // RPC: handle BetterAuth /api/auth/* and /.well-known/* requests
-  async authHandler(request: Request): Promise<Response> {
-    const auth = betterAuth({
+  private getAuth() {
+    return betterAuth({
       baseURL: this.env.BETTER_AUTH_URL,
       secret: this.env.BETTER_AUTH_SECRET,
       database: drizzleAdapter(this.db, { provider: 'sqlite' }),
@@ -48,16 +47,31 @@ export class AuthStore extends DurableObject<Env> {
         oauthProvider({
           loginPage: '/sign-in',
           consentPage: '/consent',
-          // Dynamic client registration (RFC 7591) — self-hosted apps call this
           allowDynamicClientRegistration: true,
-          // Allow unauthenticated registration so deploy-time setup works
           allowUnauthenticatedClientRegistration: true,
           scopes: ['openid', 'email', 'profile', 'offline_access'],
           clientRegistrationDefaultScopes: ['openid', 'email', 'profile'],
         }),
       ],
     })
-    return auth.handler(request)
+  }
+
+  // RPC: handle BetterAuth /api/auth/* requests
+  async authHandler(request: Request): Promise<Response> {
+    return this.getAuth().handler(request)
+  }
+
+  // RPC: OpenID Connect discovery metadata
+  // BetterAuth doesn't serve .well-known from auth.handler() — you must
+  // call auth.api methods directly and expose them as separate routes.
+  async getOpenIdConfig() {
+    const auth = this.getAuth()
+    return auth.api.getOpenIdConfig({ headers: new Headers() })
+  }
+
+  async getOAuthServerConfig() {
+    const auth = this.getAuth()
+    return auth.api.getOAuthServerConfig({ headers: new Headers() })
   }
 
   // RPC: libsqlproxy handler for external DB access via Hrana v2

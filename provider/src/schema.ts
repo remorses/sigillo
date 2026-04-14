@@ -1,6 +1,10 @@
 // Schema for the provider Durable Object (middleman OAuth provider).
 // BetterAuth core tables (user, session, account, verification) plus
-// oauthProvider plugin tables (oauthClient, oauthConsent, oauthToken, etc.)
+// oauthProvider plugin tables (oauthClient, oauthConsent, oauthAccessToken,
+// oauthRefreshToken) and jwt plugin table (jwks).
+//
+// Field names and types match @better-auth/oauth-provider@1.6.3 exactly.
+// BetterAuth stores string[] as JSON-encoded text columns.
 
 import { defineRelations } from 'drizzle-orm'
 import * as sqliteCore from 'drizzle-orm/sqlite-core'
@@ -59,67 +63,83 @@ export const verification = sqliteCore.sqliteTable('verification', {
 })
 
 // ── oauthProvider plugin tables ─────────────────────────────────────
+// Field names match @better-auth/oauth-provider@1.6.3 schema definition.
+// string[] fields are stored as JSON text by BetterAuth's drizzle adapter.
 
 export const oauthClient = sqliteCore.sqliteTable('oauth_client', {
   id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
   clientId: sqliteCore.text('client_id').notNull().unique(),
   clientSecret: sqliteCore.text('client_secret'),
-  clientName: sqliteCore.text('client_name'),
-  redirectUris: sqliteCore.text('redirect_uris').notNull(), // JSON array
-  grantTypes: sqliteCore.text('grant_types'), // JSON array
-  responseTypes: sqliteCore.text('response_types'), // JSON array
-  scope: sqliteCore.text('scope'),
+  name: sqliteCore.text('name'),
+  uri: sqliteCore.text('uri'),
+  icon: sqliteCore.text('icon'),
+  contacts: sqliteCore.text('contacts'), // JSON string[]
+  tos: sqliteCore.text('tos'),
+  policy: sqliteCore.text('policy'),
+  softwareId: sqliteCore.text('software_id'),
+  softwareVersion: sqliteCore.text('software_version'),
+  softwareStatement: sqliteCore.text('software_statement'),
+  redirectUris: sqliteCore.text('redirect_uris').notNull(), // JSON string[]
+  postLogoutRedirectUris: sqliteCore.text('post_logout_redirect_uris'), // JSON string[]
   tokenEndpointAuthMethod: sqliteCore.text('token_endpoint_auth_method'),
-  skipConsent: sqliteCore.integer('skip_consent', { mode: 'boolean' }).default(false),
+  grantTypes: sqliteCore.text('grant_types'), // JSON string[]
+  responseTypes: sqliteCore.text('response_types'), // JSON string[]
+  scopes: sqliteCore.text('scopes'), // JSON string[]
+  type: sqliteCore.text('type'),
+  public: sqliteCore.integer('public', { mode: 'boolean' }),
+  disabled: sqliteCore.integer('disabled', { mode: 'boolean' }).default(false),
+  skipConsent: sqliteCore.integer('skip_consent', { mode: 'boolean' }),
+  enableEndSession: sqliteCore.integer('enable_end_session', { mode: 'boolean' }),
+  subjectType: sqliteCore.text('subject_type'),
+  requirePKCE: sqliteCore.integer('require_pkce', { mode: 'boolean' }),
   userId: sqliteCore.text('user_id').references(() => user.id, { onDelete: 'cascade' }),
   referenceId: sqliteCore.text('reference_id'),
   metadata: sqliteCore.text('metadata'), // JSON
-  clientSecretExpiresAt: sqliteCore.integer('client_secret_expires_at', { mode: 'number' }),
-  enableEndSession: sqliteCore.integer('enable_end_session', { mode: 'boolean' }).default(false),
-  requirePkce: sqliteCore.integer('require_pkce', { mode: 'boolean' }).default(true),
-  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
-  updatedAt: sqliteCore.integer('updated_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
+  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).$defaultFn(() => Date.now()),
+  updatedAt: sqliteCore.integer('updated_at', { mode: 'number' }).$defaultFn(() => Date.now()),
 })
 
 export const oauthConsent = sqliteCore.sqliteTable('oauth_consent', {
   id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
-  userId: sqliteCore.text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
   clientId: sqliteCore.text('client_id').notNull(),
-  scope: sqliteCore.text('scope').notNull(),
+  userId: sqliteCore.text('user_id').references(() => user.id, { onDelete: 'cascade' }),
   referenceId: sqliteCore.text('reference_id'),
-  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
-  updatedAt: sqliteCore.integer('updated_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
+  scopes: sqliteCore.text('scopes').notNull(), // JSON string[]
+  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).$defaultFn(() => Date.now()),
+  updatedAt: sqliteCore.integer('updated_at', { mode: 'number' }).$defaultFn(() => Date.now()),
 }, (table) => [
   sqliteCore.index('oauth_consent_user_id_idx').on(table.userId),
 ])
 
-export const oauthToken = sqliteCore.sqliteTable('oauth_token', {
+export const oauthRefreshToken = sqliteCore.sqliteTable('oauth_refresh_token', {
   id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
+  token: sqliteCore.text('token').notNull(),
   clientId: sqliteCore.text('client_id').notNull(),
-  userId: sqliteCore.text('user_id').references(() => user.id, { onDelete: 'cascade' }),
-  accessToken: sqliteCore.text('access_token').notNull(),
-  refreshToken: sqliteCore.text('refresh_token'),
-  accessTokenExpiresAt: sqliteCore.integer('access_token_expires_at', { mode: 'number' }).notNull(),
-  refreshTokenExpiresAt: sqliteCore.integer('refresh_token_expires_at', { mode: 'number' }),
-  scope: sqliteCore.text('scope'),
-  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
+  sessionId: sqliteCore.text('session_id').references(() => session.id, { onDelete: 'set null' }),
+  userId: sqliteCore.text('user_id').notNull().references(() => user.id),
+  referenceId: sqliteCore.text('reference_id'),
+  expiresAt: sqliteCore.integer('expires_at', { mode: 'number' }).notNull(),
+  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).$defaultFn(() => Date.now()),
+  revoked: sqliteCore.integer('revoked', { mode: 'number' }),
+  authTime: sqliteCore.integer('auth_time', { mode: 'number' }),
+  scopes: sqliteCore.text('scopes').notNull(), // JSON string[]
 }, (table) => [
-  sqliteCore.index('oauth_token_user_id_idx').on(table.userId),
+  sqliteCore.index('oauth_refresh_token_user_id_idx').on(table.userId),
 ])
 
-export const oauthCode = sqliteCore.sqliteTable('oauth_code', {
+export const oauthAccessToken = sqliteCore.sqliteTable('oauth_access_token', {
   id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
-  code: sqliteCore.text('code').notNull().unique(),
+  token: sqliteCore.text('token').notNull().unique(),
   clientId: sqliteCore.text('client_id').notNull(),
-  userId: sqliteCore.text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
-  redirectUri: sqliteCore.text('redirect_uri').notNull(),
-  scope: sqliteCore.text('scope'),
-  codeChallenge: sqliteCore.text('code_challenge'),
-  codeChallengeMethod: sqliteCore.text('code_challenge_method'),
+  sessionId: sqliteCore.text('session_id').references(() => session.id, { onDelete: 'set null' }),
+  userId: sqliteCore.text('user_id').references(() => user.id),
+  referenceId: sqliteCore.text('reference_id'),
+  refreshId: sqliteCore.text('refresh_id').references(() => oauthRefreshToken.id),
   expiresAt: sqliteCore.integer('expires_at', { mode: 'number' }).notNull(),
-  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
+  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).$defaultFn(() => Date.now()),
+  scopes: sqliteCore.text('scopes').notNull(), // JSON string[]
 }, (table) => [
-  sqliteCore.index('oauth_code_user_id_idx').on(table.userId),
+  sqliteCore.index('oauth_access_token_user_id_idx').on(table.userId),
 ])
 
 // ── jwks table (jwt plugin) ────────────────────────────────────────
@@ -134,7 +154,7 @@ export const jwks = sqliteCore.sqliteTable('jwks', {
 // ── Relations (v2 API) ──────────────────────────────────────────────
 
 export const relations = defineRelations(
-  { user, session, account, verification, oauthClient, oauthConsent, oauthToken, oauthCode, jwks },
+  { user, session, account, verification, oauthClient, oauthConsent, oauthRefreshToken, oauthAccessToken, jwks },
   (r) => ({
     user: {
       sessions: r.many.session(),
@@ -150,11 +170,14 @@ export const relations = defineRelations(
     oauthConsent: {
       user: r.one.user({ from: r.oauthConsent.userId, to: r.user.id }),
     },
-    oauthToken: {
-      user: r.one.user({ from: r.oauthToken.userId, to: r.user.id }),
+    oauthRefreshToken: {
+      user: r.one.user({ from: r.oauthRefreshToken.userId, to: r.user.id }),
+      session: r.one.session({ from: r.oauthRefreshToken.sessionId, to: r.session.id }),
     },
-    oauthCode: {
-      user: r.one.user({ from: r.oauthCode.userId, to: r.user.id }),
+    oauthAccessToken: {
+      user: r.one.user({ from: r.oauthAccessToken.userId, to: r.user.id }),
+      session: r.one.session({ from: r.oauthAccessToken.sessionId, to: r.session.id }),
+      refresh: r.one.oauthRefreshToken({ from: r.oauthAccessToken.refreshId, to: r.oauthRefreshToken.id }),
     },
     verification: {},
     oauthClient: {},

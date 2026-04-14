@@ -15,12 +15,6 @@ CREATE TABLE `account` (
 	CONSTRAINT `fk_account_user_id_user_id_fk` FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON DELETE CASCADE
 );
 --> statement-breakpoint
-CREATE TABLE `config` (
-	`key` text PRIMARY KEY,
-	`value` text NOT NULL,
-	`created_at` integer NOT NULL
-);
---> statement-breakpoint
 CREATE TABLE `device_code` (
 	`id` text PRIMARY KEY,
 	`device_code` text NOT NULL UNIQUE,

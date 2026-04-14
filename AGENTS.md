@@ -1,3 +1,5 @@
+sigillo is still in pre release. ignore backwards compatibility, instead focus on making code as simple as possible
+
 # Sigillo
 
 Self-hostable secret manager (Doppler/Infisical alternative) running entirely on Cloudflare Workers + Durable Objects. No external database needed — everything lives in DO SQLite.

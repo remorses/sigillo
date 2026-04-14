@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Middleman OAuth provider for sigillo — exposes Google auth via BetterAuth oauthProvider",
   "scripts": {
-    "dev": "vite dev",
+    "dev": "vite dev --port 5432",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "types": "wrangler types",

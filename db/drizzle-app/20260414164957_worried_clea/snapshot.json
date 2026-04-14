@@ -1,17 +1,13 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "3ae01357-55af-40e9-9382-5d5b45a85d82",
+  "id": "b14d8484-8ef9-4c0f-9429-749b15627ded",
   "prevIds": [
     "00000000-0000-0000-0000-000000000000"
   ],
   "ddl": [
     {
       "name": "account",
-      "entityType": "tables"
-    },
-    {
-      "name": "config",
       "entityType": "tables"
     },
     {
@@ -179,36 +175,6 @@
       "name": "updated_at",
       "entityType": "columns",
       "table": "account"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "key",
-      "entityType": "columns",
-      "table": "config"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "value",
-      "entityType": "columns",
-      "table": "config"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "created_at",
-      "entityType": "columns",
-      "table": "config"
     },
     {
       "type": "text",
@@ -942,15 +908,6 @@
       "nameExplicit": false,
       "name": "account_pk",
       "table": "account",
-      "entityType": "pks"
-    },
-    {
-      "columns": [
-        "key"
-      ],
-      "nameExplicit": false,
-      "name": "config_pk",
-      "table": "config",
       "entityType": "pks"
     },
     {
