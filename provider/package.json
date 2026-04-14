@@ -20,7 +20,7 @@
     "libsqlproxy": "latest",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "spiceflow": "rsc",
+    "spiceflow": "workspace:^",
     "ulid": "latest",
     "zod": "latest"
   },
