@@ -38,6 +38,7 @@ export class SecretsStore extends DurableObject<Env> {
   // env var, set via the register-client script before first deploy.
   private getAuth() {
     return betterAuth({
+      baseURL: this.env.APP_URL,
       secret: this.env.BETTER_AUTH_SECRET,
       database: drizzleAdapter(this.db, { provider: 'sqlite' }),
       plugins: [

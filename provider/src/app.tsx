@@ -7,6 +7,7 @@ import { Head, Link } from 'spiceflow/react'
 import { env } from 'cloudflare:workers'
 import type { AuthStore } from './auth-store.ts'
 import { GoogleSignInButton } from './components/google-sign-in-button.tsx'
+import { ConsentButtons } from './components/consent-buttons.tsx'
 
 export { AuthStore } from './auth-store.ts'
 
@@ -119,45 +120,4 @@ export default {
   },
 } satisfies ExportedHandler<Env>
 
-// ── Client component for consent buttons ────────────────────────
-// This will be extracted to a separate 'use client' file later
-function ConsentButtons() {
-  return (
-    <>
-      <form method="POST" action="/api/auth/oauth2/consent" style={{ display: 'inline' }}>
-        <input type="hidden" name="accept" value="true" />
-        <button
-          type="submit"
-          style={{
-            padding: '10px 20px',
-            background: '#22c55e',
-            color: 'white',
-            border: 'none',
-            borderRadius: 6,
-            cursor: 'pointer',
-            fontWeight: 600,
-          }}
-        >
-          Allow
-        </button>
-      </form>
-      <form method="POST" action="/api/auth/oauth2/consent" style={{ display: 'inline' }}>
-        <input type="hidden" name="accept" value="false" />
-        <button
-          type="submit"
-          style={{
-            padding: '10px 20px',
-            background: '#ef4444',
-            color: 'white',
-            border: 'none',
-            borderRadius: 6,
-            cursor: 'pointer',
-            fontWeight: 600,
-          }}
-        >
-          Deny
-        </button>
-      </form>
-    </>
-  )
-}
+
