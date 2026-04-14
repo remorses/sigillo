@@ -7,7 +7,6 @@
 
 import { EyeIcon, EyeOffIcon, TrashIcon } from "lucide-react";
 import { useState, useCallback, useRef } from "react";
-import { getRouter } from "spiceflow/react";
 import { Button } from "sigillo-app/src/components/ui/button";
 import { Frame } from "sigillo-app/src/components/ui/frame";
 import {
@@ -18,7 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "sigillo-app/src/components/ui/table";
-import type { App } from "../app.tsx";
+
 
 type Secret = {
   id: string;
@@ -123,7 +122,6 @@ export function SecretsTable({
   createSecretAction: (prev: string, formData: FormData) => Promise<string>;
   saveSecretsAction: (edits: { id: string; name?: string; value?: string }[]) => Promise<void>;
 }) {
-  const router = getRouter<App>();
   const [showNewRow, setShowNewRow] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -160,11 +158,13 @@ export function SecretsTable({
       });
       await saveSecretsAction(payload);
       setEdits({});
-      router.refresh();
+      // router.refresh() has issues in spiceflow dev (WeakRef not defined in SSR)
+      // Full reload ensures fresh server data after mutation
+      window.location.reload();
     } finally {
       setSaving(false);
     }
-  }, [dirtySecrets, edits, saveSecretsAction, router]);
+  }, [dirtySecrets, edits, saveSecretsAction]);
 
   return (
     <>

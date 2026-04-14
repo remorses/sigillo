@@ -1,4 +1,6 @@
 packages:
-  - db
-  - provider
-  - app
+  - ./*
+
+
+overrides:
+  spiceflow: link:../spiceflow-rsc/spiceflow

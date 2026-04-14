@@ -265,10 +265,14 @@ export const app = new Spiceflow({
       secrets = await stub.listSecrets({ environmentId: selectedEnvId })
     }
 
+    // dataKey changes every server render, forcing client component remount
+    // so useState(initialSecrets) picks up fresh data after router.refresh()
+    const dataKey = `${selectedEnvId}-${Date.now()}`
+
     return (
       <div>
         <ProjectPage
-          key={selectedEnvId}
+          key={dataKey}
           projectId={projectId}
           projectName={project.name}
           orgId={orgId}
