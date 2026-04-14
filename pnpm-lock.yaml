@@ -13,6 +13,9 @@ importers:
       '@base-ui/react':
         specifier: ^1.4.0
         version: 1.4.0(@date-fns/tz@1.4.1)(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@better-auth/drizzle-adapter':
+        specifier: https://pkg.pr.new/better-auth/better-auth/@better-auth/drizzle-adapter@6913
+        version: https://pkg.pr.new/better-auth/better-auth/@better-auth/drizzle-adapter@6913(@better-auth/core@1.6.3(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@cloudflare/workers-types@4.20260412.1)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.3.6))(jose@6.2.2)(kysely@0.28.16)(nanostores@1.2.0))(@better-auth/utils@0.4.0)(drizzle-orm@1.0.0-beta.21(@cloudflare/workers-types@4.20260412.1)(@opentelemetry/api@1.9.1)(@types/mssql@9.1.11(@azure/core-client@1.10.1))(@upstash/redis@1.37.0)(bun-types@1.2.23(@types/react@19.2.14))(mssql@11.0.1(@azure/core-client@1.10.1))(zod@4.3.6))(prettier@3.8.2)
       '@radix-ui/react-slot':
         specifier: ^1.2.4
         version: 1.2.4(@types/react@19.2.14)(react@19.2.5)
@@ -882,6 +885,15 @@ packages:
     peerDependenciesMeta:
       drizzle-orm:
         optional: true
+
+  '@better-auth/drizzle-adapter@https://pkg.pr.new/better-auth/better-auth/@better-auth/drizzle-adapter@6913':
+    resolution: {tarball: https://pkg.pr.new/better-auth/better-auth/@better-auth/drizzle-adapter@6913}
+    version: 1.5.0-beta.13
+    peerDependencies:
+      '@better-auth/core': 1.5.0-beta.13
+      '@better-auth/utils': ^0.3.0
+      drizzle-orm: '>=0.41.0'
+      prettier: ^3.7.4
 
   '@better-auth/kysely-adapter@1.6.3':
     resolution: {integrity: sha512-4iZLGaajEdPMgtiTARINbNZGl6CPHSzlS0fl4ONWryP/52iakYhXYNBJIB70Ls1Xl+kEqYkBFmndfj/x4j18RQ==}
@@ -6661,6 +6673,13 @@ snapshots:
       '@better-auth/utils': 0.4.0
     optionalDependencies:
       drizzle-orm: 1.0.0-beta.21(@cloudflare/workers-types@4.20260412.1)(@opentelemetry/api@1.9.1)(@types/mssql@9.1.11(@azure/core-client@1.10.1))(@upstash/redis@1.37.0)(bun-types@1.2.23(@types/react@19.2.14))(mssql@11.0.1(@azure/core-client@1.10.1))(zod@4.3.6)
+
+  '@better-auth/drizzle-adapter@https://pkg.pr.new/better-auth/better-auth/@better-auth/drizzle-adapter@6913(@better-auth/core@1.6.3(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@cloudflare/workers-types@4.20260412.1)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.3.6))(jose@6.2.2)(kysely@0.28.16)(nanostores@1.2.0))(@better-auth/utils@0.4.0)(drizzle-orm@1.0.0-beta.21(@cloudflare/workers-types@4.20260412.1)(@opentelemetry/api@1.9.1)(@types/mssql@9.1.11(@azure/core-client@1.10.1))(@upstash/redis@1.37.0)(bun-types@1.2.23(@types/react@19.2.14))(mssql@11.0.1(@azure/core-client@1.10.1))(zod@4.3.6))(prettier@3.8.2)':
+    dependencies:
+      '@better-auth/core': 1.6.3(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@cloudflare/workers-types@4.20260412.1)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.3.6))(jose@6.2.2)(kysely@0.28.16)(nanostores@1.2.0)
+      '@better-auth/utils': 0.4.0
+      drizzle-orm: 1.0.0-beta.21(@cloudflare/workers-types@4.20260412.1)(@opentelemetry/api@1.9.1)(@types/mssql@9.1.11(@azure/core-client@1.10.1))(@upstash/redis@1.37.0)(bun-types@1.2.23(@types/react@19.2.14))(mssql@11.0.1(@azure/core-client@1.10.1))(zod@4.3.6)
+      prettier: 3.8.2
 
   '@better-auth/kysely-adapter@1.6.3(@better-auth/core@1.6.3(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@cloudflare/workers-types@4.20260412.1)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.3.6))(jose@6.2.2)(kysely@0.28.16)(nanostores@1.2.0))(@better-auth/utils@0.4.0)(kysely@0.28.16)':
     dependencies:
