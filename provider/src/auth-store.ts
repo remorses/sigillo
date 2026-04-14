@@ -46,7 +46,7 @@ export class AuthStore extends DurableObject<Env> {
         jwt(),
         oauthProvider({
           loginPage: '/sign-in',
-          consentPage: '/consent',
+          consentPage: '/sign-in', // unused — skipConsent defaults to true for all clients
           allowDynamicClientRegistration: true,
           allowUnauthenticatedClientRegistration: true,
           scopes: ['openid', 'email', 'profile', 'offline_access'],

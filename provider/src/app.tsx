@@ -7,7 +7,6 @@ import { Head, Link } from 'spiceflow/react'
 import { env } from 'cloudflare:workers'
 import type { AuthStore } from './auth-store.ts'
 import { GoogleSignInButton } from './components/google-sign-in-button.tsx'
-import { ConsentButtons } from './components/consent-buttons.tsx'
 
 export { AuthStore } from './auth-store.ts'
 
@@ -58,27 +57,6 @@ export const app = new Spiceflow()
           <h1>Sigillo</h1>
           <p>Sign in to continue</p>
           <GoogleSignInButton />
-        </div>
-      </div>
-    )
-  })
-
-  // ── Consent page ──────────────────────────────────────────────
-  // BetterAuth oauthProvider redirects here for user consent.
-  // client_id and scope are passed as query params.
-  .page('/consent', async () => {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
-        <div style={{ textAlign: 'center', maxWidth: 400 }}>
-          <h1>Authorize Application</h1>
-          <p>An application is requesting access to your account.</p>
-          <p style={{ color: '#666', fontSize: 14 }}>
-            This will share your email address and profile information.
-          </p>
-          {/* The consent form is handled by BetterAuth's oauthProviderClient on the client side */}
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 24 }}>
-            <ConsentButtons />
-          </div>
         </div>
       </div>
     )
