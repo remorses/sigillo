@@ -7,23 +7,24 @@
 
 'use server'
 
-import { env } from 'cloudflare:workers'
+import * as orm from 'drizzle-orm'
+import * as schema from 'db/src/app-schema.ts'
 import { getActionRequest } from 'spiceflow'
-import type { SecretsStore } from './secrets-store.ts'
-
-function getSecretsStoreStub() {
-  const id = env.SECRETS_STORE.idFromName('main')
-  return env.SECRETS_STORE.get(id) as DurableObjectStub<SecretsStore>
-}
+import {
+  getDb, getSession,
+  requireOrgMember,
+  getOrgIdForProject, getOrgIdForEnvironment, getOrgIdForSecret,
+  encrypt,
+} from './db.ts'
 
 function getFormString(formData: FormData, key: string) {
   const value = formData.get(key)
   return typeof value === 'string' ? value : ''
 }
 
-async function requireSession(stub: DurableObjectStub<SecretsStore>) {
+async function requireSession() {
   const request = getActionRequest()
-  const session = await stub.getSession(request)
+  const session = await getSession(request.headers)
   if (!session) throw new Error('Unauthorized')
   return session
 }
@@ -33,11 +34,15 @@ export async function createProjectAction(_prev: string, formData: FormData) {
   const orgId = getFormString(formData, 'orgId')
   if (!name) return 'Name is required'
   if (!orgId) return 'No org selected'
-  const stub = getSecretsStoreStub()
-  const session = await requireSession(stub)
-  await stub.requireOrgMember({ userId: session.userId, orgId })
-  const project = await stub.createProject({ name, orgId })
-  return `Created:${project.id}`
+  const session = await requireSession()
+  await requireOrgMember(session.userId, orgId)
+  const db = getDb()
+  const [proj] = await db.insert(schema.project).values({ name, orgId })
+    .returning({ id: schema.project.id, name: schema.project.name })
+  for (const e of schema.DEFAULT_ENVIRONMENTS) {
+    await db.insert(schema.environment).values({ projectId: proj!.id, name: e.name, slug: e.slug })
+  }
+  return `Created:${proj!.id}`
 }
 
 export async function createSecretAction(_prev: string, formData: FormData) {
@@ -45,22 +50,25 @@ export async function createSecretAction(_prev: string, formData: FormData) {
   const value = getFormString(formData, 'value')
   const environmentId = getFormString(formData, 'environmentId')
   if (!name || !value) return 'Key and value are required'
-  const stub = getSecretsStoreStub()
-  const session = await requireSession(stub)
-  const orgId = await stub.getOrgIdForEnvironment({ environmentId })
+  const session = await requireSession()
+  const orgId = await getOrgIdForEnvironment(environmentId)
   if (!orgId) return 'Environment not found'
-  await stub.requireOrgMember({ userId: session.userId, orgId })
-  await stub.createSecret({ environmentId, name, value, createdBy: session.userId })
+  await requireOrgMember(session.userId, orgId)
+  const db = getDb()
+  const { encrypted, iv } = await encrypt(value)
+  await db.insert(schema.secret).values({
+    environmentId, name, valueEncrypted: encrypted, iv, createdBy: session.userId,
+  })
   return `Created ${name}`
 }
 
 export async function deleteSecretAction(id: string) {
-  const stub = getSecretsStoreStub()
-  const session = await requireSession(stub)
-  const orgId = await stub.getOrgIdForSecret({ secretId: id })
+  const session = await requireSession()
+  const orgId = await getOrgIdForSecret(id)
   if (!orgId) throw new Error('Secret not found')
-  await stub.requireOrgMember({ userId: session.userId, orgId })
-  await stub.deleteSecret({ id })
+  await requireOrgMember(session.userId, orgId)
+  const db = getDb()
+  await db.delete(schema.secret).where(orm.eq(schema.secret.id, id))
 }
 
 // Save edited secrets to the current environment and optionally apply
@@ -72,49 +80,57 @@ export async function saveSecretsAction(
   environmentIds: string[],
 ) {
   if (edits.length === 0 || environmentIds.length === 0) return
-  const stub = getSecretsStoreStub()
-  const session = await requireSession(stub)
-  // Verify org membership using the first secret — all secrets in a batch
-  // belong to the same environment (same org)
-  const orgId = await stub.getOrgIdForSecret({ secretId: edits[0]!.id })
+  const session = await requireSession()
+  const orgId = await getOrgIdForSecret(edits[0]!.id)
   if (!orgId) throw new Error('Secret not found')
-  await stub.requireOrgMember({ userId: session.userId, orgId })
+  await requireOrgMember(session.userId, orgId)
 
-  const currentEnvId = environmentIds[0]!
+  const db = getDb()
   const otherEnvIds = environmentIds.slice(1)
 
   // Apply edits to current environment by secret ID (supports rename + value change)
   for (const edit of edits) {
-    await stub.updateSecret({ id: edit.id, name: edit.name, value: edit.value })
+    if (edit.name !== undefined) {
+      await db.update(schema.secret).set({ name: edit.name, updatedAt: Date.now() })
+        .where(orm.eq(schema.secret.id, edit.id))
+    }
+    if (edit.value !== undefined) {
+      const { encrypted, iv } = await encrypt(edit.value)
+      await db.update(schema.secret).set({ valueEncrypted: encrypted, iv, updatedAt: Date.now() })
+        .where(orm.eq(schema.secret.id, edit.id))
+    }
   }
 
-  // Apply value changes to other environments by name-based upsert.
-  // Only secrets with a value change are propagated — renames don't
-  // cross environments since names may differ intentionally.
+  // Apply value changes to other environments by name-based upsert
   const valueEdits = edits.filter((e) => e.value !== undefined)
   for (const envId of otherEnvIds) {
-    // Verify the target env belongs to the same org
-    const targetOrgId = await stub.getOrgIdForEnvironment({ environmentId: envId })
+    const targetOrgId = await getOrgIdForEnvironment(envId)
     if (targetOrgId !== orgId) continue
     for (const edit of valueEdits) {
-      // Use the final name (edited or original) as the key for upsert
-      await stub.upsertSecretByName({
-        environmentId: envId,
-        name: edit.name,
-        value: edit.value!,
-        createdBy: session.userId,
+      const existing = await db.query.secret.findFirst({
+        where: { environmentId: envId, name: edit.name },
       })
+      const { encrypted, iv } = await encrypt(edit.value!)
+      if (existing) {
+        await db.update(schema.secret).set({ valueEncrypted: encrypted, iv, updatedAt: Date.now() })
+          .where(orm.eq(schema.secret.id, existing.id))
+      } else {
+        await db.insert(schema.secret).values({
+          environmentId: envId, name: edit.name,
+          valueEncrypted: encrypted, iv, createdBy: session.userId,
+        })
+      }
     }
   }
 }
 
 export async function deleteEnvAction(id: string) {
-  const stub = getSecretsStoreStub()
-  const session = await requireSession(stub)
-  const orgId = await stub.getOrgIdForEnvironment({ environmentId: id })
+  const session = await requireSession()
+  const orgId = await getOrgIdForEnvironment(id)
   if (!orgId) throw new Error('Environment not found')
-  await stub.requireOrgMember({ userId: session.userId, orgId })
-  await stub.deleteEnvironment({ id })
+  await requireOrgMember(session.userId, orgId)
+  const db = getDb()
+  await db.delete(schema.environment).where(orm.eq(schema.environment.id, id))
 }
 
 export async function createEnvAction(_prev: string, formData: FormData) {
@@ -122,20 +138,21 @@ export async function createEnvAction(_prev: string, formData: FormData) {
   const slug = getFormString(formData, 'slug')
   const projectId = getFormString(formData, 'projectId')
   if (!name || !slug) return 'Name and slug are required'
-  const stub = getSecretsStoreStub()
-  const session = await requireSession(stub)
-  const orgId = await stub.getOrgIdForProject({ projectId })
+  const session = await requireSession()
+  const orgId = await getOrgIdForProject(projectId)
   if (!orgId) return 'Project not found'
-  await stub.requireOrgMember({ userId: session.userId, orgId })
-  await stub.createEnvironment({ projectId, name, slug })
+  await requireOrgMember(session.userId, orgId)
+  const db = getDb()
+  await db.insert(schema.environment).values({ projectId, name, slug })
   return `Created ${name}`
 }
 
 export async function createOrgAction(_prev: string, formData: FormData) {
   const name = getFormString(formData, 'name')
   if (!name) return 'Name is required'
-  const stub = getSecretsStoreStub()
-  const session = await requireSession(stub)
-  const org = await stub.createOrg({ name, userId: session.userId })
-  return `Created:${org.id}`
+  const session = await requireSession()
+  const db = getDb()
+  const [org] = await db.insert(schema.org).values({ name }).returning({ id: schema.org.id, name: schema.org.name })
+  await db.insert(schema.orgMember).values({ orgId: org!.id, userId: session.userId, role: 'admin' })
+  return `Created:${org!.id}`
 }

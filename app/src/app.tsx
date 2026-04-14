@@ -11,54 +11,22 @@
 import './globals.css'
 import { Spiceflow, redirect } from 'spiceflow'
 import { Head, Link, ProgressBar } from 'spiceflow/react'
-import { env } from 'cloudflare:workers'
+import * as orm from 'drizzle-orm'
 import { z } from 'zod'
-import type { SecretsStore } from './secrets-store.ts'
+import * as schema from 'db/src/app-schema.ts'
+import {
+  getDb, getAuth, getSession,
+  requireApiSession, requirePageSession,
+  requireApiOrgMember, requirePageOrgMember,
+  getOrgIdForProject, getOrgIdForEnvironment, getOrgIdForSecret,
+  encrypt, decrypt,
+} from './db.ts'
 import { createOrgAction, createProjectAction } from './actions.ts'
 import { Sidebar, NewProjectButton } from 'sigillo-app/src/components/sidebar'
 import { ProjectPage } from 'sigillo-app/src/components/project-page'
 import { CreateOrgForm } from 'sigillo-app/src/components/create-org-form'
 
-// Auth helper: extracts session from request via DO RPC.
-// Returns session or redirects to login for pages, returns 401 for API routes.
-async function requireApiSession(stub: DurableObjectStub<SecretsStore>, request: Request) {
-  const session = await stub.getSession(request)
-  if (!session) throw new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'content-type': 'application/json' } })
-  return session
-}
-
-async function requirePageSession(stub: DurableObjectStub<SecretsStore>, request: Request) {
-  const session = await stub.getSession(request)
-  if (!session) throw redirect('/login')
-  return session
-}
-
-// Verifies the user is a member of the given org. Throws 403 Response for API routes.
-async function requireApiOrgMember(stub: DurableObjectStub<SecretsStore>, userId: string, orgId: string) {
-  try {
-    return await stub.requireOrgMember({ userId, orgId })
-  } catch {
-    throw new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { 'content-type': 'application/json' } })
-  }
-}
-
-async function requirePageOrgMember(stub: DurableObjectStub<SecretsStore>, userId: string, orgId: string) {
-  try {
-    return await stub.requireOrgMember({ userId, orgId })
-  } catch {
-    throw redirect('/')
-  }
-}
-
-
-
-
 export { SecretsStore } from './secrets-store.ts'
-
-function getSecretsStoreStub() {
-  const id = env.SECRETS_STORE.idFromName('main')
-  return env.SECRETS_STORE.get(id) as DurableObjectStub<SecretsStore>
-}
 
 export const app = new Spiceflow({
   // Allow tunnel origins for server actions (CSRF check)
@@ -66,13 +34,13 @@ export const app = new Spiceflow({
 })
 
   // ── BetterAuth middleware ──────────────────────────────────────
-  // Forward /api/auth/* requests to the DO's BetterAuth handler.
-  // Falls through on 404 so we can register our own /api/auth/* routes.
+  // BetterAuth runs in the worker, not the DO. Only SQL crosses the
+  // DO boundary via sqlite-proxy.
   .use(async ({ request }, next) => {
     const url = new URL(request.url)
     if (url.pathname.startsWith('/api/auth')) {
-      const stub = getSecretsStoreStub()
-      const res = await stub.authHandler(request)
+      const auth = getAuth()
+      const res = await auth.handler(request)
       if (res.ok || res.status !== 404) return res
     }
     return next()
@@ -100,20 +68,29 @@ export const app = new Spiceflow({
   })
 
   // ── Layout 2: App shell with sidebar ──────────────────────────
-  // params.orgId and params.projectId available directly from spiceflow
   .layout('/orgs/:orgId/projects/:projectId/*', async ({ children, params, request }) => {
-    const stub = getSecretsStoreStub()
     const { orgId, projectId } = params
+    const db = getDb()
 
-    const session = await requirePageSession(stub, request)
-    await requirePageOrgMember(stub, session.userId, orgId)
+    const session = await requirePageSession(request)
+    await requirePageOrgMember(session.userId, orgId)
 
-    // Load orgs + projects in parallel — both independent, session already resolved
-    const [orgs, allProjects] = await Promise.all([
-      stub.listUserOrgs({ userId: session.userId }),
-      stub.listProjects({ orgId }),
+    const [members, allProjects] = await Promise.all([
+      db.query.orgMember.findMany({
+        where: { userId: session.userId },
+        with: { org: true },
+      }),
+      db.query.project.findMany({
+        where: { orgId },
+        with: { environments: true },
+        orderBy: { createdAt: 'desc' },
+      }),
     ])
 
+    const orgs = members.filter((m) => m.org != null).map((m) => ({
+      id: m.org!.id!, name: m.org!.name!, role: m.role,
+      createdAt: m.org!.createdAt!, updatedAt: m.org!.updatedAt!,
+    }))
     const projects = allProjects.map((p) => ({ id: p.id, name: p.name }))
     const user = { name: session.user.name || 'User', email: session.user.email || '' }
 
@@ -135,14 +112,18 @@ export const app = new Spiceflow({
 
   // ── Root redirect → first org ─────────────────────────────────
   .get('/', async ({ request }) => {
-    const stub = getSecretsStoreStub()
-    const session = await stub.getSession(request)
+    const session = await getSession(request.headers)
     if (!session) return redirect('/login')
+    const db = getDb()
     const base = new URL(request.url)
     try {
-      const orgs = await stub.listUserOrgs({ userId: session.userId })
-      if (orgs[0]) {
-        return Response.redirect(new URL(`/orgs/${orgs[0].id}`, base).toString(), 302)
+      const members = await db.query.orgMember.findMany({
+        where: { userId: session.userId },
+        with: { org: true },
+      })
+      const firstOrg = members.find((m) => m.org != null)
+      if (firstOrg) {
+        return Response.redirect(new URL(`/orgs/${firstOrg.org!.id}`, base).toString(), 302)
       }
     } catch {}
     return Response.redirect(new URL('/new-org', base).toString(), 302)
@@ -150,12 +131,15 @@ export const app = new Spiceflow({
 
   // ── Org root redirect → first project ─────────────────────────
   .get('/orgs/:orgId', async ({ params, request }) => {
-    const stub = getSecretsStoreStub()
-    const session = await requirePageSession(stub, request)
-    await requirePageOrgMember(stub, session.userId, params.orgId)
+    const session = await requirePageSession(request)
+    await requirePageOrgMember(session.userId, params.orgId)
+    const db = getDb()
     const base = new URL(request.url)
     try {
-      const projects = await stub.listProjects({ orgId: params.orgId })
+      const projects = await db.query.project.findMany({
+        where: { orgId: params.orgId },
+        orderBy: { createdAt: 'desc' },
+      })
       if (projects[0]) {
         return Response.redirect(new URL(`/orgs/${params.orgId}/projects/${projects[0].id}`, base).toString(), 302)
       }
@@ -165,15 +149,25 @@ export const app = new Spiceflow({
 
   // ── Org page (redirects to first project, or shows empty state) ─
   .page('/orgs/:orgId', async ({ params, request }) => {
-    const stub = getSecretsStoreStub()
-    const session = await requirePageSession(stub, request)
-    await requirePageOrgMember(stub, session.userId, params.orgId)
+    const session = await requirePageSession(request)
+    await requirePageOrgMember(session.userId, params.orgId)
+    const db = getDb()
 
-    const [orgs, projects] = await Promise.all([
-      stub.listUserOrgs({ userId: session.userId }),
-      stub.listProjects({ orgId: params.orgId }),
+    const [members, projects] = await Promise.all([
+      db.query.orgMember.findMany({
+        where: { userId: session.userId },
+        with: { org: true },
+      }),
+      db.query.project.findMany({
+        where: { orgId: params.orgId },
+        orderBy: { createdAt: 'desc' },
+      }),
     ])
 
+    const orgs = members.filter((m) => m.org != null).map((m) => ({
+      id: m.org!.id!, name: m.org!.name!, role: m.role,
+      createdAt: m.org!.createdAt!, updatedAt: m.org!.updatedAt!,
+    }))
     const projectList = projects.map((p) => ({ id: p.id, name: p.name }))
 
     if (projectList[0]) {
@@ -196,12 +190,9 @@ export const app = new Spiceflow({
     )
   })
 
-
-
   // ── New Organization page (standalone, no sidebar) ─────────────
   .page('/new-org', async ({ request }) => {
-    const stub = getSecretsStoreStub()
-    await requirePageSession(stub, request)
+    await requirePageSession(request)
     return (
       <div className="max-w-md mx-auto py-12">
         <h1 className="text-2xl font-bold tracking-tight mb-2">New Organization</h1>
@@ -214,25 +205,31 @@ export const app = new Spiceflow({
   })
 
   // ── Project root redirect → first env ─────────────────────────
-  // .page() registers both GET and POST, so this handles full-page loads,
-  // client-side RSC navigation, and server action POSTs.
-  // Auth is already checked by the parent layout for /orgs/:orgId/projects/:projectId/*
   .page('/orgs/:orgId/projects/:id', async ({ params }) => {
-    const stub = getSecretsStoreStub()
-    const environments = await stub.listEnvironments({ projectId: params.id })
+    const db = getDb()
+    const environments = await db.query.environment.findMany({
+      where: { projectId: params.id },
+      orderBy: { createdAt: 'asc' },
+    })
     const firstEnvId = environments[0]?.id || '_'
     return redirect(`/orgs/${params.orgId}/projects/${params.id}/envs/${firstEnvId}`)
   })
 
   // ── Project detail with env ───────────────────────────────────
   .page('/orgs/:orgId/projects/:projectId/envs/:envId', async ({ params }) => {
-    const stub = getSecretsStoreStub()
+    const db = getDb()
     const { orgId, projectId, envId } = params
 
-    // Load project info and environments in parallel — both independent
     const [allProjects, environments] = await Promise.all([
-      stub.listProjects({ orgId }),
-      stub.listEnvironments({ projectId }),
+      db.query.project.findMany({
+        where: { orgId },
+        with: { environments: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+      db.query.environment.findMany({
+        where: { projectId },
+        orderBy: { createdAt: 'asc' },
+      }),
     ])
 
     const project = allProjects.find((p) => p.id === projectId)
@@ -245,17 +242,26 @@ export const app = new Spiceflow({
       )
     }
 
-    // Resolve env from path param, then load secrets (depends on resolved envId)
     const selectedEnvId = environments.some((e) => e.id === envId)
       ? envId
       : environments[0]?.id || null
 
-    const secrets = selectedEnvId
-      ? await stub.listSecretsWithValues({ environmentId: selectedEnvId })
-      : []
+    // Load secrets and decrypt values
+    let secrets: { id: string; name: string; value: string; createdAt: number; updatedAt: number; createdBy: { id: string; name: string } | null }[] = []
+    if (selectedEnvId) {
+      const rows = await db.query.secret.findMany({
+        where: { environmentId: selectedEnvId },
+        with: { creator: { columns: { id: true, name: true } } },
+        orderBy: { createdAt: 'desc' },
+      })
+      secrets = await Promise.all(rows.map(async (r) => ({
+        id: r.id, name: r.name,
+        value: await decrypt(r.valueEncrypted, r.iv),
+        createdAt: r.createdAt, updatedAt: r.updatedAt,
+        createdBy: r.creator,
+      })))
+    }
 
-    // dataKey changes every server render, forcing client component remount
-    // so useState(initialSecrets) picks up fresh data after router.refresh()
     const dataKey = `${selectedEnvId}-${Date.now()}`
 
     return (
@@ -299,12 +305,8 @@ export const app = new Spiceflow({
   })
 
   // ── Login page (standalone, no sidebar) ─────────────────────────
-  // Shows a sign-in button. If already logged in, redirects to dashboard.
-  // The button triggers a client-side fetch to BetterAuth's genericOAuth
-  // endpoint which returns a redirect URL to the provider.
   .page('/login', async ({ request }) => {
-    const stub = getSecretsStoreStub()
-    const session = await stub.getSession(request)
+    const session = await getSession(request.headers)
     if (session) return redirect('/')
     const { LoginButton } = await import('sigillo-app/src/components/login-button')
     return (
@@ -322,16 +324,14 @@ export const app = new Spiceflow({
   .route({
     method: 'POST',
     path: '/api/orgs',
-    request: z.object({
-      name: z.string().min(1),
-    }),
+    request: z.object({ name: z.string().min(1) }),
     async handler({ request }) {
       const body = await request.json()
-      const stub = getSecretsStoreStub()
-      const session = await stub.getSession(request)
-      if (!session) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 })
-      const org = await stub.createOrg({ name: body.name, userId: session.userId })
-      return { ok: true, ...org }
+      const session = await requireApiSession(request)
+      const db = getDb()
+      const [org] = await db.insert(schema.org).values({ name: body.name }).returning({ id: schema.org.id, name: schema.org.name })
+      await db.insert(schema.orgMember).values({ orgId: org!.id, userId: session.userId, role: 'admin' })
+      return { ok: true, ...org! }
     },
   })
 
@@ -339,10 +339,16 @@ export const app = new Spiceflow({
     method: 'GET',
     path: '/api/orgs',
     async handler({ request }) {
-      const stub = getSecretsStoreStub()
-      const session = await stub.getSession(request)
-      if (!session) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 })
-      const orgs = await stub.listUserOrgs({ userId: session.userId })
+      const session = await requireApiSession(request)
+      const db = getDb()
+      const members = await db.query.orgMember.findMany({
+        where: { userId: session.userId },
+        with: { org: true },
+      })
+      const orgs = members.filter((m) => m.org != null).map((m) => ({
+        id: m.org!.id!, name: m.org!.name!, role: m.role,
+        createdAt: m.org!.createdAt!, updatedAt: m.org!.updatedAt!,
+      }))
       return { orgs }
     },
   })
@@ -351,17 +357,18 @@ export const app = new Spiceflow({
   .route({
     method: 'POST',
     path: '/api/projects',
-    request: z.object({
-      name: z.string().min(1),
-      orgId: z.string().min(1),
-    }),
+    request: z.object({ name: z.string().min(1), orgId: z.string().min(1) }),
     async handler({ request }) {
       const body = await request.json()
-      const stub = getSecretsStoreStub()
-      const session = await requireApiSession(stub, request)
-      await requireApiOrgMember(stub, session.userId, body.orgId)
-      const project = await stub.createProject({ name: body.name, orgId: body.orgId })
-      return { ok: true, ...project }
+      const session = await requireApiSession(request)
+      await requireApiOrgMember(session.userId, body.orgId)
+      const db = getDb()
+      const [proj] = await db.insert(schema.project).values({ name: body.name, orgId: body.orgId })
+        .returning({ id: schema.project.id, name: schema.project.name })
+      for (const e of schema.DEFAULT_ENVIRONMENTS) {
+        await db.insert(schema.environment).values({ projectId: proj!.id, name: e.name, slug: e.slug })
+      }
+      return { ok: true, ...proj! }
     },
   })
 
@@ -372,10 +379,10 @@ export const app = new Spiceflow({
       const url = new URL(request.url)
       const orgId = url.searchParams.get('orgId')
       if (!orgId) return new Response(JSON.stringify({ error: 'orgId required' }), { status: 400 })
-      const stub = getSecretsStoreStub()
-      const session = await requireApiSession(stub, request)
-      await requireApiOrgMember(stub, session.userId, orgId)
-      const projects = await stub.listProjects({ orgId })
+      const session = await requireApiSession(request)
+      await requireApiOrgMember(session.userId, orgId)
+      const db = getDb()
+      const projects = await db.query.project.findMany({ where: { orgId }, with: { environments: true }, orderBy: { createdAt: 'desc' } })
       return { projects }
     },
   })
@@ -384,12 +391,12 @@ export const app = new Spiceflow({
     method: 'DELETE',
     path: '/api/projects/:id',
     async handler({ params, request }) {
-      const stub = getSecretsStoreStub()
-      const session = await requireApiSession(stub, request)
-      const orgId = await stub.getOrgIdForProject({ projectId: params.id })
+      const session = await requireApiSession(request)
+      const orgId = await getOrgIdForProject(params.id)
       if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      await requireApiOrgMember(stub, session.userId, orgId)
-      const deleted = await stub.deleteProject({ id: params.id })
+      await requireApiOrgMember(session.userId, orgId)
+      const db = getDb()
+      const [deleted] = await db.delete(schema.project).where(orm.eq(schema.project.id, params.id)).returning({ id: schema.project.id })
       if (!deleted) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
       return { ok: true, id: deleted.id }
     },
@@ -400,12 +407,12 @@ export const app = new Spiceflow({
     method: 'GET',
     path: '/api/projects/:projectId/environments',
     async handler({ params, request }) {
-      const stub = getSecretsStoreStub()
-      const session = await requireApiSession(stub, request)
-      const orgId = await stub.getOrgIdForProject({ projectId: params.projectId })
+      const session = await requireApiSession(request)
+      const orgId = await getOrgIdForProject(params.projectId)
       if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      await requireApiOrgMember(stub, session.userId, orgId)
-      const environments = await stub.listEnvironments({ projectId: params.projectId })
+      await requireApiOrgMember(session.userId, orgId)
+      const db = getDb()
+      const environments = await db.query.environment.findMany({ where: { projectId: params.projectId }, orderBy: { createdAt: 'asc' } })
       return { projectId: params.projectId, environments }
     },
   })
@@ -413,19 +420,17 @@ export const app = new Spiceflow({
   .route({
     method: 'POST',
     path: '/api/projects/:projectId/environments',
-    request: z.object({
-      name: z.string().min(1),
-      slug: z.string().min(1),
-    }),
+    request: z.object({ name: z.string().min(1), slug: z.string().min(1) }),
     async handler({ request, params }) {
       const body = await request.json()
-      const stub = getSecretsStoreStub()
-      const session = await requireApiSession(stub, request)
-      const orgId = await stub.getOrgIdForProject({ projectId: params.projectId })
+      const session = await requireApiSession(request)
+      const orgId = await getOrgIdForProject(params.projectId)
       if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      await requireApiOrgMember(stub, session.userId, orgId)
-      const envResult = await stub.createEnvironment({ projectId: params.projectId, name: body.name, slug: body.slug })
-      return { ok: true, ...envResult }
+      await requireApiOrgMember(session.userId, orgId)
+      const db = getDb()
+      const [row] = await db.insert(schema.environment).values({ projectId: params.projectId, name: body.name, slug: body.slug })
+        .returning({ id: schema.environment.id, name: schema.environment.name, slug: schema.environment.slug })
+      return { ok: true, ...row! }
     },
   })
 
@@ -433,12 +438,12 @@ export const app = new Spiceflow({
     method: 'DELETE',
     path: '/api/environments/:id',
     async handler({ params, request }) {
-      const stub = getSecretsStoreStub()
-      const session = await requireApiSession(stub, request)
-      const orgId = await stub.getOrgIdForEnvironment({ environmentId: params.id })
+      const session = await requireApiSession(request)
+      const orgId = await getOrgIdForEnvironment(params.id)
       if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      await requireApiOrgMember(stub, session.userId, orgId)
-      const deleted = await stub.deleteEnvironment({ id: params.id })
+      await requireApiOrgMember(session.userId, orgId)
+      const db = getDb()
+      const [deleted] = await db.delete(schema.environment).where(orm.eq(schema.environment.id, params.id)).returning({ id: schema.environment.id })
       if (!deleted) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
       return { ok: true, id: deleted.id }
     },
@@ -449,12 +454,17 @@ export const app = new Spiceflow({
     method: 'GET',
     path: '/api/environments/:environmentId/secrets',
     async handler({ params, request }) {
-      const stub = getSecretsStoreStub()
-      const session = await requireApiSession(stub, request)
-      const orgId = await stub.getOrgIdForEnvironment({ environmentId: params.environmentId })
+      const session = await requireApiSession(request)
+      const orgId = await getOrgIdForEnvironment(params.environmentId)
       if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      await requireApiOrgMember(stub, session.userId, orgId)
-      const secrets = await stub.listSecrets({ environmentId: params.environmentId })
+      await requireApiOrgMember(session.userId, orgId)
+      const db = getDb()
+      const rows = await db.query.secret.findMany({
+        where: { environmentId: params.environmentId },
+        with: { creator: { columns: { id: true, name: true } } },
+        orderBy: { createdAt: 'desc' },
+      })
+      const secrets = rows.map((r) => ({ id: r.id, name: r.name, createdAt: r.createdAt, updatedAt: r.updatedAt, createdBy: r.creator }))
       return { environmentId: params.environmentId, secrets }
     },
   })
@@ -462,19 +472,20 @@ export const app = new Spiceflow({
   .route({
     method: 'POST',
     path: '/api/environments/:environmentId/secrets',
-    request: z.object({
-      name: z.string().min(1),
-      value: z.string().min(1),
-    }),
+    request: z.object({ name: z.string().min(1), value: z.string().min(1) }),
     async handler({ request, params }) {
       const body = await request.json()
-      const stub = getSecretsStoreStub()
-      const session = await requireApiSession(stub, request)
-      const orgId = await stub.getOrgIdForEnvironment({ environmentId: params.environmentId })
+      const session = await requireApiSession(request)
+      const orgId = await getOrgIdForEnvironment(params.environmentId)
       if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      await requireApiOrgMember(stub, session.userId, orgId)
-      const secret = await stub.createSecret({ environmentId: params.environmentId, name: body.name, value: body.value, createdBy: session.userId })
-      return { ok: true, environmentId: params.environmentId, id: secret.id, name: secret.name }
+      await requireApiOrgMember(session.userId, orgId)
+      const db = getDb()
+      const { encrypted, iv } = await encrypt(body.value)
+      const [row] = await db.insert(schema.secret).values({
+        environmentId: params.environmentId, name: body.name,
+        valueEncrypted: encrypted, iv, createdBy: session.userId,
+      }).returning({ id: schema.secret.id, name: schema.secret.name })
+      return { ok: true, environmentId: params.environmentId, id: row!.id, name: row!.name }
     },
   })
 
@@ -482,14 +493,15 @@ export const app = new Spiceflow({
     method: 'GET',
     path: '/api/secrets/:id',
     async handler({ params, request }) {
-      const stub = getSecretsStoreStub()
-      const session = await requireApiSession(stub, request)
-      const orgId = await stub.getOrgIdForSecret({ secretId: params.id })
+      const session = await requireApiSession(request)
+      const orgId = await getOrgIdForSecret(params.id)
       if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      await requireApiOrgMember(stub, session.userId, orgId)
-      const secret = await stub.getSecret({ id: params.id })
-      if (!secret) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      return secret
+      await requireApiOrgMember(session.userId, orgId)
+      const db = getDb()
+      const row = await db.query.secret.findFirst({ where: { id: params.id } })
+      if (!row) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
+      const value = await decrypt(row.valueEncrypted, row.iv)
+      return { id: row.id, name: row.name, value, environmentId: row.environmentId, createdAt: row.createdAt, updatedAt: row.updatedAt }
     },
   })
 
@@ -497,12 +509,12 @@ export const app = new Spiceflow({
     method: 'DELETE',
     path: '/api/secrets/:id',
     async handler({ params, request }) {
-      const stub = getSecretsStoreStub()
-      const session = await requireApiSession(stub, request)
-      const orgId = await stub.getOrgIdForSecret({ secretId: params.id })
+      const session = await requireApiSession(request)
+      const orgId = await getOrgIdForSecret(params.id)
       if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      await requireApiOrgMember(stub, session.userId, orgId)
-      const deleted = await stub.deleteSecret({ id: params.id })
+      await requireApiOrgMember(session.userId, orgId)
+      const db = getDb()
+      const [deleted] = await db.delete(schema.secret).where(orm.eq(schema.secret.id, params.id)).returning({ id: schema.secret.id })
       if (!deleted) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
       return { ok: true, id: deleted.id }
     },
