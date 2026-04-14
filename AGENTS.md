@@ -40,3 +40,10 @@ Always load these skills before working on this project:
 - **`cloudflare-workers`** — wrangler.jsonc config, type-safe env, Durable Objects, deploy scripts, preview/production environments
 - **`drizzle`** — schema conventions, namespace imports, query API, migrations, durable-sqlite driver setup
 - **`spiceflow`** — API routes + React Server Components framework (fetch latest README every time)
+
+
+## better auth
+
+if needed download source code from https://github.com/better-auth/better-auth to read how it works
+
+read docs at https://better-auth.com/llms.txt. that page is only an index, you must fetch related pages to read their content
