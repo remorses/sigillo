@@ -2,15 +2,24 @@
 // Values hidden by default (password inputs). Eye icon to reveal.
 // Editing a key or value marks the row dirty. A "Save N secrets"
 // button appears when there are unsaved changes.
-// Import from .env file supported via file picker.
+// Import from .env via a dialog with a textarea.
 
 "use client";
 
 import { EyeIcon, EyeOffIcon, TrashIcon, UploadIcon, PlusIcon, KeyIcon } from "lucide-react";
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback } from "react";
 import { getRouter } from "spiceflow/react";
 import { Button } from "sigillo-app/src/components/ui/button";
 import { Frame } from "sigillo-app/src/components/ui/frame";
+import {
+  Dialog,
+  DialogPopup,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from "sigillo-app/src/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -20,18 +29,37 @@ import {
   TableRow,
 } from "sigillo-app/src/components/ui/table";
 import { parseEnv } from "sigillo-app/src/lib/parse-env";
+import {
+  createSecretAction,
+  deleteSecretAction,
+  saveSecretsAction,
+} from "../actions.ts";
+import { App } from "../app.tsx";
 
 type Secret = {
   id: string;
   name: string;
+  value: string;
   createdAt: number;
   updatedAt: number;
   createdBy: { id: string; name: string } | null;
 };
 
-type SecretEdits = {
-  name?: string;
-  value?: string;
+const hiddenValueStyle: React.CSSProperties & {
+  WebkitTextSecurity: string;
+  textSecurity: string;
+} = {
+  WebkitTextSecurity: "disc",
+  textSecurity: "disc",
+  pointerEvents: "none",
+};
+
+const maskedInputStyle: React.CSSProperties & {
+  WebkitTextSecurity: string;
+  textSecurity: string;
+} = {
+  WebkitTextSecurity: "disc",
+  textSecurity: "disc",
 };
 
 function formatTime(ts: number) {
@@ -44,39 +72,19 @@ function formatTime(ts: number) {
 }
 
 function SecretValueCell({
-  secretId,
+  value,
   editedValue,
   onValueChange,
+  visible,
+  onToggle,
 }: {
-  secretId: string;
+  value: string;
   editedValue: string | undefined;
   onValueChange: (value: string) => void;
+  visible: boolean;
+  onToggle: () => void;
 }) {
-  const [visible, setVisible] = useState(false);
-  const [fetchedValue, setFetchedValue] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const currentValue = editedValue ?? fetchedValue;
-  const hasValue = currentValue !== null && currentValue !== undefined;
-
-  const toggle = useCallback(async () => {
-    if (!visible && fetchedValue === null && editedValue === undefined) {
-      setLoading(true);
-      try {
-        const resp = await fetch(`/api/secrets/${secretId}`);
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const data = (await resp.json()) as { value: string };
-        setFetchedValue(data.value);
-        setVisible(true);
-      } catch (err) {
-        console.error("Failed to fetch secret value:", err);
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
-    setVisible((v) => !v);
-  }, [visible, fetchedValue, editedValue, secretId]);
+  const displayValue = editedValue ?? value;
 
   return (
     <div className="flex items-center gap-1.5">
@@ -85,7 +93,7 @@ function SecretValueCell({
         autoComplete="off"
         data-1p-ignore
         data-lpignore="true"
-        value={visible && hasValue ? currentValue : "••••••••••••"}
+        value={visible ? displayValue : "••••••••••••"}
         onChange={(e) => {
           if (visible) {
             onValueChange(e.target.value);
@@ -93,18 +101,15 @@ function SecretValueCell({
         }}
         readOnly={!visible}
         tabIndex={visible ? 0 : -1}
-        style={!visible ? { WebkitTextSecurity: 'disc', textSecurity: 'disc', pointerEvents: 'none' } as React.CSSProperties : undefined}
+        style={!visible ? hiddenValueStyle : undefined}
         className={`h-7 min-w-0 flex-1 rounded-md border px-2 text-sm font-mono ${visible ? 'border-input bg-muted/50 focus:outline-none focus:ring-2 focus:ring-ring' : 'border-transparent bg-muted/50 cursor-default select-none'}`}
       />
       <button
-        onClick={toggle}
-        disabled={loading}
-        className="text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-50"
+        onClick={onToggle}
+        className="text-muted-foreground hover:text-foreground cursor-pointer"
         title={visible ? "Hide value" : "Reveal value"}
       >
-        {loading ? (
-          <span className="size-4 block animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
-        ) : visible ? (
+        {visible ? (
           <EyeOffIcon className="size-4" />
         ) : (
           <EyeIcon className="size-4" />
@@ -117,24 +122,23 @@ function SecretValueCell({
 export function SecretsTable({
   secrets,
   environmentId,
-  deleteSecretAction,
-  createSecretAction,
-  saveSecretsAction,
+  allVisible,
 }: {
   secrets: Secret[];
   environmentId: string;
-  deleteSecretAction: (id: string) => Promise<void>;
-  createSecretAction: (prev: string, formData: FormData) => Promise<string>;
-  saveSecretsAction: (edits: { id: string; name?: string; value?: string }[]) => Promise<void>;
+  allVisible: boolean;
 }) {
-  const router = getRouter();
+  const router = getRouter<App>();
   const [showNewRow, setShowNewRow] = useState(false);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importOpen, setImportOpen] = useState(false);
+
+  // Per-row visibility overrides (only used when allVisible is false)
+  const [rowVisible, setRowVisible] = useState<Record<string, boolean>>({});
 
   // Track edits per secret id
-  const [edits, setEdits] = useState<Record<string, SecretEdits>>({});
+  const [edits, setEdits] = useState<Record<string, { name?: string; value?: string }>>({});
 
   const setEdit = useCallback((id: string, field: "name" | "value", val: string) => {
     setEdits((prev) => ({
@@ -165,21 +169,18 @@ export function SecretsTable({
       });
       await saveSecretsAction(payload);
       setEdits({});
-      router.refresh();
+      await router.refresh();
     } finally {
       setSaving(false);
     }
   }, [dirtySecrets, edits, saveSecretsAction, router]);
 
-  const handleImportEnv = useCallback(async (file: File) => {
+  const handleImportText = useCallback(async (text: string) => {
+    const parsed = parseEnv(text);
+    const entries = Object.entries(parsed);
+    if (entries.length === 0) return;
     setImporting(true);
     try {
-      const text = await file.text();
-      const parsed = parseEnv(text);
-      const entries = Object.entries(parsed);
-      if (entries.length === 0) return;
-
-      // Create each secret via the server action
       for (const [name, value] of entries) {
         const formData = new FormData();
         formData.set("environmentId", environmentId);
@@ -187,10 +188,10 @@ export function SecretsTable({
         formData.set("value", value);
         await createSecretAction("", formData);
       }
-      router.refresh();
+      setImportOpen(false);
+      await router.refresh();
     } finally {
       setImporting(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }, [environmentId, createSecretAction, router]);
 
@@ -214,26 +215,16 @@ export function SecretsTable({
             <Button
               size="sm"
               variant="outline"
-              loading={importing}
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => setImportOpen(true)}
             >
               <UploadIcon className="size-4" />
               Import .env
             </Button>
           </div>
         </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".env,.env.*,text/*"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) handleImportEnv(file);
-          }}
-        />
+        <ImportEnvDialog open={importOpen} onOpenChange={setImportOpen} importing={importing} onImport={handleImportText} />
         {/* Inline add row for empty state */}
-        {showNewRow && <AddSecretRow environmentId={environmentId} createSecretAction={createSecretAction} onDone={() => setShowNewRow(false)} />}
+        {showNewRow && <AddSecretRow environmentId={environmentId} onDone={() => setShowNewRow(false)} />}
       </>
     );
   }
@@ -259,6 +250,7 @@ export function SecretsTable({
           <TableBody>
             {secrets.map((secret) => {
               const isDirty = dirtySecrets.includes(secret);
+              const isVisible = allVisible || (rowVisible[secret.id] ?? false);
               return (
                 <TableRow key={secret.id} className={isDirty ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}>
                   <TableCell>
@@ -271,9 +263,11 @@ export function SecretsTable({
                   </TableCell>
                   <TableCell>
                     <SecretValueCell
-                      secretId={secret.id}
+                      value={secret.value}
                       editedValue={edits[secret.id]?.value}
                       onValueChange={(v) => setEdit(secret.id, "value", v)}
+                      visible={isVisible}
+                      onToggle={() => setRowVisible((prev) => ({ ...prev, [secret.id]: !isVisible }))}
                     />
                   </TableCell>
                   <TableCell>
@@ -305,7 +299,7 @@ export function SecretsTable({
         <div className="flex items-center justify-between px-1 pb-2">
           <div className="flex items-center gap-2 grow">
             {showNewRow ? (
-              <AddSecretRow environmentId={environmentId} createSecretAction={createSecretAction} onDone={() => setShowNewRow(false)} />
+              <AddSecretRow environmentId={environmentId} onDone={() => setShowNewRow(false)} />
             ) : (
               <button
                 onClick={() => setShowNewRow(true)}
@@ -318,27 +312,17 @@ export function SecretsTable({
           </div>
           {!showNewRow && (
             <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={importing}
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer px-2 py-1 disabled:opacity-50"
+              onClick={() => setImportOpen(true)}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer px-2 py-1"
             >
               <UploadIcon className="size-3" />
-              {importing ? "Importing…" : "Import .env"}
+              Import .env
             </button>
           )}
         </div>
       </Frame>
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".env,.env.*,text/*"
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) handleImportEnv(file);
-        }}
-      />
+      <ImportEnvDialog open={importOpen} onOpenChange={setImportOpen} importing={importing} onImport={handleImportText} />
 
       {/* Save bar */}
       {dirtySecrets.length > 0 && (
@@ -352,13 +336,61 @@ export function SecretsTable({
   );
 }
 
+function ImportEnvDialog({
+  open,
+  onOpenChange,
+  importing,
+  onImport,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  importing: boolean;
+  onImport: (text: string) => Promise<void>;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogPopup>
+        <DialogHeader>
+          <DialogTitle>Import .env</DialogTitle>
+          <DialogDescription>
+            Paste your .env file contents below. Each line should be in KEY=value format.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="px-6 pb-2"
+          action={async (formData: FormData) => {
+            const textValue = formData.get("envText");
+            const text = typeof textValue === "string" ? textValue : "";
+            if (text.trim()) await onImport(text);
+          }}
+        >
+          <textarea
+            name="envText"
+            required
+            autoFocus
+            placeholder={"DATABASE_URL=postgres://...\nAPI_KEY=sk-...\nSECRET_TOKEN=abc123"}
+            rows={8}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring resize-y"
+          />
+          <DialogFooter variant="bare" className="mt-4">
+            <DialogClose render={<Button variant="outline" />}>
+              Cancel
+            </DialogClose>
+            <Button type="submit" loading={importing}>
+              Import
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogPopup>
+    </Dialog>
+  );
+}
+
 function AddSecretRow({
   environmentId,
-  createSecretAction,
   onDone,
 }: {
   environmentId: string;
-  createSecretAction: (prev: string, formData: FormData) => Promise<string>;
   onDone: () => void;
 }) {
   return (
@@ -382,7 +414,7 @@ function AddSecretRow({
         autoComplete="off"
         data-1p-ignore
         data-lpignore="true"
-        style={{ WebkitTextSecurity: 'disc', textSecurity: 'disc' } as React.CSSProperties}
+        style={maskedInputStyle}
         placeholder="secret value"
         required
         className="h-7 flex-1 rounded-lg border border-input bg-background px-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"

@@ -39,16 +39,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from "sigillo-app/src/components/ui/dropdown-menu";
+import { createProjectAction } from "../actions.ts";
 import type { App } from "../app.tsx";
-
-type Org = { id: string; name: string; role: string };
-type Project = { id: string; name: string };
-type User = { name: string; email: string; image?: string | null } | null;
-
-export type CreateProjectAction = (
-  prev: string,
-  formData: FormData,
-) => Promise<string>;
 
 export function Sidebar({
   orgs,
@@ -56,14 +48,12 @@ export function Sidebar({
   currentOrgId,
   currentProjectId,
   user,
-  createProjectAction,
 }: {
-  orgs: Org[];
-  projects: Project[];
+  orgs: { id: string; name: string; role: string }[];
+  projects: { id: string; name: string }[];
   currentOrgId: string | null;
   currentProjectId: string | null;
-  user: User;
-  createProjectAction: CreateProjectAction;
+  user: { name: string; email: string; image?: string | null } | null;
 }) {
   const router = getRouter<App>();
   const [showNewProject, setShowNewProject] = useState(false);
@@ -243,7 +233,6 @@ export function Sidebar({
         open={showNewProject}
         onOpenChange={setShowNewProject}
         orgId={currentOrgId}
-        createProjectAction={createProjectAction}
       />
     </aside>
   );
@@ -256,12 +245,10 @@ export function NewProjectDialog({
   open,
   onOpenChange,
   orgId,
-  createProjectAction,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   orgId: string | null;
-  createProjectAction: CreateProjectAction;
 }) {
   const router = getRouter<App>();
   const [message, setMessage] = useState("");
@@ -319,10 +306,8 @@ export function NewProjectDialog({
 
 export function NewProjectButton({
   orgId,
-  createProjectAction,
 }: {
   orgId: string;
-  createProjectAction: CreateProjectAction;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -336,7 +321,6 @@ export function NewProjectButton({
         open={open}
         onOpenChange={setOpen}
         orgId={orgId}
-        createProjectAction={createProjectAction}
       />
     </>
   );

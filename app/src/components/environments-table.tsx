@@ -14,6 +14,7 @@ import { useState } from "react";
 import { Badge } from "sigillo-app/src/components/ui/badge";
 import { Button } from "sigillo-app/src/components/ui/button";
 import { Frame } from "sigillo-app/src/components/ui/frame";
+import { createEnvAction, deleteEnvAction } from "../actions.ts";
 import {
   Table,
   TableBody,
@@ -51,14 +52,10 @@ export function EnvironmentsTable({
   environments,
   selectedEnvId,
   onSelectEnv,
-  deleteEnvAction,
-  createEnvAction,
 }: {
   environments: Environment[];
   selectedEnvId: string | null;
   onSelectEnv: (envId: string) => void;
-  deleteEnvAction: (id: string) => Promise<void>;
-  createEnvAction: (prev: string, formData: FormData) => Promise<string>;
 }) {
   const [showNewRow, setShowNewRow] = useState(false);
   const [message, setMessage] = useState("");

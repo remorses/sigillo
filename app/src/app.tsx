@@ -14,6 +14,7 @@ import { Head, Link, ProgressBar } from 'spiceflow/react'
 import { env } from 'cloudflare:workers'
 import { z } from 'zod'
 import type { SecretsStore } from './secrets-store.ts'
+import { createOrgAction, createProjectAction } from './actions.ts'
 import { Sidebar, NewProjectButton } from 'sigillo-app/src/components/sidebar'
 import { ProjectPage } from 'sigillo-app/src/components/project-page'
 import { CreateOrgForm } from 'sigillo-app/src/components/create-org-form'
@@ -26,67 +27,6 @@ export { SecretsStore } from './secrets-store.ts'
 function getSecretsStoreStub() {
   const id = env.SECRETS_STORE.idFromName('main')
   return env.SECRETS_STORE.get(id) as DurableObjectStub<SecretsStore>
-}
-
-// ── Server action helpers (used in pages) ───────────────────────
-
-async function createProjectAction(_prev: string, formData: FormData) {
-  'use server'
-  const name = formData.get('name') as string
-  const orgId = formData.get('orgId') as string
-  if (!name) return 'Name is required'
-  if (!orgId) return 'No org selected'
-  const stub = getSecretsStoreStub()
-  const project = await stub.createProject({ name, orgId })
-  return `Created:${project.id}`
-}
-
-async function createSecretAction(_prev: string, formData: FormData) {
-  'use server'
-  const name = formData.get('name') as string
-  const value = formData.get('value') as string
-  const environmentId = formData.get('environmentId') as string
-  if (!name || !value) return 'Key and value are required'
-  const stub = getSecretsStoreStub()
-  await stub.createSecret({ environmentId, name, value, createdBy: 'system' })
-  return `Created ${name}`
-}
-
-async function deleteSecretAction(id: string) {
-  'use server'
-  const stub = getSecretsStoreStub()
-  await stub.deleteSecret({ id })
-}
-
-async function fetchSecretsForEnv(envId: string) {
-  'use server'
-  const stub = getSecretsStoreStub()
-  return stub.listSecrets({ environmentId: envId })
-}
-
-async function saveSecretsAction(edits: { id: string; name?: string; value?: string }[]) {
-  'use server'
-  const stub = getSecretsStoreStub()
-  for (const edit of edits) {
-    await stub.updateSecret({ id: edit.id, name: edit.name, value: edit.value })
-  }
-}
-
-async function deleteEnvAction(id: string) {
-  'use server'
-  const stub = getSecretsStoreStub()
-  await stub.deleteEnvironment({ id })
-}
-
-async function createEnvAction(_prev: string, formData: FormData) {
-  'use server'
-  const name = formData.get('name') as string
-  const slug = formData.get('slug') as string
-  const projectId = formData.get('projectId') as string
-  if (!name || !slug) return 'Name and slug are required'
-  const stub = getSecretsStoreStub()
-  await stub.createEnvironment({ projectId, name, slug })
-  return `Created ${name}`
 }
 
 export const app = new Spiceflow({
@@ -134,8 +74,8 @@ export const app = new Spiceflow({
       : []
     let user: { name: string; email: string; image?: string | null } | null = null
     if (sessionResult.status === 'fulfilled' && sessionResult.value) {
-      const u = sessionResult.value.user as { name?: string; email?: string; image?: string | null } | undefined
-      user = { name: u?.name || 'User', email: u?.email || '', image: u?.image }
+      const u = sessionResult.value.user
+      user = { name: u.name || 'User', email: u.email || '' }
     }
 
     return (
@@ -146,7 +86,6 @@ export const app = new Spiceflow({
           currentOrgId={orgId}
           currentProjectId={projectId}
           user={user}
-          createProjectAction={createProjectAction}
         />
         <main className="flex-1 p-6 overflow-auto">
           {children}
@@ -203,18 +142,18 @@ export const app = new Spiceflow({
 
     let user: { name: string; email: string; image?: string | null } | null = null
     if (sessionResult.status === 'fulfilled' && sessionResult.value) {
-      const u = sessionResult.value.user as { name?: string; email?: string; image?: string | null } | undefined
-      user = { name: u?.name || 'User', email: u?.email || '', image: u?.image }
+      const u = sessionResult.value.user
+      user = { name: u.name || 'User', email: u.email || '' }
     }
 
     return (
       <div className="isolate relative flex max-w-[1200px] mx-auto min-h-[min(400px,100vh)]">
-        <Sidebar orgs={orgs} projects={[]} currentOrgId={params.orgId} currentProjectId={null} user={user} createProjectAction={createProjectAction} />
+        <Sidebar orgs={orgs} projects={[]} currentOrgId={params.orgId} currentProjectId={null} user={user} />
         <main className="flex-1 p-6 overflow-auto">
           <div className="max-w-3xl">
             <h1 className="text-2xl font-bold tracking-tight mb-2">No projects yet</h1>
             <p className="text-muted-foreground mb-6">Create your first project to start managing secrets.</p>
-            <NewProjectButton orgId={params.orgId} createProjectAction={createProjectAction} />
+            <NewProjectButton orgId={params.orgId} />
           </div>
         </main>
       </div>
@@ -225,22 +164,13 @@ export const app = new Spiceflow({
 
   // ── New Organization page (standalone, no sidebar) ─────────────
   .page('/new-org', async () => {
-    async function createOrgAction(_prev: string, formData: FormData) {
-      'use server'
-      const name = formData.get('name') as string
-      if (!name) return 'Name is required'
-      const stub = getSecretsStoreStub()
-      const org = await stub.createOrg({ name, userId: 'system' })
-      return `Created:${org.id}`
-    }
-
     return (
       <div className="max-w-md mx-auto py-12">
         <h1 className="text-2xl font-bold tracking-tight mb-2">New Organization</h1>
         <p className="text-muted-foreground mb-6">
           Organizations group your projects and team members.
         </p>
-        <CreateOrgForm action={createOrgAction} />
+        <CreateOrgForm />
       </div>
     )
   })
@@ -282,7 +212,7 @@ export const app = new Spiceflow({
       : environments[0]?.id || null
 
     const secrets = selectedEnvId
-      ? await stub.listSecrets({ environmentId: selectedEnvId })
+      ? await stub.listSecretsWithValues({ environmentId: selectedEnvId })
       : []
 
     // dataKey changes every server render, forcing client component remount
@@ -299,10 +229,6 @@ export const app = new Spiceflow({
           environments={environments}
           selectedEnvId={selectedEnvId}
           secrets={secrets}
-          fetchSecretsForEnv={fetchSecretsForEnv}
-          deleteSecretAction={deleteSecretAction}
-          createSecretAction={createSecretAction}
-          saveSecretsAction={saveSecretsAction}
         />
       </div>
     )

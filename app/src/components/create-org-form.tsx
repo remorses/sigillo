@@ -6,13 +6,10 @@
 import { useState } from "react";
 import { getRouter } from "spiceflow/react";
 import { Button } from "sigillo-app/src/components/ui/button";
+import { createOrgAction } from "../actions.ts";
 import type { App } from "../app.tsx";
 
-export function CreateOrgForm({
-  action,
-}: {
-  action: (prev: string, formData: FormData) => Promise<string>;
-}) {
+export function CreateOrgForm() {
   const router = getRouter<App>();
   const [message, setMessage] = useState("");
 
@@ -20,7 +17,7 @@ export function CreateOrgForm({
     <form
       className="flex flex-col gap-4"
       action={async (formData: FormData) => {
-        const result = await action("", formData);
+        const result = await createOrgAction("", formData);
         if (result.startsWith("Created:")) {
           const orgId = result.split(":")[1];
           router.push(`/orgs/${orgId}`);
