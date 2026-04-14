@@ -5,6 +5,7 @@ import { defineConfig } from 'vite'
 import { spiceflowPlugin } from 'spiceflow/vite'
 
 export default defineConfig({
+  server: { port: 5188, strictPort: true },
   plugins: [
     react(),
     spiceflowPlugin({ entry: './src/app.tsx' }),

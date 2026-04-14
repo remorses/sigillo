@@ -1,5 +1,5 @@
 // Spiceflow entry for the self-hosted secret sharing app.
-// Pages for secrets management UI, API routes for CRUD, setup endpoint.
+// Pages for secrets management UI, API routes for CRUD.
 // Also serves as the Cloudflare Worker entry via the default export.
 //
 // Two nested layouts:
@@ -14,9 +14,11 @@ import { Head, Link, ProgressBar } from 'spiceflow/react'
 import { env } from 'cloudflare:workers'
 import { z } from 'zod'
 import type { SecretsStore } from './secrets-store.ts'
-import { Sidebar } from 'sigillo-app/src/components/sidebar'
+import { Sidebar, NewProjectButton } from 'sigillo-app/src/components/sidebar'
 import { ProjectPage } from 'sigillo-app/src/components/project-page'
 import { CreateOrgForm } from 'sigillo-app/src/components/create-org-form'
+import { ClientRedirect } from 'sigillo-app/src/components/client-redirect'
+
 
 
 export { SecretsStore } from './secrets-store.ts'
@@ -179,20 +181,35 @@ export const app = new Spiceflow({
     return null
   })
 
-  // ── Org empty state (no projects) ─────────────────────────────
+  // ── Org page (redirects to first project, or shows empty state) ─
+  // The .get() handler above redirects via HTTP 302 on full-page loads,
+  // but in dev mode (Vite) .get() can fail silently. The page handler
+  // fetches projects too and uses ClientRedirect as a fallback.
   .page('/orgs/:orgId', async ({ params, request }) => {
     const stub = getSecretsStoreStub()
-    let orgs: { id: string; name: string; role: string }[] = []
-    try { orgs = await stub.listUserOrgs({ userId: 'system' }) } catch {}
+
+    const [orgsResult, projectsResult, sessionResult] = await Promise.allSettled([
+      stub.listUserOrgs({ userId: 'system' }),
+      stub.listProjects({ orgId: params.orgId }),
+      stub.getSession(request),
+    ])
+
+    const projects = projectsResult.status === 'fulfilled'
+      ? projectsResult.value.map((p) => ({ id: p.id, name: p.name }))
+      : []
+
+    // Redirect to first project via client-side navigation
+    if (projects[0]) {
+      return <ClientRedirect to={`/orgs/${params.orgId}/projects/${projects[0].id}`} />
+    }
+
+    const orgs = orgsResult.status === 'fulfilled' ? orgsResult.value : []
 
     let user: { name: string; email: string; image?: string | null } | null = null
-    try {
-      const session = await stub.getSession(request)
-      if (session) {
-        const u = session.user as { name?: string; email?: string; image?: string | null } | undefined
-        user = { name: u?.name || 'User', email: u?.email || '', image: u?.image }
-      }
-    } catch {}
+    if (sessionResult.status === 'fulfilled' && sessionResult.value) {
+      const u = sessionResult.value.user as { name?: string; email?: string; image?: string | null } | undefined
+      user = { name: u?.name || 'User', email: u?.email || '', image: u?.image }
+    }
 
     return (
       <div className="isolate relative flex max-w-[1200px] mx-auto min-h-[min(400px,100vh)]">
@@ -200,7 +217,8 @@ export const app = new Spiceflow({
         <main className="flex-1 p-6 overflow-auto">
           <div className="max-w-3xl">
             <h1 className="text-2xl font-bold tracking-tight mb-2">No projects yet</h1>
-            <p className="text-muted-foreground">Create your first project using the sidebar.</p>
+            <p className="text-muted-foreground mb-6">Create your first project to start managing secrets.</p>
+            <NewProjectButton orgId={params.orgId} createProjectAction={createProjectAction} />
           </div>
         </main>
       </div>
@@ -232,12 +250,22 @@ export const app = new Spiceflow({
   })
 
   // ── Project root redirect → first env ─────────────────────────
+  // GET redirect for full-page loads, .page() for client-side nav + server actions.
+  // Without the .page(), POST server actions to this URL 404 because there's no
+  // page route to handle them.
   .get('/orgs/:orgId/projects/:id', async ({ params, request }) => {
     const stub = getSecretsStoreStub()
     const environments = await stub.listEnvironments({ projectId: params.id })
     const firstEnvId = environments[0]?.id || '_'
     const base = new URL(request.url)
     return Response.redirect(new URL(`/orgs/${params.orgId}/projects/${params.id}/envs/${firstEnvId}`, base).toString(), 302)
+  })
+
+  .page('/orgs/:orgId/projects/:id', async ({ params }) => {
+    const stub = getSecretsStoreStub()
+    const environments = await stub.listEnvironments({ projectId: params.id })
+    const firstEnvId = environments[0]?.id || '_'
+    return <ClientRedirect to={`/orgs/${params.orgId}/projects/${params.id}/envs/${firstEnvId}`} />
   })
 
   // ── Project detail with env ───────────────────────────────────
@@ -316,19 +344,6 @@ export const app = new Spiceflow({
         </div>
       </div>
     )
-  })
-
-  // ── API: Setup ────────────────────────────────────────────────
-  .route({
-    method: 'POST',
-    path: '/api/setup',
-    async handler({ request }) {
-      const url = new URL(request.url)
-      const appUrl = `${url.protocol}//${url.host}`
-      const stub = getSecretsStoreStub()
-      const result = await stub.setup({ appUrl })
-      return { ok: true, clientId: result.clientId }
-    },
   })
 
   // ── API: Orgs ─────────────────────────────────────────────────
