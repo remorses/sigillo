@@ -1,12 +1,14 @@
 // Secrets table with editable keys/values like Doppler.
 // Values hidden by default (password inputs). Eye icon to reveal.
-// Editing a key or value marks the row dirty. A floating "Save N secrets"
+// Editing a key or value marks the row dirty. A "Save N secrets"
 // button appears when there are unsaved changes.
+// Import from .env file supported via file picker.
 
 "use client";
 
-import { EyeIcon, EyeOffIcon, TrashIcon } from "lucide-react";
+import { EyeIcon, EyeOffIcon, TrashIcon, UploadIcon, PlusIcon, KeyIcon } from "lucide-react";
 import { useState, useCallback, useRef } from "react";
+import { getRouter } from "spiceflow/react";
 import { Button } from "sigillo-app/src/components/ui/button";
 import { Frame } from "sigillo-app/src/components/ui/frame";
 import {
@@ -17,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "sigillo-app/src/components/ui/table";
-
+import { parseEnv } from "sigillo-app/src/lib/parse-env";
 
 type Secret = {
   id: string;
@@ -27,7 +29,6 @@ type Secret = {
   createdBy: { id: string; name: string } | null;
 };
 
-// Per-row edits: tracks changed key and/or value
 type SecretEdits = {
   name?: string;
   value?: string;
@@ -55,7 +56,6 @@ function SecretValueCell({
   const [fetchedValue, setFetchedValue] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // The displayed value: edited > fetched > hidden dots
   const currentValue = editedValue ?? fetchedValue;
   const hasValue = currentValue !== null && currentValue !== undefined;
 
@@ -81,7 +81,10 @@ function SecretValueCell({
   return (
     <div className="flex items-center gap-1.5">
       <input
-        type={visible ? "text" : "password"}
+        type="text"
+        autoComplete="off"
+        data-1p-ignore
+        data-lpignore="true"
         value={visible && hasValue ? currentValue : "••••••••••••"}
         onChange={(e) => {
           if (visible) {
@@ -89,6 +92,7 @@ function SecretValueCell({
           }
         }}
         readOnly={!visible}
+        style={!visible ? { WebkitTextSecurity: 'disc', textSecurity: 'disc' } as React.CSSProperties : undefined}
         className="h-7 min-w-0 flex-1 rounded-md border border-input bg-muted/50 px-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
       />
       <button
@@ -122,8 +126,11 @@ export function SecretsTable({
   createSecretAction: (prev: string, formData: FormData) => Promise<string>;
   saveSecretsAction: (edits: { id: string; name?: string; value?: string }[]) => Promise<void>;
 }) {
+  const router = getRouter();
   const [showNewRow, setShowNewRow] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Track edits per secret id
   const [edits, setEdits] = useState<Record<string, SecretEdits>>({});
@@ -135,12 +142,11 @@ export function SecretsTable({
     }));
   }, []);
 
-  // Compute dirty secrets: only those with actual changes
   const dirtySecrets = secrets.filter((s) => {
     const e = edits[s.id];
     if (!e) return false;
     if (e.name !== undefined && e.name !== s.name) return true;
-    if (e.value !== undefined) return true; // can't compare — original is encrypted
+    if (e.value !== undefined) return true;
     return false;
   });
 
@@ -158,17 +164,82 @@ export function SecretsTable({
       });
       await saveSecretsAction(payload);
       setEdits({});
-      // router.refresh() has issues in spiceflow dev (WeakRef not defined in SSR)
-      // Full reload ensures fresh server data after mutation
-      window.location.reload();
+      router.refresh();
     } finally {
       setSaving(false);
     }
-  }, [dirtySecrets, edits, saveSecretsAction]);
+  }, [dirtySecrets, edits, saveSecretsAction, router]);
+
+  const handleImportEnv = useCallback(async (file: File) => {
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const parsed = parseEnv(text);
+      const entries = Object.entries(parsed);
+      if (entries.length === 0) return;
+
+      // Create each secret via the server action
+      for (const [name, value] of entries) {
+        const formData = new FormData();
+        formData.set("environmentId", environmentId);
+        formData.set("name", name);
+        formData.set("value", value);
+        await createSecretAction("", formData);
+      }
+      router.refresh();
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }, [environmentId, createSecretAction, router]);
+
+  // Empty state
+  if (secrets.length === 0 && !showNewRow) {
+    return (
+      <>
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="flex size-12 items-center justify-center rounded-xl bg-muted mb-4">
+            <KeyIcon className="size-6 text-muted-foreground" />
+          </div>
+          <h3 className="text-base font-semibold mb-1">No secrets yet</h3>
+          <p className="text-sm text-muted-foreground mb-6 max-w-xs">
+            Add secrets manually or import them from a .env file to get started.
+          </p>
+          <div className="flex items-center gap-3">
+            <Button size="sm" onClick={() => setShowNewRow(true)}>
+              <PlusIcon className="size-4" />
+              Add Secret
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              loading={importing}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <UploadIcon className="size-4" />
+              Import .env
+            </Button>
+          </div>
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".env,.env.*,text/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleImportEnv(file);
+          }}
+        />
+        {/* Inline add row for empty state */}
+        {showNewRow && <AddSecretRow environmentId={environmentId} createSecretAction={createSecretAction} onDone={() => setShowNewRow(false)} />}
+      </>
+    );
+  }
 
   return (
     <>
-      <Frame className="w-full">
+      <Frame className="w-full gap-3">
         <Table className="table-fixed">
           <colgroup>
             <col className="w-1/4" />
@@ -185,110 +256,143 @@ export function SecretsTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {secrets.length ? (
-              secrets.map((secret) => {
-                const isDirty = dirtySecrets.includes(secret);
-                return (
-                  <TableRow key={secret.id} className={isDirty ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}>
-                    <TableCell>
-                      <input
-                        type="text"
-                        value={edits[secret.id]?.name ?? secret.name}
-                        onChange={(e) => setEdit(secret.id, "name", e.target.value)}
-                        className="h-7 w-full rounded-md border border-transparent bg-transparent px-1.5 text-sm font-mono font-medium focus:border-input focus:outline-none focus:ring-2 focus:ring-ring hover:border-input"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <SecretValueCell
-                        secretId={secret.id}
-                        editedValue={edits[secret.id]?.value}
-                        onValueChange={(v) => setEdit(secret.id, "value", v)}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-muted-foreground text-xs tabular-nums">
-                        {formatTime(secret.updatedAt)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="p-0">
-                      <button
-                        onClick={async () => {
-                          if (confirm(`Delete secret "${secret.name}"?`)) {
-                            await deleteSecretAction(secret.id);
-                          }
-                        }}
-                        className="text-muted-foreground hover:text-destructive cursor-pointer"
-                        title="Delete secret"
-                      >
-                        <TrashIcon className="size-3.5" />
-                      </button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            ) : (
-              <TableRow>
-                <TableCell className="h-16 text-center text-muted-foreground" colSpan={4}>
-                  No secrets in this environment yet.
-                </TableCell>
-              </TableRow>
-            )}
+            {secrets.map((secret) => {
+              const isDirty = dirtySecrets.includes(secret);
+              return (
+                <TableRow key={secret.id} className={isDirty ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}>
+                  <TableCell>
+                    <input
+                      type="text"
+                      value={edits[secret.id]?.name ?? secret.name}
+                      onChange={(e) => setEdit(secret.id, "name", e.target.value)}
+                      className="h-7 w-full rounded-md border border-transparent bg-transparent px-1.5 text-sm font-mono font-medium focus:border-input focus:outline-none focus:ring-2 focus:ring-ring hover:border-input"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <SecretValueCell
+                      secretId={secret.id}
+                      editedValue={edits[secret.id]?.value}
+                      onValueChange={(v) => setEdit(secret.id, "value", v)}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-muted-foreground text-xs tabular-nums">
+                      {formatTime(secret.updatedAt)}
+                    </span>
+                  </TableCell>
+                  <TableCell className="p-0">
+                    <button
+                      onClick={async () => {
+                        if (confirm(`Delete secret "${secret.name}"?`)) {
+                          await deleteSecretAction(secret.id);
+                        }
+                      }}
+                      className="text-muted-foreground hover:text-destructive cursor-pointer"
+                      title="Delete secret"
+                    >
+                      <TrashIcon className="size-3.5" />
+                    </button>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
 
-        {/* Add new secret row */}
-        <div className="p-2 border-t border-border">
-          {showNewRow ? (
-            <form
-              className="flex items-center gap-2"
-              action={async (formData: FormData) => {
-                const result = await createSecretAction("", formData);
-                if (result.startsWith("Created")) setShowNewRow(false);
-              }}
-            >
-              <input type="hidden" name="environmentId" value={environmentId} />
-              <input
-                name="name"
-                placeholder="SECRET_KEY"
-                required
-                className="h-7 flex-1 rounded-md border border-input bg-background px-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-              <input
-                name="value"
-                type="password"
-                placeholder="secret value"
-                required
-                className="h-7 flex-1 rounded-md border border-input bg-background px-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-              <Button size="xs" type="submit">
-                Add
-              </Button>
-              <Button size="xs" variant="ghost" onClick={() => setShowNewRow(false)}>
-                Cancel
-              </Button>
-            </form>
-          ) : (
+        <div className="border-t border-border"></div>
+        {/* Bottom bar: add secret + import */}
+        <div className="flex items-center justify-between px-1 pb-2">
+          <div className="flex items-center gap-2 grow">
+            {showNewRow ? (
+              <AddSecretRow environmentId={environmentId} createSecretAction={createSecretAction} onDone={() => setShowNewRow(false)} />
+            ) : (
+              <button
+                onClick={() => setShowNewRow(true)}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer px-2 py-1"
+              >
+                <PlusIcon className="size-3" />
+                Add Secret
+              </button>
+            )}
+          </div>
+          {!showNewRow && (
             <button
-              onClick={() => setShowNewRow(true)}
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer px-2 py-1"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer px-2 py-1 disabled:opacity-50"
             >
-              + Add Secret
+              <UploadIcon className="size-3" />
+              {importing ? "Importing…" : "Import .env"}
             </button>
           )}
         </div>
       </Frame>
 
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".env,.env.*,text/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handleImportEnv(file);
+        }}
+      />
+
       {/* Save bar */}
       {dirtySecrets.length > 0 && (
         <div className="flex justify-end mt-3">
-          <Button
-            onClick={handleSave}
-            loading={saving}
-          >
+          <Button onClick={handleSave} loading={saving}>
             Save {dirtySecrets.length} secret{dirtySecrets.length > 1 ? "s" : ""}
           </Button>
         </div>
       )}
     </>
+  );
+}
+
+function AddSecretRow({
+  environmentId,
+  createSecretAction,
+  onDone,
+}: {
+  environmentId: string;
+  createSecretAction: (prev: string, formData: FormData) => Promise<string>;
+  onDone: () => void;
+}) {
+  return (
+    <form
+      className="flex items-center grow gap-2"
+      action={async (formData: FormData) => {
+        const result = await createSecretAction("", formData);
+        if (result.startsWith("Created")) onDone();
+      }}
+    >
+      <input type="hidden" name="environmentId" value={environmentId} />
+      <input
+        name="name"
+        placeholder="SECRET_KEY"
+        required
+        className="h-7 flex-1 rounded-lg border border-input bg-background px-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+      />
+      <input
+        name="value"
+        type="text"
+        autoComplete="off"
+        data-1p-ignore
+        data-lpignore="true"
+        style={{ WebkitTextSecurity: 'disc', textSecurity: 'disc' } as React.CSSProperties}
+        placeholder="secret value"
+        required
+        className="h-7 flex-1 rounded-lg border border-input bg-background px-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+      />
+      <div className="flex-1" />
+      <Button size="xs" type="submit">
+        Add
+      </Button>
+      <Button size="xs" variant="ghost" onClick={onDone}>
+        Cancel
+      </Button>
+    </form>
   );
 }

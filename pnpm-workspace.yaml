@@ -1,6 +1,2 @@
 packages:
   - ./*
-
-
-overrides:
-  spiceflow: link:../spiceflow-rsc/spiceflow

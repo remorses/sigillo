@@ -18,6 +18,7 @@ import { Sidebar } from 'sigillo-app/src/components/sidebar'
 import { ProjectPage } from 'sigillo-app/src/components/project-page'
 import { CreateOrgForm } from 'sigillo-app/src/components/create-org-form'
 
+
 export { SecretsStore } from './secrets-store.ts'
 
 function getSecretsStoreStub() {
@@ -118,33 +119,21 @@ export const app = new Spiceflow({
     const stub = getSecretsStoreStub()
     const { orgId, projectId } = params
 
-    // Load orgs
-    let orgs: { id: string; name: string; role: string }[] = []
-    try {
-      orgs = await stub.listUserOrgs({ userId: 'system' })
-    } catch {
-      // No orgs yet
-    }
+    // Load orgs, projects, and user session in parallel — all independent
+    const [orgsResult, projectsResult, sessionResult] = await Promise.allSettled([
+      stub.listUserOrgs({ userId: 'system' }),
+      stub.listProjects({ orgId }),
+      stub.getSession(request),
+    ])
 
-    // Load projects for current org
-    let projects: { id: string; name: string }[] = []
-    try {
-      const result = await stub.listProjects({ orgId })
-      projects = result.map((p) => ({ id: p.id, name: p.name }))
-    } catch {
-      // No projects yet
-    }
-
-    // Try to get current user session
+    const orgs = orgsResult.status === 'fulfilled' ? orgsResult.value : []
+    const projects = projectsResult.status === 'fulfilled'
+      ? projectsResult.value.map((p) => ({ id: p.id, name: p.name }))
+      : []
     let user: { name: string; email: string; image?: string | null } | null = null
-    try {
-      const session = await stub.getSession(request)
-      if (session) {
-        const u = session.user as { name?: string; email?: string; image?: string | null } | undefined
-        user = { name: u?.name || 'User', email: u?.email || '', image: u?.image }
-      }
-    } catch {
-      // Not authenticated yet
+    if (sessionResult.status === 'fulfilled' && sessionResult.value) {
+      const u = sessionResult.value.user as { name?: string; email?: string; image?: string | null } | undefined
+      user = { name: u?.name || 'User', email: u?.email || '', image: u?.image }
     }
 
     return (
@@ -187,21 +176,38 @@ export const app = new Spiceflow({
         return Response.redirect(new URL(`/orgs/${params.orgId}/projects/${projects[0].id}`, base).toString(), 302)
       }
     } catch {}
-    // No projects — show empty state
     return null
   })
 
   // ── Org empty state (no projects) ─────────────────────────────
-  .page('/orgs/:orgId', async () => {
+  .page('/orgs/:orgId', async ({ params, request }) => {
+    const stub = getSecretsStoreStub()
+    let orgs: { id: string; name: string; role: string }[] = []
+    try { orgs = await stub.listUserOrgs({ userId: 'system' }) } catch {}
+
+    let user: { name: string; email: string; image?: string | null } | null = null
+    try {
+      const session = await stub.getSession(request)
+      if (session) {
+        const u = session.user as { name?: string; email?: string; image?: string | null } | undefined
+        user = { name: u?.name || 'User', email: u?.email || '', image: u?.image }
+      }
+    } catch {}
+
     return (
-      <div className="max-w-3xl">
-        <h1 className="text-2xl font-bold tracking-tight mb-2">No projects yet</h1>
-        <p className="text-muted-foreground">
-          Create your first project using the sidebar.
-        </p>
+      <div className="isolate relative flex max-w-[1200px] mx-auto min-h-[min(400px,100vh)]">
+        <Sidebar orgs={orgs} projects={[]} currentOrgId={params.orgId} currentProjectId={null} user={user} createProjectAction={createProjectAction} />
+        <main className="flex-1 p-6 overflow-auto">
+          <div className="max-w-3xl">
+            <h1 className="text-2xl font-bold tracking-tight mb-2">No projects yet</h1>
+            <p className="text-muted-foreground">Create your first project using the sidebar.</p>
+          </div>
+        </main>
       </div>
     )
   })
+
+
 
   // ── New Organization page (standalone, no sidebar) ─────────────
   .page('/new-org', async () => {
@@ -239,8 +245,12 @@ export const app = new Spiceflow({
     const stub = getSecretsStoreStub()
     const { orgId, projectId, envId } = params
 
-    // Load project info
-    const allProjects = await stub.listProjects({ orgId })
+    // Load project info and environments in parallel — both independent
+    const [allProjects, environments] = await Promise.all([
+      stub.listProjects({ orgId }),
+      stub.listEnvironments({ projectId }),
+    ])
+
     const project = allProjects.find((p) => p.id === projectId)
     if (!project) {
       return (
@@ -251,19 +261,14 @@ export const app = new Spiceflow({
       )
     }
 
-    // Load environments
-    const environments = await stub.listEnvironments({ projectId })
-
-    // Resolve env from path param
+    // Resolve env from path param, then load secrets (depends on resolved envId)
     const selectedEnvId = environments.some((e) => e.id === envId)
       ? envId
       : environments[0]?.id || null
 
-    // Load secrets for the selected environment
-    let secrets: { id: string; name: string; createdAt: number; updatedAt: number; createdBy: { id: string; name: string } | null }[] = []
-    if (selectedEnvId) {
-      secrets = await stub.listSecrets({ environmentId: selectedEnvId })
-    }
+    const secrets = selectedEnvId
+      ? await stub.listSecrets({ environmentId: selectedEnvId })
+      : []
 
     // dataKey changes every server render, forcing client component remount
     // so useState(initialSecrets) picks up fresh data after router.refresh()
