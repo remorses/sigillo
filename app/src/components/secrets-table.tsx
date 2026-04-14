@@ -51,7 +51,6 @@ const hiddenValueStyle: React.CSSProperties & {
 } = {
   WebkitTextSecurity: "disc",
   textSecurity: "disc",
-  pointerEvents: "none",
 };
 
 const maskedInputStyle: React.CSSProperties & {
@@ -100,9 +99,14 @@ function SecretValueCell({
           }
         }}
         readOnly={!visible}
-        tabIndex={visible ? 0 : -1}
+        onFocus={(e) => {
+          if (!visible) {
+            e.target.blur()
+            onToggle()
+          }
+        }}
         style={!visible ? hiddenValueStyle : undefined}
-        className={`h-7 min-w-0 flex-1 rounded-md border px-2 text-sm font-mono ${visible ? 'border-input bg-muted/50 focus:outline-none focus:ring-2 focus:ring-ring' : 'border-transparent bg-muted/50 cursor-default select-none'}`}
+        className={`h-7 min-w-0 flex-1 rounded-md border px-2 text-sm font-mono ${visible ? 'border-input bg-muted/50 focus:outline-none focus:ring-2 focus:ring-ring' : 'border-transparent bg-muted/50 cursor-pointer select-none'}`}
       />
       <button
         onClick={onToggle}
