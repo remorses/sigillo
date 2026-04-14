@@ -7,6 +7,13 @@
 import { useState, useCallback } from "react";
 import { getRouter } from "spiceflow/react";
 import { SecretsTable } from "sigillo-app/src/components/secrets-table";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectPopup,
+  SelectItem,
+} from "sigillo-app/src/components/ui/select";
 import type { App } from "../app.tsx";
 
 type Environment = {
@@ -75,19 +82,25 @@ export function ProjectPage({
       {/* Header: project name + env select */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">{projectName}</h1>
-        <select
-          className="h-9 rounded-md border border-input bg-background px-3 pr-8 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ring"
-          value={selectedEnvId || ""}
-          onChange={(e) => {
-            router.push(`/projects/${projectId}?orgId=${orgId}&envId=${e.target.value}`);
+        <Select
+          defaultValue={selectedEnvId || ""}
+          onValueChange={(val) => {
+            router.push(`/projects/${projectId}?orgId=${orgId}&envId=${val}`);
           }}
         >
-          {environments.map((env) => (
-            <option key={env.id} value={env.id}>
-              {env.name}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger size="sm" className="w-auto min-w-40">
+            <SelectValue placeholder="Select environment">
+              {environments.find((e) => e.id === selectedEnvId)?.name || "Select environment"}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectPopup>
+            {environments.map((env) => (
+              <SelectItem key={env.id} value={env.id}>
+                {env.name}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
       </div>
 
       {/* Secrets table */}

@@ -140,9 +140,9 @@ export const app = new Spiceflow({
           <Head.Meta name="viewport" content="width=device-width, initial-scale=1.0" />
           <Head.Title>Sigillo — Secret Manager</Head.Title>
         </Head>
-        <body className="min-h-screen bg-background font-sans antialiased">
+        <body className="relative min-h-screen bg-background font-sans antialiased">
           <ProgressBar />
-          <div className="flex min-h-screen">
+          <div className="isolate relative flex max-w-[1200px] mx-auto min-h-[min(400px,100vh)]">
             <Sidebar
               orgs={orgs}
               projects={projects}

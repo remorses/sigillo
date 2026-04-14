@@ -90,7 +90,7 @@ function SecretValueCell({
           }
         }}
         readOnly={!visible}
-        className="h-7 w-48 rounded-md border border-input bg-muted/50 px-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+        className="h-7 min-w-0 flex-1 rounded-md border border-input bg-muted/50 px-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
       />
       <button
         onClick={toggle}
@@ -125,7 +125,6 @@ export function SecretsTable({
 }) {
   const router = getRouter<App>();
   const [showNewRow, setShowNewRow] = useState(false);
-  const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Track edits per secret id
@@ -171,13 +170,18 @@ export function SecretsTable({
     <>
       <Frame className="w-full">
         <Table className="table-fixed">
+          <colgroup>
+            <col className="w-1/4" />
+            <col style={{ width: "500px" }} />
+            <col className="w-32" />
+            <col className="w-16" />
+          </colgroup>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead style={{ width: "200px" }}>Key</TableHead>
-              <TableHead style={{ width: "280px" }}>Value</TableHead>
-              <TableHead style={{ width: "130px" }}>Last Updated</TableHead>
-              <TableHead style={{ width: "130px" }}>Created</TableHead>
-              <TableHead style={{ width: "50px" }} />
+              <TableHead>Key</TableHead>
+              <TableHead>Value</TableHead>
+              <TableHead>Last Updated</TableHead>
+              <TableHead />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -206,12 +210,7 @@ export function SecretsTable({
                         {formatTime(secret.updatedAt)}
                       </span>
                     </TableCell>
-                    <TableCell>
-                      <span className="text-muted-foreground text-xs tabular-nums">
-                        {formatTime(secret.createdAt)}
-                      </span>
-                    </TableCell>
-                    <TableCell>
+                    <TableCell className="p-0">
                       <button
                         onClick={async () => {
                           if (confirm(`Delete secret "${secret.name}"?`)) {
@@ -229,7 +228,7 @@ export function SecretsTable({
               })
             ) : (
               <TableRow>
-                <TableCell className="h-16 text-center text-muted-foreground" colSpan={5}>
+                <TableCell className="h-16 text-center text-muted-foreground" colSpan={4}>
                   No secrets in this environment yet.
                 </TableCell>
               </TableRow>
@@ -244,7 +243,6 @@ export function SecretsTable({
               className="flex items-center gap-2"
               action={async (formData: FormData) => {
                 const result = await createSecretAction("", formData);
-                setMessage(result);
                 if (result.startsWith("Created")) setShowNewRow(false);
               }}
             >
@@ -277,7 +275,6 @@ export function SecretsTable({
               + Add Secret
             </button>
           )}
-          {message && <p className="text-xs text-muted-foreground px-2 mt-1">{message}</p>}
         </div>
       </Frame>
 

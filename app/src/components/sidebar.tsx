@@ -13,6 +13,7 @@ import { getRouter, Link } from "spiceflow/react";
 import {
   PlusIcon,
   FolderIcon,
+  FolderOpenIcon,
   ChevronsUpDownIcon,
   BuildingIcon,
   LogOutIcon,
@@ -79,9 +80,9 @@ export function Sidebar({
     : "?";
 
   return (
-    <aside className="flex flex-col w-64 min-h-screen border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+    <aside className="flex flex-col w-72 border-r border-sidebar-border bg-background text-foreground p-6">
       {/* ── Org switcher (team-switcher style) ────────────────── */}
-      <div className="p-2" ref={orgRef}>
+      <div ref={orgRef}>
         <button
           onClick={() => setOrgDropdownOpen(!orgDropdownOpen)}
           className={cn(
@@ -144,38 +145,41 @@ export function Sidebar({
       </div>
 
       {/* ── Projects ─────────────────────────────────────────── */}
-      <div className="flex-1 overflow-auto px-2 py-2">
-        <div className="flex items-center justify-between px-2 mb-1">
+      <div className="flex-1 overflow-auto pt-4">
+        <div className="mb-1 pl-2">
           <span className="text-xs font-medium text-muted-foreground">
             Projects
           </span>
-          {currentOrgId && (
-            <button
-              onClick={() => setShowNewProject(true)}
-              className="text-muted-foreground hover:text-foreground cursor-pointer"
-              title="New project"
-            >
-              <PlusIcon className="size-3.5" />
-            </button>
-          )}
         </div>
 
         <nav className="flex flex-col gap-0.5">
-          {projects.map((project) => (
-            <Link
-              key={project.id}
-              href={`/projects/${project.id}?orgId=${currentOrgId}`}
-              className={cn(
-                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-sidebar-accent",
-                currentProjectId === project.id && "bg-sidebar-accent text-sidebar-accent-foreground font-medium",
-              )}
+          {projects.map((project) => {
+            const isActive = currentProjectId === project.id;
+            return (
+              <Link
+                key={project.id}
+                href={`/projects/${project.id}?orgId=${currentOrgId}`}
+                className={cn(
+                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-sidebar-accent",
+                  isActive && "bg-sidebar-accent text-foreground font-medium",
+                )}
+              >
+                {isActive
+                  ? <FolderOpenIcon className="size-4 shrink-0" />
+                  : <FolderIcon className="size-4 shrink-0 opacity-60" />
+                }
+                {project.name}
+              </Link>
+            );
+          })}
+          {currentOrgId && (
+            <button
+              onClick={() => setShowNewProject(true)}
+              className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground cursor-pointer"
             >
-              <FolderIcon className="size-4 shrink-0 opacity-60" />
-              {project.name}
-            </Link>
-          ))}
-          {projects.length === 0 && currentOrgId && (
-            <p className="text-xs text-muted-foreground px-2 py-1.5">No projects yet</p>
+              <PlusIcon className="size-4 shrink-0 opacity-60" />
+              New project
+            </button>
           )}
           {!currentOrgId && (
             <p className="text-xs text-muted-foreground px-2 py-1.5">Select an org first</p>
@@ -184,7 +188,7 @@ export function Sidebar({
       </div>
 
       {/* ── User footer ──────────────────────────────────────── */}
-      <div className="border-t border-sidebar-border p-2" ref={userRef}>
+      <div className="border-t border-sidebar-border pt-4" ref={userRef}>
         {userDropdownOpen && (
           <div className="mb-1 rounded-lg border bg-popover p-1 shadow-lg animate-in fade-in-0 zoom-in-95">
             <div className="flex items-center gap-2 px-2 py-1.5 text-sm">
