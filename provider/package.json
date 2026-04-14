@@ -9,13 +9,13 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "types": "wrangler types",
+    "db:generate": "drizzle-kit generate --config drizzle.config.ts",
     "deploy": "CLOUDFLARE_ENV=preview vite build && wrangler deploy --env preview",
     "deploy:prod": "vite build && wrangler deploy"
   },
   "dependencies": {
     "@better-auth/oauth-provider": "latest",
     "better-auth": "latest",
-    "db": "workspace:^",
     "drizzle-orm": "1.0.0-beta.21",
     "libsqlproxy": "latest",
     "react": "^19.2.5",
@@ -26,6 +26,7 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.31.2",
+    "drizzle-kit": "1.0.0-beta.21",
     "@types/node": "^25.6.0",
     "@types/react": "latest",
     "@types/react-dom": "latest",

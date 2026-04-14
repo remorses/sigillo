@@ -17,7 +17,6 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "db:generate:provider": "drizzle-kit generate --config drizzle.provider.config.ts",
     "db:generate:app": "drizzle-kit generate --config drizzle.app.config.ts"
   },
   "devDependencies": {
