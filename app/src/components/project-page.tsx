@@ -78,14 +78,14 @@ export function ProjectPage({
   }, [deleteSecretAction, refreshSecrets]);
 
   return (
-    <div className="flex flex-col gap-6 w-full">
+    <div className="flex flex-col gap-3 w-full">
       {/* Header: project name + env select */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">{projectName}</h1>
         <Select
           defaultValue={selectedEnvId || ""}
           onValueChange={(val) => {
-            router.push(`/projects/${projectId}?orgId=${orgId}&envId=${val}`);
+            router.push(`/orgs/${orgId}/projects/${projectId}/envs/${val}`);
           }}
         >
           <SelectTrigger size="sm" className="w-auto min-w-40">

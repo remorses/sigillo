@@ -23,7 +23,7 @@ export function CreateOrgForm({
         const result = await action("", formData);
         if (result.startsWith("Created:")) {
           const orgId = result.split(":")[1];
-          router.push(`/?orgId=${orgId}`);
+          router.push(`/orgs/${orgId}`);
         } else {
           setMessage(result);
         }

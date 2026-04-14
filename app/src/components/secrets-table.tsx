@@ -278,13 +278,12 @@ export function SecretsTable({
         </div>
       </Frame>
 
-      {/* Floating save bar */}
+      {/* Save bar */}
       {dirtySecrets.length > 0 && (
-        <div className="fixed bottom-6 right-6 z-50">
+        <div className="flex justify-end mt-3">
           <Button
             onClick={handleSave}
             loading={saving}
-            className="shadow-lg"
           >
             Save {dirtySecrets.length} secret{dirtySecrets.length > 1 ? "s" : ""}
           </Button>

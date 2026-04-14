@@ -2,9 +2,11 @@
 // Pages for secrets management UI, API routes for CRUD, setup endpoint.
 // Also serves as the Cloudflare Worker entry via the default export.
 //
-// UI: shadcn components with sidebar layout.
-// - Sidebar: org dropdown, project list, new org/project forms via server actions
-// - Main area: environments table + secrets table (Doppler-style hidden values)
+// Two nested layouts:
+// 1. /* — HTML shell (head, body, fonts, ProgressBar)
+// 2. /orgs/:orgId/projects/:projectId/* — App shell with sidebar
+//
+// Standalone pages (no sidebar): /, /new-org, /device
 
 import './globals.css'
 import { Spiceflow } from 'spiceflow'
@@ -89,37 +91,49 @@ export const app = new Spiceflow({
   allowedActionOrigins: [/\.kimaki\.dev$/],
 })
 
-  // ── Root layout with sidebar ──────────────────────────────────
-  .layout('/*', async ({ children, request }) => {
-    const url = new URL(request.url)
-    const orgId = url.searchParams.get('orgId')
+  // ── Layout 1: HTML shell ──────────────────────────────────────
+  .layout('/*', async ({ children }) => {
+    return (
+      <html lang="en">
+        <Head>
+          <Head.Meta charSet="UTF-8" />
+          <Head.Meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <Head.Title>Sigillo — Secret Manager</Head.Title>
+        </Head>
+        <body className="relative min-h-screen bg-background font-sans antialiased">
+          <ProgressBar />
+          {children ?? (
+            <div className="flex items-center justify-center h-full text-muted-foreground">
+              Page not found
+            </div>
+          )}
+        </body>
+      </html>
+    )
+  })
 
-    // Load orgs and projects for the sidebar
+  // ── Layout 2: App shell with sidebar ──────────────────────────
+  // params.orgId and params.projectId available directly from spiceflow
+  .layout('/orgs/:orgId/projects/:projectId/*', async ({ children, params, request }) => {
     const stub = getSecretsStoreStub()
-    let orgs: { id: string; name: string; role: string }[] = []
-    let projects: { id: string; name: string }[] = []
+    const { orgId, projectId } = params
 
+    // Load orgs
+    let orgs: { id: string; name: string; role: string }[] = []
     try {
-      // TODO: scope to authenticated user
       orgs = await stub.listUserOrgs({ userId: 'system' })
     } catch {
       // No orgs yet
     }
 
-    const effectiveOrgId = orgId || orgs[0]?.id || null
-
-    if (effectiveOrgId) {
-      try {
-        const result = await stub.listProjects({ orgId: effectiveOrgId })
-        projects = result.map((p) => ({ id: p.id, name: p.name }))
-      } catch {
-        // No projects yet
-      }
+    // Load projects for current org
+    let projects: { id: string; name: string }[] = []
+    try {
+      const result = await stub.listProjects({ orgId })
+      projects = result.map((p) => ({ id: p.id, name: p.name }))
+    } catch {
+      // No projects yet
     }
-
-    // Extract current project id from pathname
-    const projectMatch = url.pathname.match(/^\/projects\/(.+)/)
-    const currentProjectId = projectMatch?.[1] || null
 
     // Try to get current user session
     let user: { name: string; email: string; image?: string | null } | null = null
@@ -134,56 +148,68 @@ export const app = new Spiceflow({
     }
 
     return (
-      <html lang="en">
-        <Head>
-          <Head.Meta charSet="UTF-8" />
-          <Head.Meta name="viewport" content="width=device-width, initial-scale=1.0" />
-          <Head.Title>Sigillo — Secret Manager</Head.Title>
-        </Head>
-        <body className="relative min-h-screen bg-background font-sans antialiased">
-          <ProgressBar />
-          <div className="isolate relative flex max-w-[1200px] mx-auto min-h-[min(400px,100vh)]">
-            <Sidebar
-              orgs={orgs}
-              projects={projects}
-              currentOrgId={effectiveOrgId}
-              currentProjectId={currentProjectId}
-              user={user}
-              createProjectAction={createProjectAction}
-            />
-            <main className="flex-1 p-6 overflow-auto">
-              {children ?? (
-                <div className="flex items-center justify-center h-full text-muted-foreground">
-                  Page not found
-                </div>
-              )}
-            </main>
-          </div>
-        </body>
-      </html>
+      <div className="isolate relative flex max-w-[1200px] mx-auto min-h-[min(400px,100vh)]">
+        <Sidebar
+          orgs={orgs}
+          projects={projects}
+          currentOrgId={orgId}
+          currentProjectId={projectId}
+          user={user}
+          createProjectAction={createProjectAction}
+        />
+        <main className="flex-1 p-6 overflow-auto">
+          {children}
+        </main>
+      </div>
     )
   })
 
-  // ── Dashboard ─────────────────────────────────────────────────
-  .page('/', async () => {
+  // ── Root redirect → first org ─────────────────────────────────
+  .get('/', async ({ request }) => {
+    const stub = getSecretsStoreStub()
+    const base = new URL(request.url)
+    try {
+      const orgs = await stub.listUserOrgs({ userId: 'system' })
+      if (orgs[0]) {
+        return Response.redirect(new URL(`/orgs/${orgs[0].id}`, base).toString(), 302)
+      }
+    } catch {}
+    return Response.redirect(new URL('/new-org', base).toString(), 302)
+  })
+
+  // ── Org root redirect → first project ─────────────────────────
+  .get('/orgs/:orgId', async ({ params, request }) => {
+    const stub = getSecretsStoreStub()
+    const base = new URL(request.url)
+    try {
+      const projects = await stub.listProjects({ orgId: params.orgId })
+      if (projects[0]) {
+        return Response.redirect(new URL(`/orgs/${params.orgId}/projects/${projects[0].id}`, base).toString(), 302)
+      }
+    } catch {}
+    // No projects — show empty state
+    return null
+  })
+
+  // ── Org empty state (no projects) ─────────────────────────────
+  .page('/orgs/:orgId', async () => {
     return (
       <div className="max-w-3xl">
-        <h1 className="text-2xl font-bold tracking-tight mb-2">Dashboard</h1>
+        <h1 className="text-2xl font-bold tracking-tight mb-2">No projects yet</h1>
         <p className="text-muted-foreground">
-          Select an organization and project from the sidebar, or create new ones to get started.
+          Create your first project using the sidebar.
         </p>
       </div>
     )
   })
 
-  // ── New Organization page ───────────────────────────────────────
+  // ── New Organization page (standalone, no sidebar) ─────────────
   .page('/new-org', async () => {
     async function createOrgAction(_prev: string, formData: FormData) {
       'use server'
       const name = formData.get('name') as string
       if (!name) return 'Name is required'
       const stub = getSecretsStoreStub()
-      // TODO: get userId from session
       const org = await stub.createOrg({ name, userId: 'system' })
       return `Created:${org.id}`
     }
@@ -199,15 +225,23 @@ export const app = new Spiceflow({
     )
   })
 
-  // ── Project detail ────────────────────────────────────────────
-  .page('/projects/:id', async ({ params, request }) => {
+  // ── Project root redirect → first env ─────────────────────────
+  .get('/orgs/:orgId/projects/:id', async ({ params, request }) => {
     const stub = getSecretsStoreStub()
-    const url = new URL(request.url)
-    const orgId = url.searchParams.get('orgId') || ''
+    const environments = await stub.listEnvironments({ projectId: params.id })
+    const firstEnvId = environments[0]?.id || '_'
+    const base = new URL(request.url)
+    return Response.redirect(new URL(`/orgs/${params.orgId}/projects/${params.id}/envs/${firstEnvId}`, base).toString(), 302)
+  })
+
+  // ── Project detail with env ───────────────────────────────────
+  .page('/orgs/:orgId/projects/:projectId/envs/:envId', async ({ params }) => {
+    const stub = getSecretsStoreStub()
+    const { orgId, projectId, envId } = params
 
     // Load project info
     const allProjects = await stub.listProjects({ orgId })
-    const project = allProjects.find((p) => p.id === params.id)
+    const project = allProjects.find((p) => p.id === projectId)
     if (!project) {
       return (
         <div className="text-center py-12">
@@ -218,12 +252,11 @@ export const app = new Spiceflow({
     }
 
     // Load environments
-    const environments = await stub.listEnvironments({ projectId: params.id })
+    const environments = await stub.listEnvironments({ projectId })
 
-    // Resolve selected env from URL or default to first
-    const envIdParam = url.searchParams.get('envId')
-    const selectedEnvId = envIdParam && environments.some((e) => e.id === envIdParam)
-      ? envIdParam
+    // Resolve env from path param
+    const selectedEnvId = environments.some((e) => e.id === envId)
+      ? envId
       : environments[0]?.id || null
 
     // Load secrets for the selected environment
@@ -236,7 +269,7 @@ export const app = new Spiceflow({
       <div>
         <ProjectPage
           key={selectedEnvId}
-          projectId={params.id}
+          projectId={projectId}
           projectName={project.name}
           orgId={orgId}
           environments={environments}
@@ -251,7 +284,7 @@ export const app = new Spiceflow({
     )
   })
 
-  // ── Device flow verification page ──────────────────────────────
+  // ── Device flow verification page (standalone, no sidebar) ─────
   .page('/device', async () => {
     return (
       <div className="flex justify-center items-center min-h-[60vh]">
@@ -381,8 +414,8 @@ export const app = new Spiceflow({
     async handler({ request, params }) {
       const body = await request.json()
       const stub = getSecretsStoreStub()
-      const env = await stub.createEnvironment({ projectId: params.projectId, name: body.name, slug: body.slug })
-      return { ok: true, ...env }
+      const envResult = await stub.createEnvironment({ projectId: params.projectId, name: body.name, slug: body.slug })
+      return { ok: true, ...envResult }
     },
   })
 

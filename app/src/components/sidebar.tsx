@@ -114,7 +114,7 @@ export function Sidebar({
                 key={org.id}
                 onClick={() => {
                   setOrgDropdownOpen(false);
-                  router.push(`/?orgId=${org.id}`);
+                  router.push(`/orgs/${org.id}`);
                 }}
                 className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent cursor-pointer"
               >
@@ -158,7 +158,7 @@ export function Sidebar({
             return (
               <Link
                 key={project.id}
-                href={`/projects/${project.id}?orgId=${currentOrgId}`}
+                href={`/orgs/${currentOrgId}/projects/${project.id}`}
                 className={cn(
                   "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-sidebar-accent",
                   isActive && "bg-sidebar-accent text-foreground font-medium",
@@ -255,7 +255,7 @@ export function Sidebar({
                 const projectId = result.split(":")[1];
                 setShowNewProject(false);
                 setProjectMessage("");
-                router.push(`/projects/${projectId}?orgId=${currentOrgId}`);
+                router.push(`/orgs/${currentOrgId}/projects/${projectId}`);
               } else {
                 setProjectMessage(result);
               }
