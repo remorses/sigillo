@@ -6,6 +6,7 @@ import { Spiceflow } from 'spiceflow'
 import { Head, Link } from 'spiceflow/react'
 import { env } from 'cloudflare:workers'
 import type { AuthStore } from './auth-store.ts'
+import { GoogleSignInButton } from './components/google-sign-in-button.tsx'
 
 export { AuthStore } from './auth-store.ts'
 
@@ -55,20 +56,7 @@ export const app = new Spiceflow()
         <div style={{ textAlign: 'center', maxWidth: 400 }}>
           <h1>Sigillo</h1>
           <p>Sign in to continue</p>
-          <a
-            href="/api/auth/sign-in/social?provider=google&callbackURL=/sign-in"
-            style={{
-              display: 'inline-block',
-              padding: '12px 24px',
-              background: '#4285f4',
-              color: 'white',
-              borderRadius: 8,
-              textDecoration: 'none',
-              fontWeight: 600,
-            }}
-          >
-            Sign in with Google
-          </a>
+          <GoogleSignInButton />
         </div>
       </div>
     )
