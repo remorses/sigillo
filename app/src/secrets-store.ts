@@ -48,7 +48,12 @@ export class SecretsStore extends DurableObject<Env> {
               clientId: this.env.OAUTH_CLIENT_ID,
               // Public client — no clientSecret. PKCE provides security.
               clientSecret: '',
-              discoveryUrl: `${this.env.PROVIDER_URL}/.well-known/openid-configuration`,
+              // Explicit URLs — avoids runtime fetch to provider for discovery.
+              // The discovery URL requires the provider to be reachable at
+              // startup which breaks local dev when DNS hasn't propagated.
+              authorizationUrl: `${this.env.PROVIDER_URL}/api/auth/oauth2/authorize`,
+              tokenUrl: `${this.env.PROVIDER_URL}/api/auth/oauth2/token`,
+              userInfoUrl: `${this.env.PROVIDER_URL}/api/auth/oauth2/userinfo`,
               scopes: ['openid', 'email', 'profile'],
               pkce: true,
             },

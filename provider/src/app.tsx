@@ -18,12 +18,14 @@ export const app = new Spiceflow()
 
   // ── BetterAuth middleware ──────────────────────────────────────
   // Forward /api/auth/* requests to the DO's BetterAuth handler.
-  // This replaces the custom fetch handler — all routing goes through spiceflow.
+  // Falls through to spiceflow routes on 404 so we can register our own
+  // routes under /api/auth/* (e.g. .well-known, custom endpoints).
   .use(async ({ request }, next) => {
     const url = new URL(request.url)
     if (url.pathname.startsWith('/api/auth')) {
       const stub = getAuthStoreStub()
-      return stub.authHandler(request)
+      const res = await stub.authHandler(request)
+      if (res.ok || res.status !== 404) return res
     }
     return next()
   })

@@ -65,6 +65,19 @@ export const app = new Spiceflow({
   allowedActionOrigins: [/\.kimaki\.dev$/],
 })
 
+  // ── BetterAuth middleware ──────────────────────────────────────
+  // Forward /api/auth/* requests to the DO's BetterAuth handler.
+  // Falls through on 404 so we can register our own /api/auth/* routes.
+  .use(async ({ request }, next) => {
+    const url = new URL(request.url)
+    if (url.pathname.startsWith('/api/auth')) {
+      const stub = getSecretsStoreStub()
+      const res = await stub.authHandler(request)
+      if (res.ok || res.status !== 404) return res
+    }
+    return next()
+  })
+
   // ── Layout 1: HTML shell ──────────────────────────────────────
   .layout('/*', async ({ children }) => {
     return (
@@ -502,18 +515,8 @@ export const app = new Spiceflow({
 
 export type App = typeof app
 
-// Cloudflare Worker entry — routes auth to DO, everything else to Spiceflow
 export default {
   async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url)
-
-    // Forward auth requests to BetterAuth inside the DO via RPC
-    if (url.pathname.startsWith('/api/auth')) {
-      const stub = getSecretsStoreStub()
-      return stub.authHandler(request)
-    }
-
-    // Everything else goes through Spiceflow
     return app.handle(request)
   },
 } satisfies ExportedHandler<Env>
