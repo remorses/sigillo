@@ -59,6 +59,14 @@ async function fetchSecretsForEnv(envId: string) {
   return stub.listSecrets({ environmentId: envId })
 }
 
+async function saveSecretsAction(edits: { id: string; name?: string; value?: string }[]) {
+  'use server'
+  const stub = getSecretsStoreStub()
+  for (const edit of edits) {
+    await stub.updateSecret({ id: edit.id, name: edit.name, value: edit.value })
+  }
+}
+
 async function deleteEnvAction(id: string) {
   'use server'
   const stub = getSecretsStoreStub()
@@ -113,6 +121,18 @@ export const app = new Spiceflow({
     const projectMatch = url.pathname.match(/^\/projects\/(.+)/)
     const currentProjectId = projectMatch?.[1] || null
 
+    // Try to get current user session
+    let user: { name: string; email: string; image?: string | null } | null = null
+    try {
+      const session = await stub.getSession(request)
+      if (session) {
+        const u = session.user as { name?: string; email?: string; image?: string | null } | undefined
+        user = { name: u?.name || 'User', email: u?.email || '', image: u?.image }
+      }
+    } catch {
+      // Not authenticated yet
+    }
+
     return (
       <html lang="en">
         <Head>
@@ -128,6 +148,7 @@ export const app = new Spiceflow({
               projects={projects}
               currentOrgId={effectiveOrgId}
               currentProjectId={currentProjectId}
+              user={user}
               createProjectAction={createProjectAction}
             />
             <main className="flex-1 p-6 overflow-auto">
@@ -199,35 +220,32 @@ export const app = new Spiceflow({
     // Load environments
     const environments = await stub.listEnvironments({ projectId: params.id })
 
-    // Select first environment by default
-    const initialEnvId = environments[0]?.id || null
+    // Resolve selected env from URL or default to first
+    const envIdParam = url.searchParams.get('envId')
+    const selectedEnvId = envIdParam && environments.some((e) => e.id === envIdParam)
+      ? envIdParam
+      : environments[0]?.id || null
 
-    // Load secrets for the initial environment
-    let initialSecrets: { id: string; name: string; createdAt: number; updatedAt: number; createdBy: { id: string; name: string } | null }[] = []
-    if (initialEnvId) {
-      initialSecrets = await stub.listSecrets({ environmentId: initialEnvId })
-    }
-
-    // Wrap createEnvAction to inject projectId
-    async function createEnvForProject(_prev: string, formData: FormData) {
-      'use server'
-      formData.set('projectId', params.id)
-      return createEnvAction(_prev, formData)
+    // Load secrets for the selected environment
+    let secrets: { id: string; name: string; createdAt: number; updatedAt: number; createdBy: { id: string; name: string } | null }[] = []
+    if (selectedEnvId) {
+      secrets = await stub.listSecrets({ environmentId: selectedEnvId })
     }
 
     return (
       <div>
-        <h1 className="text-2xl font-bold tracking-tight mb-6">{project.name}</h1>
         <ProjectPage
+          key={selectedEnvId}
+          projectId={params.id}
           projectName={project.name}
+          orgId={orgId}
           environments={environments}
-          initialEnvId={initialEnvId}
-          initialSecrets={initialSecrets}
+          selectedEnvId={selectedEnvId}
+          secrets={secrets}
           fetchSecretsForEnv={fetchSecretsForEnv}
           deleteSecretAction={deleteSecretAction}
           createSecretAction={createSecretAction}
-          deleteEnvAction={deleteEnvAction}
-          createEnvAction={createEnvForProject}
+          saveSecretsAction={saveSecretsAction}
         />
       </div>
     )
