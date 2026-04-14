@@ -63,8 +63,15 @@ export async function deleteSecretAction(id: string) {
   await stub.deleteSecret({ id })
 }
 
-export async function saveSecretsAction(edits: { id: string; name?: string; value?: string }[]) {
-  if (edits.length === 0) return
+// Save edited secrets to the current environment and optionally apply
+// the same changes to additional environments (by name-based upsert).
+// environmentIds[0] is the current env (edits applied by secret ID),
+// the rest are cross-env targets (edits applied by secret name).
+export async function saveSecretsAction(
+  edits: { id: string; name: string; value?: string }[],
+  environmentIds: string[],
+) {
+  if (edits.length === 0 || environmentIds.length === 0) return
   const stub = getSecretsStoreStub()
   const session = await requireSession(stub)
   // Verify org membership using the first secret — all secrets in a batch
@@ -72,8 +79,32 @@ export async function saveSecretsAction(edits: { id: string; name?: string; valu
   const orgId = await stub.getOrgIdForSecret({ secretId: edits[0]!.id })
   if (!orgId) throw new Error('Secret not found')
   await stub.requireOrgMember({ userId: session.userId, orgId })
+
+  const currentEnvId = environmentIds[0]!
+  const otherEnvIds = environmentIds.slice(1)
+
+  // Apply edits to current environment by secret ID (supports rename + value change)
   for (const edit of edits) {
     await stub.updateSecret({ id: edit.id, name: edit.name, value: edit.value })
+  }
+
+  // Apply value changes to other environments by name-based upsert.
+  // Only secrets with a value change are propagated — renames don't
+  // cross environments since names may differ intentionally.
+  const valueEdits = edits.filter((e) => e.value !== undefined)
+  for (const envId of otherEnvIds) {
+    // Verify the target env belongs to the same org
+    const targetOrgId = await stub.getOrgIdForEnvironment({ environmentId: envId })
+    if (targetOrgId !== orgId) continue
+    for (const edit of valueEdits) {
+      // Use the final name (edited or original) as the key for upsert
+      await stub.upsertSecretByName({
+        environmentId: envId,
+        name: edit.name,
+        value: edit.value!,
+        createdBy: session.userId,
+      })
+    }
   }
 }
 

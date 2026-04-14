@@ -19,7 +19,7 @@ import migrations from '../../db/drizzle-app/migrations.js'
 import * as schema from 'db/src/app-schema.ts'
 import { betterAuth } from 'better-auth'
 import { genericOAuth, deviceAuthorization } from 'better-auth/plugins'
-import { drizzleAdapter } from 'better-auth/adapters/drizzle'
+import { drizzleAdapter } from '@better-auth/drizzle-adapter/relations-v2'
 
 export class SecretsStore extends DurableObject<Env> {
   db: durable.DrizzleSqliteDODatabase<typeof schema, typeof schema.relations>
@@ -269,6 +269,24 @@ export class SecretsStore extends DurableObject<Env> {
     if (!row) return null
     const value = await this.decrypt({ encrypted: row.valueEncrypted, iv: row.iv })
     return { id: row.id, name: row.name, value, environmentId: row.environmentId, createdAt: row.createdAt, updatedAt: row.updatedAt }
+  }
+
+  // Upsert a secret by name in a target environment.
+  // If a secret with the same name exists, update its value. Otherwise create it.
+  // Used when applying edits across multiple environments.
+  async upsertSecretByName({ environmentId, name, value, createdBy }: { environmentId: string; name: string; value: string; createdBy: string }) {
+    const existing = this.db.query.secret.findFirst({
+      where: { environmentId, name },
+    }).sync()
+    if (existing) {
+      const { encrypted, iv } = await this.encrypt({ plaintext: value })
+      this.db.update(schema.secret)
+        .set({ valueEncrypted: encrypted, iv, updatedAt: Date.now() })
+        .where(orm.eq(schema.secret.id, existing.id))
+        .run()
+      return { id: existing.id }
+    }
+    return this.createSecret({ environmentId, name, value, createdBy })
   }
 
   async deleteSecret({ id }: { id: string }) {

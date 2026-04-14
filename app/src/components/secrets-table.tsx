@@ -6,7 +6,7 @@
 
 "use client";
 
-import { EyeIcon, EyeOffIcon, TrashIcon, UploadIcon, PlusIcon, KeyIcon } from "lucide-react";
+import { EyeIcon, EyeOffIcon, TrashIcon, UploadIcon, PlusIcon, KeyIcon, CheckIcon } from "lucide-react";
 import { useState, useCallback } from "react";
 import { getRouter } from "spiceflow/react";
 import { Button } from "sigillo-app/src/components/ui/button";
@@ -119,13 +119,17 @@ function SecretValueCell({
   );
 }
 
+type Environment = { id: string; name: string; slug: string };
+
 export function SecretsTable({
   secrets,
   environmentId,
+  environments,
   allVisible,
 }: {
   secrets: Secret[];
   environmentId: string;
+  environments: Environment[];
   allVisible: boolean;
 }) {
   const router = getRouter<App>();
@@ -133,6 +137,7 @@ export function SecretsTable({
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [saveOpen, setSaveOpen] = useState(false);
 
   // Per-row visibility overrides (only used when allVisible is false)
   const [rowVisible, setRowVisible] = useState<Record<string, boolean>>({});
@@ -155,25 +160,17 @@ export function SecretsTable({
     return false;
   });
 
-  const handleSave = useCallback(async () => {
-    if (dirtySecrets.length === 0) return;
-    setSaving(true);
-    try {
-      const payload = dirtySecrets.map((s) => {
-        const e = edits[s.id]!;
-        return {
-          id: s.id,
-          name: e.name !== undefined && e.name !== s.name ? e.name : undefined,
-          value: e.value,
-        };
-      });
-      await saveSecretsAction(payload);
-      setEdits({});
-      await router.refresh();
-    } finally {
-      setSaving(false);
-    }
-  }, [dirtySecrets, edits, saveSecretsAction, router]);
+  const buildPayload = useCallback(() => {
+    return dirtySecrets.map((s) => {
+      const e = edits[s.id]!;
+      return {
+        id: s.id,
+        // Always include the current name so cross-env upsert knows the key
+        name: e.name !== undefined ? e.name : s.name,
+        value: e.value,
+      };
+    });
+  }, [dirtySecrets, edits]);
 
   const handleImportText = useCallback(async (text: string) => {
     const parsed = parseEnv(text);
@@ -324,10 +321,30 @@ export function SecretsTable({
 
       <ImportEnvDialog open={importOpen} onOpenChange={setImportOpen} importing={importing} onImport={handleImportText} />
 
+      <SaveToEnvsDialog
+        open={saveOpen}
+        onOpenChange={setSaveOpen}
+        environments={environments}
+        currentEnvId={environmentId}
+        dirtyCount={dirtySecrets.length}
+        saving={saving}
+        onSave={async (envIds) => {
+          setSaving(true);
+          try {
+            await saveSecretsAction(buildPayload(), envIds);
+            setEdits({});
+            setSaveOpen(false);
+            await router.refresh();
+          } finally {
+            setSaving(false);
+          }
+        }}
+      />
+
       {/* Save bar */}
       {dirtySecrets.length > 0 && (
         <div className="flex justify-end mt-3">
-          <Button onClick={handleSave} loading={saving}>
+          <Button onClick={() => setSaveOpen(true)}>
             Save {dirtySecrets.length} secret{dirtySecrets.length > 1 ? "s" : ""}
           </Button>
         </div>
@@ -381,6 +398,82 @@ function ImportEnvDialog({
             </Button>
           </DialogFooter>
         </form>
+      </DialogPopup>
+    </Dialog>
+  );
+}
+
+function SaveToEnvsDialog({
+  open,
+  onOpenChange,
+  environments,
+  currentEnvId,
+  dirtyCount,
+  saving,
+  onSave,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  environments: Environment[];
+  currentEnvId: string;
+  dirtyCount: number;
+  saving: boolean;
+  onSave: (envIds: string[]) => Promise<void>;
+}) {
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
+
+  // Current env is always first and checked, others default to unchecked
+  const toggle = (id: string) => setChecked((prev) => ({ ...prev, [id]: !prev[id] }));
+
+  const selectedIds = [
+    currentEnvId,
+    ...environments.filter((e) => e.id !== currentEnvId && checked[e.id]).map((e) => e.id),
+  ];
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogPopup>
+        <DialogHeader>
+          <DialogTitle>Save {dirtyCount} secret{dirtyCount > 1 ? "s" : ""}</DialogTitle>
+          <DialogDescription>
+            Choose which environments to apply the changes to.
+            Secrets are matched by name — missing keys will be created.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="px-6 pb-2 flex flex-col gap-1.5">
+          {environments.map((env) => {
+            const isCurrent = env.id === currentEnvId;
+            const isChecked = isCurrent || (checked[env.id] ?? false);
+            return (
+              <label
+                key={env.id}
+                className={`flex items-center gap-3 rounded-md px-3 py-2 cursor-pointer transition-colors ${isChecked ? "bg-primary/5" : "hover:bg-muted/50"} ${isCurrent ? "opacity-80" : ""}`}
+              >
+                <span
+                  className={`flex items-center justify-center size-4 rounded border transition-colors ${isChecked ? "bg-primary border-primary text-primary-foreground" : "border-input"}`}
+                  aria-hidden
+                >
+                  {isChecked && <CheckIcon className="size-3" />}
+                </span>
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  disabled={isCurrent}
+                  onChange={() => toggle(env.id)}
+                  className="sr-only"
+                />
+                <span className="text-sm font-medium">{env.name}</span>
+                {isCurrent && <span className="text-xs text-muted-foreground ml-auto">current</span>}
+              </label>
+            );
+          })}
+        </div>
+        <DialogFooter variant="bare" className="px-6 pb-4 pt-2">
+          <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+          <Button loading={saving} onClick={() => onSave(selectedIds)}>
+            Save to {selectedIds.length} environment{selectedIds.length > 1 ? "s" : ""}
+          </Button>
+        </DialogFooter>
       </DialogPopup>
     </Dialog>
   );
