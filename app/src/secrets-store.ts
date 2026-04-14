@@ -5,7 +5,7 @@
 // BetterAuth config:
 // - genericOAuth plugin: authenticates via the sigillo middleman provider
 // - Public PKCE client: no client_secret, security via PKCE
-// - Client ID read from config table (populated by setup RPC at first deploy)
+// - Client ID from OAUTH_CLIENT_ID env var (set via register-client script)
 //
 // Crypto:
 // - AES-256-GCM encryption for secrets via Web Crypto API
@@ -34,14 +34,9 @@ export class SecretsStore extends DurableObject<Env> {
 
   // ── Auth ──────────────────────────────────────────────────────
 
-  // Build the BetterAuth instance. Requires the client_id from config table
-  // (populated by setup RPC at first deploy).
+  // Build the BetterAuth instance. Client ID comes from OAUTH_CLIENT_ID
+  // env var, set via the register-client script before first deploy.
   private getAuth() {
-    const row = this.db.query.config.findFirst({ where: { key: 'middleman_client_id' } }).sync()
-    if (!row) {
-      throw new Error('OAuth client_id not found in config table. Run /api/setup first.')
-    }
-
     return betterAuth({
       secret: this.env.BETTER_AUTH_SECRET,
       database: drizzleAdapter(this.db, { provider: 'sqlite' }),
@@ -50,7 +45,7 @@ export class SecretsStore extends DurableObject<Env> {
           config: [
             {
               providerId: 'sigillo',
-              clientId: row.value,
+              clientId: this.env.OAUTH_CLIENT_ID,
               // Public client — no clientSecret. PKCE provides security.
               clientSecret: '',
               discoveryUrl: `${this.env.PROVIDER_URL}/.well-known/openid-configuration`,
@@ -81,46 +76,6 @@ export class SecretsStore extends DurableObject<Env> {
     const session = await auth.api.getSession({ headers: request.headers })
     if (!session) return null
     return { userId: session.user.id, user: { id: session.user.id, name: session.user.name, email: session.user.email } }
-  }
-
-  // ── Setup ─────────────────────────────────────────────────────
-
-  // RPC: register with the middleman provider (called once at first deploy).
-  // Registers as a PUBLIC client (token_endpoint_auth_method: "none").
-  // BetterAuth's oauthProvider only allows unauthenticated registration
-  // for public clients. Security comes from PKCE, not a client_secret.
-  async setup({ appUrl }: { appUrl: string }): Promise<{ clientId: string }> {
-    // Check if already registered
-    const existing = this.db.query.config.findFirst({ where: { key: 'middleman_client_id' } }).sync()
-    if (existing) {
-      return { clientId: existing.value }
-    }
-
-    const callbackUrl = `${appUrl}/api/auth/oauth2/callback/sigillo`
-
-    const response = await fetch(`${this.env.PROVIDER_URL}/api/auth/oauth2/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_name: `Sigillo Self-Hosted (${appUrl})`,
-        redirect_uris: [callbackUrl],
-        grant_types: ['authorization_code', 'refresh_token'],
-        response_types: ['code'],
-        scope: 'openid email profile',
-        token_endpoint_auth_method: 'none',
-      }),
-    })
-
-    if (!response.ok) {
-      const body = await response.text()
-      throw new Error(`Failed to register with provider: ${response.status} ${body}`)
-    }
-
-    const client = (await response.json()) as { client_id: string }
-
-    this.db.insert(schema.config).values({ key: 'middleman_client_id', value: client.client_id }).run()
-
-    return { clientId: client.client_id }
   }
 
   // ── Org CRUD ───────────────────────────────────────────────────

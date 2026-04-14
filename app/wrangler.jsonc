@@ -1,6 +1,6 @@
 {
   "name": "sigillo-app",
-  "compatibility_date": "2025-01-01",
+  "compatibility_date": "2025-06-01",
   "compatibility_flags": ["nodejs_compat"],
   "main": "spiceflow/cloudflare-entrypoint",
   "rules": [
@@ -18,7 +18,7 @@
     "PROVIDER_URL": "https://auth.sigillo.dev"
   },
   "secrets": {
-    "required": ["BETTER_AUTH_SECRET", "ENCRYPTION_KEY"]
+    "required": ["BETTER_AUTH_SECRET", "ENCRYPTION_KEY", "OAUTH_CLIENT_ID"]
   },
   "env": {
     "preview": {
@@ -35,7 +35,7 @@
         "PROVIDER_URL": "https://auth.preview.sigillo.dev"
       },
       "secrets": {
-        "required": ["BETTER_AUTH_SECRET", "ENCRYPTION_KEY"]
+        "required": ["BETTER_AUTH_SECRET", "ENCRYPTION_KEY", "OAUTH_CLIENT_ID"]
       }
     }
   }

@@ -125,16 +125,6 @@ export const DEFAULT_ENVIRONMENTS = [
   { name: 'Production', slug: 'production' },
 ] as const
 
-// ── Config key-value table ──────────────────────────────────────────
-// Simple key-value store for app config (e.g. OAuth client_id from
-// dynamic registration). Replaces the need for a separate KV binding.
-
-export const config = sqliteCore.sqliteTable('config', {
-  key: sqliteCore.text('key').primaryKey().notNull(),
-  value: sqliteCore.text('value').notNull(),
-  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
-})
-
 // ── deviceCode table (device authorization plugin, RFC 8628) ────────
 // Stores pending device codes for CLI/agent login flows.
 // Agents call /api/auth/device/code to get a code, user enters it at /device.
@@ -157,7 +147,7 @@ export const deviceCode = sqliteCore.sqliteTable('device_code', {
 // ── Relations (v2 API) ──────────────────────────────────────────────
 
 export const relations = defineRelations(
-  { user, session, account, verification, org, orgMember, project, environment, secret, config, deviceCode },
+  { user, session, account, verification, org, orgMember, project, environment, secret, deviceCode },
   (r) => ({
     user: {
       sessions: r.many.session(),
@@ -198,7 +188,6 @@ export const relations = defineRelations(
       environment: r.one.environment({ from: r.secret.environmentId, to: r.environment.id }),
       creator: r.one.user({ from: r.secret.createdBy, to: r.user.id }),
     },
-    config: {},
     deviceCode: {
       user: r.one.user({ from: r.deviceCode.userId, to: r.user.id }),
     },
