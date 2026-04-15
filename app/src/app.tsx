@@ -60,10 +60,7 @@ export const app = new Spiceflow({
   })
 
   // ── Layout 1: HTML shell ──────────────────────────────────────
-  .layout('/*', async ({ children, request }) => {
-    const url = new URL(request.url)
-    // Project pages render their own TabBar with border — skip the plain border
-    const isProjectPage = /^\/orgs\/[^/]+\/projects\/[^/]+/.test(url.pathname)
+  .layout('/*', async ({ children }) => {
     return (
       <html lang="en">
         <Head>
@@ -71,14 +68,18 @@ export const app = new Spiceflow({
           <Head.Meta name="viewport" content="width=device-width, initial-scale=1.0" />
           <Head.Title>Sigillo — Secret Manager</Head.Title>
         </Head>
-        <body className="relative flex flex-col  bg-background font-sans antialiased">
+        <body className="relative flex flex-col min-h-screen bg-background font-sans antialiased">
           <ProgressBar />
-          <Navbar showBorder={!isProjectPage} />
-          {children ?? (
-            <div className="flex items-center justify-center h-full text-muted-foreground">
-              Page not found
-            </div>
-          )}
+          <Navbar />
+          <div className="border-t border-border" />
+          <div className="flex flex-col max-w-(--content-max-width) mx-auto w-full border-x border-border">
+            {children ?? (
+              <div className="flex items-center justify-center h-full text-muted-foreground">
+                Page not found
+              </div>
+            )}
+          </div>
+          <div className="border-t border-border" />
           <Footer />
         </body>
       </html>
@@ -769,21 +770,23 @@ function TabBar({ orgId, projectId, pathname }: { orgId: string; projectId: stri
   )
 }
 
-function Navbar({ showBorder = true }: { showBorder?: boolean }) {
+function Navbar() {
   return (
-    <nav className={`sticky top-0 z-50 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 ${showBorder ? 'border-b border-border' : ''}`}>
-      <div className="flex h-14 items-center justify-between px-6 max-w-(--content-max-width) mx-auto">
-        <Link href="/" className="text-foreground hover:opacity-80 transition-opacity">
-          <SigilloLogo className="h-[36px] w-auto shrink-0" />
-        </Link>
-        <a
-          href="https://github.com/remorses/sigillo"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <GitHubIcon className="size-5" />
-        </a>
+    <nav className="sticky top-0 z-50 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="max-w-(--content-max-width) mx-auto border-x border-border">
+        <div className="flex h-14 items-center justify-between px-6">
+          <Link href="/" className="text-foreground hover:opacity-80 transition-opacity">
+            <SigilloLogo className="h-[36px] w-auto shrink-0" />
+          </Link>
+          <a
+            href="https://github.com/remorses/sigillo"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <GitHubIcon className="size-5" />
+          </a>
+        </div>
       </div>
     </nav>
   )
@@ -799,9 +802,13 @@ function XIcon({ className }: { className?: string }) {
 
 function Footer() {
   return (
-    <footer className="border-t border-border">
-      <div className="flex items-center justify-between px-6 py-4 max-w-(--content-max-width) mx-auto">
-        <div className="flex items-center gap-4">
+    <footer className="flex-1 flex flex-col justify-end">
+      <div className="max-w-(--content-max-width) mx-auto w-full border-x border-border flex-1" />
+      <div className="max-w-(--content-max-width) mx-auto w-full border-x border-border">
+        <div className="flex items-center justify-end gap-4 px-6 py-4">
+          <span className="text-xs text-muted-foreground">
+            © {new Date().getFullYear()} Sigillo
+          </span>
           <a
             href="https://github.com/remorses/sigillo"
             target="_blank"
@@ -819,9 +826,6 @@ function Footer() {
             <XIcon className="size-3.5" />
           </a>
         </div>
-        <span className="text-xs text-muted-foreground">
-          © {new Date().getFullYear()} Sigillo
-        </span>
       </div>
     </footer>
   )
