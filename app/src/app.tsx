@@ -113,7 +113,10 @@ export const app = new Spiceflow({
       id: m.org!.id!, name: m.org!.name!, role: m.role,
       createdAt: m.org!.createdAt!, updatedAt: m.org!.updatedAt!,
     }))
-    const projects = allProjects.map((p) => ({ id: p.id, name: p.name }))
+    const projects = allProjects.map((p) => {
+      const sortedEnvs = [...(p.environments || [])].sort((a, b) => a.createdAt - b.createdAt)
+      return { id: p.id, name: p.name, firstEnvId: sortedEnvs[0]?.id ?? null }
+    })
     const user = { name: session.user.name || 'User', email: session.user.email || '' }
 
     return (
@@ -164,10 +167,13 @@ export const app = new Spiceflow({
     try {
       const projects = await db.query.project.findMany({
         where: { orgId: params.orgId },
+        with: { environments: true },
         orderBy: { createdAt: 'desc' },
       })
       if (projects[0]) {
-        return Response.redirect(new URL(`/orgs/${params.orgId}/projects/${projects[0].id}`, base).toString(), 302)
+        const sortedEnvs = [...(projects[0].environments || [])].sort((a, b) => a.createdAt - b.createdAt)
+        const envSuffix = sortedEnvs[0] ? `/envs/${sortedEnvs[0].id}` : ''
+        return Response.redirect(new URL(`/orgs/${params.orgId}/projects/${projects[0].id}${envSuffix}`, base).toString(), 302)
       }
     } catch {}
     return null
@@ -631,7 +637,7 @@ function TabBar({ orgId, projectId, pathname }: { orgId: string; projectId: stri
   const envMatch = pathname.match(new RegExp(`^${base}/envs/([^/]+)`))
   const currentEnvBase = envMatch ? `${base}/envs/${envMatch[1]}` : null
   const tabs = [
-    { label: 'Secrets', href: base, active: pathname === base || (pathname.startsWith(`${base}/envs`) && !pathname.endsWith('/event-log')) },
+    { label: 'Secrets', href: currentEnvBase || base, active: pathname === base || (pathname.startsWith(`${base}/envs`) && !pathname.endsWith('/event-log')) },
     { label: 'Environments', href: `${base}/environments`, active: pathname === `${base}/environments` },
     { label: 'Tokens', href: `${base}/tokens`, active: pathname === `${base}/tokens` },
     { label: 'Access', href: `${base}/access`, active: pathname === `${base}/access` },

@@ -52,7 +52,7 @@ export function Sidebar({
   user,
 }: {
   orgs: { id: string; name: string; role: string }[];
-  projects: { id: string; name: string }[];
+  projects: { id: string; name: string; firstEnvId: string | null }[];
   currentOrgId: string | null;
   currentProjectId: string | null;
   user: { name: string; email: string; image?: string | null } | null;
@@ -136,7 +136,9 @@ export function Sidebar({
             return (
               <Link
                 key={project.id}
-                href={`/orgs/${currentOrgId}/projects/${project.id}`}
+                href={project.firstEnvId
+                  ? `/orgs/${currentOrgId}/projects/${project.id}/envs/${project.firstEnvId}`
+                  : `/orgs/${currentOrgId}/projects/${project.id}`}
                 className={cn(
                   "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-sidebar-accent",
                   isActive && "bg-sidebar-accent text-primary font-medium",
