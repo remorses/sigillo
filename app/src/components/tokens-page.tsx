@@ -191,11 +191,16 @@ function CreateTokenDialog({
   }
 
   // After key is created, show the "copy key" step.
-  // dismissible=false prevents backdrop click / Escape from closing the dialog
-  // and losing the only copy of the token. showCloseButton=false hides the X.
+  // Ignore close requests from backdrop click / Escape so the only visible
+  // copy of the token is not lost accidentally. showCloseButton=false hides the X.
   if (createdKey) {
     return (
-      <Dialog open={open} dismissible={false}>
+      <Dialog
+        open={open}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen) handleOpenChange(true)
+        }}
+      >
         <DialogPopup showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>Token created</DialogTitle>

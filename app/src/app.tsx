@@ -283,7 +283,7 @@ export const app = new Spiceflow({
     if (selectedEnvId) {
       const derived = await deriveSecrets(selectedEnvId)
       // Look up user info for each secret's latest event author
-      const userIds = [...new Set(derived.map((d) => d.userId))]
+      const userIds = [...new Set(derived.map((d) => d.userId).filter((userId): userId is string => userId != null))]
       const userMap = new Map<string, { id: string; name: string }>()
       for (const uid of userIds) {
         const u = await db.query.user.findFirst({
@@ -296,7 +296,7 @@ export const app = new Spiceflow({
         id: d.id, name: d.name,
         value: await decrypt(d.valueEncrypted, d.iv),
         createdAt: d.createdAt, updatedAt: d.updatedAt,
-        createdBy: userMap.get(d.userId) ?? null,
+        createdBy: d.userId ? (userMap.get(d.userId) ?? null) : null,
       })))
     }
 

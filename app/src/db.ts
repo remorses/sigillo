@@ -185,7 +185,7 @@ export type DerivedSecret = {
   iv: string
   createdAt: number
   updatedAt: number
-  userId: string
+  userId: string | null
 }
 
 export async function deriveSecrets(environmentId: string): Promise<DerivedSecret[]> {
@@ -202,7 +202,7 @@ export async function deriveSecrets(environmentId: string): Promise<DerivedSecre
     operation: string
     valueEncrypted: string | null
     iv: string | null
-    userId: string
+    userId: string | null
     createdAt: number
     firstCreatedAt: number
   }>()
