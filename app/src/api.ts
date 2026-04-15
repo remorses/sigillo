@@ -14,6 +14,7 @@ import {
   getDb,
   requireApiSession,
   requireApiOrgMember,
+  requireSecretsApiAuth,
   getOrgIdForProject,
   getOrgIdForEnvironment,
   deriveSecrets,
@@ -154,14 +155,13 @@ export const apiApp = new Spiceflow()
   })
 
   // ── Secrets ─────────────────────────────────────────────────────
+  // These routes accept both session cookies and Bearer tokens.
+  // Token auth is scoped to a project (and optionally a single environment).
   .route({
     method: 'GET',
     path: '/api/environments/:environmentId/secrets',
     async handler({ params, request }) {
-      const session = await requireApiSession(request)
-      const orgId = await getOrgIdForEnvironment(params.environmentId)
-      if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      await requireApiOrgMember(session.userId, orgId)
+      await requireSecretsApiAuth(request, params.environmentId)
       const derived = await deriveSecrets(params.environmentId)
       const secrets = derived.map((d) => ({
         id: d.id, name: d.name,
@@ -177,15 +177,13 @@ export const apiApp = new Spiceflow()
     request: z.object({ name: z.string().min(1), value: z.string().min(1) }),
     async handler({ request, params }) {
       const body = await request.json()
-      const session = await requireApiSession(request)
-      const orgId = await getOrgIdForEnvironment(params.environmentId)
-      if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      await requireApiOrgMember(session.userId, orgId)
+      const auth = await requireSecretsApiAuth(request, params.environmentId)
+      const userId = auth.kind === 'session' ? auth.userId : auth.createdBy
       const db = getDb()
       const { encrypted, iv } = await encrypt(body.value)
       const [row] = await db.insert(schema.secretEvent).values({
         environmentId: params.environmentId, name: body.name,
-        operation: 'set', valueEncrypted: encrypted, iv, userId: session.userId,
+        operation: 'set', valueEncrypted: encrypted, iv, userId,
       }).returning({ id: schema.secretEvent.id, name: schema.secretEvent.name })
       return { ok: true, environmentId: params.environmentId, id: row!.id, name: row!.name }
     },
@@ -195,10 +193,7 @@ export const apiApp = new Spiceflow()
     method: 'GET',
     path: '/api/environments/:environmentId/secrets/:name',
     async handler({ params, request }) {
-      const session = await requireApiSession(request)
-      const orgId = await getOrgIdForEnvironment(params.environmentId)
-      if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      await requireApiOrgMember(session.userId, orgId)
+      await requireSecretsApiAuth(request, params.environmentId)
       const derived = await deriveSecrets(params.environmentId)
       const secret = derived.find((d) => d.name === params.name)
       if (!secret) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
@@ -211,14 +206,12 @@ export const apiApp = new Spiceflow()
     method: 'DELETE',
     path: '/api/environments/:environmentId/secrets/:name',
     async handler({ params, request }) {
-      const session = await requireApiSession(request)
-      const orgId = await getOrgIdForEnvironment(params.environmentId)
-      if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      await requireApiOrgMember(session.userId, orgId)
+      const auth = await requireSecretsApiAuth(request, params.environmentId)
+      const userId = auth.kind === 'session' ? auth.userId : auth.createdBy
       const db = getDb()
       await db.insert(schema.secretEvent).values({
         environmentId: params.environmentId, name: params.name,
-        operation: 'delete', userId: session.userId,
+        operation: 'delete', userId,
       })
       return { ok: true, name: params.name }
     },
@@ -231,10 +224,7 @@ export const apiApp = new Spiceflow()
     method: 'GET',
     path: '/api/environments/:environmentId/secrets/download',
     async handler({ params, request }) {
-      const session = await requireApiSession(request)
-      const orgId = await getOrgIdForEnvironment(params.environmentId)
-      if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      await requireApiOrgMember(session.userId, orgId)
+      await requireSecretsApiAuth(request, params.environmentId)
 
       const url = new URL(request.url)
       const format = url.searchParams.get('format') || 'json'
@@ -272,10 +262,8 @@ export const apiApp = new Spiceflow()
     request: z.object({ secrets: z.record(z.string(), z.string()) }),
     async handler({ request, params }) {
       const body = await request.json()
-      const session = await requireApiSession(request)
-      const orgId = await getOrgIdForEnvironment(params.environmentId)
-      if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      await requireApiOrgMember(session.userId, orgId)
+      const auth = await requireSecretsApiAuth(request, params.environmentId)
+      const userId = auth.kind === 'session' ? auth.userId : auth.createdBy
       const db = getDb()
 
       const names: string[] = []
@@ -283,7 +271,7 @@ export const apiApp = new Spiceflow()
         const { encrypted, iv } = await encrypt(value)
         await db.insert(schema.secretEvent).values({
           environmentId: params.environmentId, name,
-          operation: 'set', valueEncrypted: encrypted, iv, userId: session.userId,
+          operation: 'set', valueEncrypted: encrypted, iv, userId,
         })
         names.push(name)
       }

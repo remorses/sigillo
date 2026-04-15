@@ -164,6 +164,15 @@ export async function getOrgIdForEnvironment(environmentId: string) {
   return row?.project?.orgId ?? null
 }
 
+export async function getProjectIdForEnvironment(environmentId: string) {
+  const db = getDb()
+  const row = await db.query.environment.findFirst({
+    where: { id: environmentId },
+    columns: { projectId: true },
+  })
+  return row?.projectId ?? null
+}
+
 // ── Derive current secrets from event log ───────────────────────────
 // Replays the append-only secretEvent log for an environment and returns
 // the current state: last "set" event per name wins, "delete" removes it.
@@ -251,6 +260,73 @@ export async function deriveAllSecretNames(environmentIds: string[]): Promise<st
   }
 
   return [...allNames].sort()
+}
+
+// ── Secrets API auth (session OR bearer token) ─────────────────────
+// Unified auth for secrets API routes. Accepts either:
+// 1. Session cookie → verifies org membership as before
+// 2. Authorization: Bearer <token> → verifies token scope (project + optional env)
+//
+// Returns { userId } for session auth (used for secretEvent.userId on writes)
+// or { userId: null } for token auth (tokens don't have a user identity for writes).
+// The caller should use a system user ID or the token creator's ID for write operations.
+
+function unauthorizedResponse(): Response {
+  return new Response(JSON.stringify({ error: 'unauthorized' }), {
+    status: 401, headers: { 'content-type': 'application/json' },
+  })
+}
+
+function forbiddenResponse(msg = 'forbidden'): Response {
+  return new Response(JSON.stringify({ error: msg }), {
+    status: 403, headers: { 'content-type': 'application/json' },
+  })
+}
+
+export type ApiAuth =
+  | { kind: 'session'; userId: string }
+  | { kind: 'token'; tokenId: string; createdBy: string; projectId: string; environmentId: string | null }
+
+export async function requireSecretsApiAuth(request: Request, environmentId: string): Promise<ApiAuth> {
+  const authHeader = request.headers.get('authorization')
+  const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+
+  if (bearer) {
+    // Token auth path
+    const hashedKey = await hashTokenKey(bearer)
+    const db = getDb()
+    const token = await db.query.apiToken.findFirst({
+      where: { hashedKey },
+      columns: { id: true, projectId: true, environmentId: true, createdBy: true },
+    })
+    if (!token) throw unauthorizedResponse()
+
+    // Verify the requested environment belongs to the token's project
+    const envProjectId = await getProjectIdForEnvironment(environmentId)
+    if (envProjectId !== token.projectId) throw forbiddenResponse('token does not have access to this environment')
+
+    // If token is scoped to a specific environment, enforce it
+    if (token.environmentId && token.environmentId !== environmentId) {
+      throw forbiddenResponse('token is scoped to a different environment')
+    }
+
+    return { kind: 'token', tokenId: token.id, createdBy: token.createdBy, projectId: token.projectId, environmentId: token.environmentId }
+  }
+
+  // Session cookie auth path (existing behavior)
+  const session = await getSession(request.headers)
+  if (!session) throw unauthorizedResponse()
+
+  const orgId = await getOrgIdForEnvironment(environmentId)
+  if (!orgId) throw new Response(JSON.stringify({ error: 'not found' }), { status: 404, headers: { 'content-type': 'application/json' } })
+
+  try {
+    await requireOrgMember(session.userId, orgId)
+  } catch {
+    throw forbiddenResponse()
+  }
+
+  return { kind: 'session', userId: session.userId }
 }
 
 // ── API token helpers ───────────────────────────────────────────────

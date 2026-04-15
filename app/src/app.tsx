@@ -16,6 +16,7 @@ import {
   requirePageSession,
   requirePageOrgMember,
   getOrgIdForProject, getOrgIdForEnvironment,
+  requireSecretsApiAuth,
   deriveSecrets,
   deriveAllSecretNames,
   decrypt,
