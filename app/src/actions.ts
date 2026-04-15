@@ -153,6 +153,24 @@ export async function createEnvAction({ name, slug, projectId }: {
   return { name }
 }
 
+export async function renameEnvAction({ id, name, slug }: {
+  id: string
+  name?: string
+  slug?: string
+}) {
+  if (!name && !slug) throw new Error('At least one of name or slug is required')
+  const session = await requireSession()
+  const orgId = await getOrgIdForEnvironment(id)
+  if (!orgId) throw new Error('Environment not found')
+  await requireOrgMember(session.userId, orgId)
+  const db = getDb()
+  const updates: Partial<{ name: string; slug: string; updatedAt: number }> = { updatedAt: Date.now() }
+  if (name) updates.name = name
+  if (slug) updates.slug = slug
+  await db.update(schema.environment).set(updates).where(orm.eq(schema.environment.id, id))
+  return { id }
+}
+
 const INVITE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
 export async function createInviteAction({ orgId }: { orgId: string }) {

@@ -154,6 +154,26 @@ export const apiApp = new Spiceflow()
     },
   })
 
+  .route({
+    method: 'PATCH',
+    path: '/api/environments/:id',
+    request: z.object({ name: z.string().min(1).optional(), slug: z.string().min(1).optional() }),
+    async handler({ params, request }) {
+      const body = await request.json()
+      if (!body.name && !body.slug) return new Response(JSON.stringify({ error: 'at least one of name or slug required' }), { status: 400 })
+      const session = await requireApiSession(request)
+      const orgId = await getOrgIdForEnvironment(params.id)
+      if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
+      await requireApiOrgMember(session.userId, orgId)
+      const db = getDb()
+      const updates: Partial<{ name: string; slug: string; updatedAt: number }> = { updatedAt: Date.now() }
+      if (body.name) updates.name = body.name
+      if (body.slug) updates.slug = body.slug
+      await db.update(schema.environment).set(updates).where(orm.eq(schema.environment.id, params.id))
+      return { ok: true, id: params.id }
+    },
+  })
+
   // ── Secrets ─────────────────────────────────────────────────────
   // These routes accept both session cookies and Bearer tokens.
   // Token auth is scoped to a project (and optionally a single environment).

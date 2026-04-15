@@ -1,5 +1,6 @@
-// Environments table for a project.
-// Shows name, slug, secret count, created/updated timestamps.
+// Environments table for a project (standalone tab).
+// Shows name, slug, timestamps. Supports inline rename, delete, and add.
+// All environments are user-managed — no hardcoded "default" protection.
 
 "use client";
 
@@ -9,8 +10,8 @@ import {
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { TrashIcon } from "lucide-react";
-import { useState } from "react";
+import { PencilIcon, TrashIcon, CheckIcon, XIcon } from "lucide-react";
+import { useState, useRef } from "react";
 import { ErrorBoundary, getRouter } from "spiceflow/react";
 import type { App } from "../app.tsx";
 import { Badge } from "sigillo-app/src/components/ui/badge";
@@ -18,7 +19,7 @@ import { Button } from "sigillo-app/src/components/ui/button";
 import { Frame } from "sigillo-app/src/components/ui/frame";
 import { Input } from "sigillo-app/src/components/ui/input";
 import { formatTime } from "sigillo-app/src/lib/utils";
-import { createEnvAction, deleteEnvAction } from "../actions.ts";
+import { createEnvAction, deleteEnvAction, renameEnvAction } from "../actions.ts";
 import {
   Table,
   TableBody,
@@ -42,49 +43,96 @@ const envColors: Record<string, string> = {
   production: "bg-emerald-500",
 };
 
+// Inline editable name+slug cell for a single environment row
+function EditableEnvCell({ env, field }: { env: Environment; field: "name" | "slug" }) {
+  const router = getRouter<App>();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(env[field]);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const save = async () => {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === env[field]) {
+      setValue(env[field]);
+      setEditing(false);
+      return;
+    }
+    try {
+      await renameEnvAction({ id: env.id, [field]: trimmed });
+      setEditing(false);
+      router.refresh();
+    } catch (e: any) {
+      alert(e?.message || `Failed to rename ${field}`);
+      setValue(env[field]);
+      setEditing(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <form
+        className="flex items-center gap-1"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          await save();
+        }}
+      >
+        <Input
+          ref={inputRef}
+          inputSize="sm"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={save}
+          autoFocus
+          className={`h-7 w-full ${field === "slug" ? "font-mono" : ""}`}
+        />
+      </form>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => setEditing(true)}
+      className="group flex items-center gap-1.5 cursor-pointer text-left"
+      title={`Click to edit ${field}`}
+    >
+      {field === "name" ? (
+        <span className="flex items-center gap-2">
+          <span className={`size-2 rounded-full ${envColors[env.slug] || "bg-muted-foreground"}`} />
+          {env.name}
+        </span>
+      ) : (
+        <Badge variant="outline" size="default">
+          <span className="font-mono">{env.slug}</span>
+        </Badge>
+      )}
+      <PencilIcon className="size-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+    </button>
+  );
+}
+
 export function EnvironmentsTable({
   environments,
-  selectedEnvId,
-  onSelectEnv,
   projectId,
 }: {
   environments: Environment[];
-  selectedEnvId: string | null;
-  onSelectEnv: (envId: string) => void;
   projectId: string;
 }) {
   const router = getRouter<App>();
   const [showNewRow, setShowNewRow] = useState(false);
-  const [message, setMessage] = useState("");
 
   const columns: ColumnDef<Environment>[] = [
     {
       accessorKey: "name",
       header: "Environment",
-      size: 180,
-      cell: ({ row }) => (
-        <button
-          onClick={() => onSelectEnv(row.original.id)}
-          className={`flex items-center gap-2 cursor-pointer ${
-            selectedEnvId === row.original.id ? "font-semibold" : ""
-          }`}
-        >
-          <span
-            className={`size-2 rounded-full ${envColors[row.original.slug] || "bg-muted-foreground"}`}
-          />
-          {row.getValue("name")}
-        </button>
-      ),
+      size: 200,
+      cell: ({ row }) => <EditableEnvCell env={row.original} field="name" />,
     },
     {
       accessorKey: "slug",
       header: "Slug",
-      size: 130,
-      cell: ({ row }) => (
-        <Badge variant="outline" size="default">
-          <span className="font-mono">{row.getValue("slug")}</span>
-        </Badge>
-      ),
+      size: 160,
+      cell: ({ row }) => <EditableEnvCell env={row.original} field="slug" />,
     },
     {
       accessorKey: "updatedAt",
@@ -109,28 +157,25 @@ export function EnvironmentsTable({
     {
       id: "actions",
       size: 50,
-      cell: ({ row }) => {
-        const isDefault = ["development", "preview", "production"].includes(row.original.slug);
-        if (isDefault) return null;
-        return (
-          <button
-            onClick={async () => {
-              if (confirm(`Delete environment "${row.original.name}"?`)) {
-                try {
-                  await deleteEnvAction({ id: row.original.id });
-                   router.refresh();
-                } catch (e: any) {
-                  alert(e?.message || "Failed to delete environment");
-                }
+      cell: ({ row }) => (
+        <button
+          onClick={async (e) => {
+            e.stopPropagation();
+            if (confirm(`Delete environment "${row.original.name}"? All secrets in this environment will be lost.`)) {
+              try {
+                await deleteEnvAction({ id: row.original.id });
+                router.refresh();
+              } catch (e: any) {
+                alert(e?.message || "Failed to delete environment");
               }
-            }}
-            className="text-muted-foreground hover:text-destructive cursor-pointer"
-            title="Delete environment"
-          >
-            <TrashIcon className="size-3.5" />
-          </button>
-        );
-      },
+            }
+          }}
+          className="text-muted-foreground hover:text-destructive cursor-pointer"
+          title="Delete environment"
+        >
+          <TrashIcon className="size-3.5" />
+        </button>
+      ),
     },
   ];
 
@@ -163,20 +208,23 @@ export function EnvironmentsTable({
           ))}
         </TableHeader>
         <TableBody>
-          {table.getRowModel().rows.map((row) => (
-            <TableRow
-              key={row.id}
-              data-state={selectedEnvId === row.original.id ? "selected" : undefined}
-              className="cursor-pointer"
-              onClick={() => onSelectEnv(row.original.id)}
-            >
-              {row.getVisibleCells().map((cell) => (
-                <TableCell key={cell.id}>
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </TableCell>
-              ))}
+          {table.getRowModel().rows.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={columns.length} className="text-center text-muted-foreground py-8">
+                No environments yet. Add one below.
+              </TableCell>
             </TableRow>
-          ))}
+          ) : (
+            table.getRowModel().rows.map((row) => (
+              <TableRow key={row.id}>
+                {row.getVisibleCells().map((cell) => (
+                  <TableCell key={cell.id}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))
+          )}
         </TableBody>
       </Table>
 
@@ -199,7 +247,6 @@ export function EnvironmentsTable({
                 const slug = formData.get("slug") as string;
                 await createEnvAction({ name, slug, projectId });
                 setShowNewRow(false);
-                setMessage("");
                 router.refresh();
               }}
             >

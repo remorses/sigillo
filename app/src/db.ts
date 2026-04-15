@@ -218,7 +218,7 @@ export async function deriveSecrets(environmentId: string): Promise<DerivedSecre
         operation: evt.operation,
         valueEncrypted: evt.valueEncrypted,
         iv: evt.iv,
-        userId: evt.userId,
+        userId: evt.userId!,
         createdAt: evt.createdAt,
         firstCreatedAt: existing?.firstCreatedAt ?? evt.createdAt,
       })

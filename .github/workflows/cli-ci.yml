@@ -1,0 +1,129 @@
+# Build the standalone Zig CLI for all supported platforms.
+
+name: sigillo CLI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-macos
+            artifact: sigillo-darwin-arm64
+            binary: sigillo
+          - target: x86_64-macos
+            artifact: sigillo-darwin-x64
+            binary: sigillo
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Build CLI
+        working-directory: cli
+        run: zig build -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }} -Dversion=${{ github.sha }}
+
+      - name: Collect artifact
+        shell: bash
+        run: |
+          mkdir -p dist/${{ matrix.artifact }}
+          cp cli/zig-out/bin/${{ matrix.binary }} dist/${{ matrix.artifact }}/sigillo
+          chmod +x dist/${{ matrix.artifact }}/sigillo
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}/
+
+  build-linux-x64:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Build CLI
+        working-directory: cli
+        run: zig build -Doptimize=ReleaseFast -Dversion=${{ github.sha }}
+
+      - name: Collect artifact
+        run: |
+          mkdir -p dist/sigillo-linux-x64
+          cp cli/zig-out/bin/sigillo dist/sigillo-linux-x64/sigillo
+          chmod +x dist/sigillo-linux-x64/sigillo
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sigillo-linux-x64
+          path: dist/sigillo-linux-x64/
+
+  build-linux-arm64:
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Build CLI
+        working-directory: cli
+        run: zig build -Doptimize=ReleaseFast -Dversion=${{ github.sha }}
+
+      - name: Collect artifact
+        run: |
+          mkdir -p dist/sigillo-linux-arm64
+          cp cli/zig-out/bin/sigillo dist/sigillo-linux-arm64/sigillo
+          chmod +x dist/sigillo-linux-arm64/sigillo
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sigillo-linux-arm64
+          path: dist/sigillo-linux-arm64/
+
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Build CLI
+        working-directory: cli
+        run: zig build -Doptimize=ReleaseFast -Dversion=${{ github.sha }}
+
+      - name: Collect artifact
+        shell: bash
+        run: |
+          mkdir -p dist/sigillo-win32-x64
+          cp cli/zig-out/bin/sigillo.exe dist/sigillo-win32-x64/sigillo.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sigillo-win32-x64
+          path: dist/sigillo-win32-x64/

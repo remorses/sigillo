@@ -1,0 +1,17 @@
+// Zig package manifest for the sigillo CLI.
+.{
+    .name = .sigillo,
+    .version = "0.1.0",
+    .fingerprint = 0x57a332a89162e80c,
+    .dependencies = .{
+        .zeke = .{
+            .url = "https://github.com/remorses/zeke/archive/b96d02bd4d446343aad61a057416c575f68ab260.tar.gz",
+            .hash = "zeke-0.1.0-fnPIzNM4AQCMjiyQ0fp23XCUBH0rEVl9WbqqmdCexgOD",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "zig",
+    },
+}
