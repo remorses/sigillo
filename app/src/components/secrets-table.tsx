@@ -309,7 +309,7 @@ export function SecretsTable({
               return (
                 <TableRow key={`missing-${name}`} className="bg-destructive/5 dark:bg-destructive/10">
                   <TableCell>
-                    <span className="px-1.5 font-mono font-medium text-destructive/70 text-sm">
+                    <span className="px-1.5 font-mono font-medium text-destructive text-sm">
                       {name}
                     </span>
                   </TableCell>
@@ -324,11 +324,11 @@ export function SecretsTable({
                       value={missingEdits[name] ?? ""}
                       onChange={(e) => setMissingEdits((prev) => ({ ...prev, [name]: e.target.value }))}
                       style={!hasValue ? maskedInputStyle : undefined}
-                      className={`min-w-0 flex-1 font-mono border-destructive/30 ${hasValue ? "bg-amber-50/50 dark:bg-amber-950/20" : "bg-transparent"}`}
+                      className={`min-w-0 flex-1 font-mono border-destructive/40 ${hasValue ? "bg-amber-50/50 dark:bg-amber-950/20" : "bg-transparent"}`}
                     />
                   </TableCell>
                   <TableCell>
-                    <span className="text-destructive/50 text-xs">missing</span>
+                    <span className="text-destructive text-xs">missing</span>
                   </TableCell>
                   <TableCell />
                 </TableRow>

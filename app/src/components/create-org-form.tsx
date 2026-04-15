@@ -12,7 +12,7 @@ export function CreateOrgForm() {
   return (
     <ErrorBoundary
       fallback={
-        <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4 flex flex-col gap-2">
+        <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 flex flex-col gap-2">
           <ErrorBoundary.ErrorMessage className="text-sm text-destructive" />
           <ErrorBoundary.ResetButton className="text-sm text-destructive underline cursor-pointer self-start">
             Try again
