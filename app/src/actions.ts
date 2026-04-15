@@ -4,6 +4,9 @@
 // Every action authenticates via getActionRequest() → getSession() and
 // verifies org membership before mutating data. No action accepts a raw
 // userId — it always comes from the session cookie.
+//
+// Actions throw on error (caught by ErrorBoundary in the UI) and return
+// objects on success. Never return strings or scalar values.
 
 'use server'
 
@@ -17,11 +20,6 @@ import {
   encrypt,
 } from './db.ts'
 
-function getFormString(formData: FormData, key: string) {
-  const value = formData.get(key)
-  return typeof value === 'string' ? value : ''
-}
-
 async function requireSession() {
   const request = getActionRequest()
   const session = await getSession(request.headers)
@@ -29,11 +27,9 @@ async function requireSession() {
   return session
 }
 
-export async function createProjectAction(_prev: string, formData: FormData) {
-  const name = getFormString(formData, 'name')
-  const orgId = getFormString(formData, 'orgId')
-  if (!name) return 'Name is required'
-  if (!orgId) return 'No org selected'
+export async function createProjectAction({ name, orgId }: { name: string; orgId: string }) {
+  if (!name) throw new Error('Name is required')
+  if (!orgId) throw new Error('No org selected')
   const session = await requireSession()
   await requireOrgMember(session.userId, orgId)
   const db = getDb()
@@ -42,27 +38,28 @@ export async function createProjectAction(_prev: string, formData: FormData) {
   for (const e of schema.DEFAULT_ENVIRONMENTS) {
     await db.insert(schema.environment).values({ projectId: proj!.id, name: e.name, slug: e.slug })
   }
-  return `Created:${proj!.id}`
+  return { id: proj!.id, name: proj!.name }
 }
 
-export async function createSecretAction(_prev: string, formData: FormData) {
-  const name = getFormString(formData, 'name')
-  const value = getFormString(formData, 'value')
-  const environmentId = getFormString(formData, 'environmentId')
-  if (!name || !value) return 'Key and value are required'
+export async function createSecretAction({ name, value, environmentId }: {
+  name: string
+  value: string
+  environmentId: string
+}) {
+  if (!name || !value) throw new Error('Key and value are required')
   const session = await requireSession()
   const orgId = await getOrgIdForEnvironment(environmentId)
-  if (!orgId) return 'Environment not found'
+  if (!orgId) throw new Error('Environment not found')
   await requireOrgMember(session.userId, orgId)
   const db = getDb()
   const { encrypted, iv } = await encrypt(value)
   await db.insert(schema.secret).values({
     environmentId, name, valueEncrypted: encrypted, iv, createdBy: session.userId,
   })
-  return `Created ${name}`
+  return { name }
 }
 
-export async function deleteSecretAction(id: string) {
+export async function deleteSecretAction({ id }: { id: string }) {
   const session = await requireSession()
   const orgId = await getOrgIdForSecret(id)
   if (!orgId) throw new Error('Secret not found')
@@ -75,10 +72,10 @@ export async function deleteSecretAction(id: string) {
 // the same changes to additional environments (by name-based upsert).
 // environmentIds[0] is the current env (edits applied by secret ID),
 // the rest are cross-env targets (edits applied by secret name).
-export async function saveSecretsAction(
-  edits: { id: string; name: string; value?: string }[],
-  environmentIds: string[],
-) {
+export async function saveSecretsAction({ edits, environmentIds }: {
+  edits: { id: string; name: string; value?: string }[]
+  environmentIds: string[]
+}) {
   if (edits.length === 0 || environmentIds.length === 0) return
   const session = await requireSession()
   const orgId = await getOrgIdForSecret(edits[0]!.id)
@@ -124,7 +121,7 @@ export async function saveSecretsAction(
   }
 }
 
-export async function deleteEnvAction(id: string) {
+export async function deleteEnvAction({ id }: { id: string }) {
   const session = await requireSession()
   const orgId = await getOrgIdForEnvironment(id)
   if (!orgId) throw new Error('Environment not found')
@@ -133,26 +130,26 @@ export async function deleteEnvAction(id: string) {
   await db.delete(schema.environment).where(orm.eq(schema.environment.id, id))
 }
 
-export async function createEnvAction(_prev: string, formData: FormData) {
-  const name = getFormString(formData, 'name')
-  const slug = getFormString(formData, 'slug')
-  const projectId = getFormString(formData, 'projectId')
-  if (!name || !slug) return 'Name and slug are required'
+export async function createEnvAction({ name, slug, projectId }: {
+  name: string
+  slug: string
+  projectId: string
+}) {
+  if (!name || !slug) throw new Error('Name and slug are required')
   const session = await requireSession()
   const orgId = await getOrgIdForProject(projectId)
-  if (!orgId) return 'Project not found'
+  if (!orgId) throw new Error('Project not found')
   await requireOrgMember(session.userId, orgId)
   const db = getDb()
   await db.insert(schema.environment).values({ projectId, name, slug })
-  return `Created ${name}`
+  return { name }
 }
 
-export async function createOrgAction(_prev: string, formData: FormData) {
-  const name = getFormString(formData, 'name')
-  if (!name) return 'Name is required'
+export async function createOrgAction({ name }: { name: string }) {
+  if (!name) throw new Error('Name is required')
   const session = await requireSession()
   const db = getDb()
   const [org] = await db.insert(schema.org).values({ name }).returning({ id: schema.org.id, name: schema.org.name })
   await db.insert(schema.orgMember).values({ orgId: org!.id, userId: session.userId, role: 'admin' })
-  return `Created:${org!.id}`
+  return { id: org!.id, name: org!.name }
 }

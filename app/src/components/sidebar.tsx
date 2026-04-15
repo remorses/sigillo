@@ -9,7 +9,7 @@
 "use client";
 
 import { useState } from "react";
-import { getRouter, Link } from "spiceflow/react";
+import { getRouter, Link, ErrorBoundary } from "spiceflow/react";
 import {
   PlusIcon,
   FolderIcon,
@@ -251,7 +251,6 @@ export function NewProjectDialog({
   orgId: string | null;
 }) {
   const router = getRouter<App>();
-  const [message, setMessage] = useState("");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -263,39 +262,41 @@ export function NewProjectDialog({
             preview, and production environments by default.
           </DialogDescription>
         </DialogHeader>
-        <form
-          className="px-6 pb-2"
-          action={async (formData: FormData) => {
-            if (!orgId) return;
-            formData.set("orgId", orgId);
-            const result = await createProjectAction("", formData);
-            if (result.startsWith("Created:")) {
-              const projectId = result.split(":")[1];
-              onOpenChange(false);
-              setMessage("");
-              router.push(`/orgs/${orgId}/projects/${projectId}`);
-            } else {
-              setMessage(result);
-            }
-          }}
+        <ErrorBoundary
+          fallback={
+            <div className="px-6 pb-4 flex flex-col gap-2">
+              <ErrorBoundary.ErrorMessage className="text-sm text-destructive" />
+              <ErrorBoundary.ResetButton className="text-sm text-destructive underline cursor-pointer self-start">
+                Try again
+              </ErrorBoundary.ResetButton>
+            </div>
+          }
         >
-          <input
-            name="name"
-            placeholder="Project name"
-            required
-            autoFocus
-            className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-          {message && (
-            <p className="text-xs text-destructive mt-2">{message}</p>
-          )}
-          <DialogFooter variant="bare" className="mt-4">
-            <DialogClose render={<Button variant="outline" />}>
-              Cancel
-            </DialogClose>
-            <Button type="submit">Create Project</Button>
-          </DialogFooter>
-        </form>
+          <form
+            className="px-6 pb-2"
+            action={async (formData: FormData) => {
+              if (!orgId) return;
+              const name = formData.get("name") as string;
+              const result = await createProjectAction({ name, orgId });
+              onOpenChange(false);
+              router.push(`/orgs/${orgId}/projects/${result.id}`);
+            }}
+          >
+            <input
+              name="name"
+              placeholder="Project name"
+              required
+              autoFocus
+              className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <DialogFooter variant="bare" className="mt-4">
+              <DialogClose render={<Button variant="outline" />}>
+                Cancel
+              </DialogClose>
+              <Button type="submit">Create Project</Button>
+            </DialogFooter>
+          </form>
+        </ErrorBoundary>
       </DialogPopup>
     </Dialog>
   );

@@ -8,7 +8,7 @@
 
 import { EyeIcon, EyeOffIcon, TrashIcon, UploadIcon, PlusIcon, KeyIcon, CheckIcon } from "lucide-react";
 import { useState, useCallback } from "react";
-import { getRouter } from "spiceflow/react";
+import { getRouter, ErrorBoundary } from "spiceflow/react";
 import { Button } from "sigillo-app/src/components/ui/button";
 import { Frame } from "sigillo-app/src/components/ui/frame";
 import {
@@ -183,18 +183,16 @@ export function SecretsTable({
     setImporting(true);
     try {
       for (const [name, value] of entries) {
-        const formData = new FormData();
-        formData.set("environmentId", environmentId);
-        formData.set("name", name);
-        formData.set("value", value);
-        await createSecretAction("", formData);
+        await createSecretAction({ name, value, environmentId });
       }
       setImportOpen(false);
       await router.refresh();
+    } catch (e: any) {
+      alert(e?.message || "Failed to import secrets");
     } finally {
       setImporting(false);
     }
-  }, [environmentId, createSecretAction, router]);
+  }, [environmentId, router]);
 
   // Empty state
   if (secrets.length === 0 && !showNewRow) {
@@ -280,7 +278,12 @@ export function SecretsTable({
                     <button
                       onClick={async () => {
                         if (confirm(`Delete secret "${secret.name}"?`)) {
-                          await deleteSecretAction(secret.id);
+                          try {
+                            await deleteSecretAction({ id: secret.id });
+                            await router.refresh();
+                          } catch (e: any) {
+                            alert(e?.message || "Failed to delete secret");
+                          }
                         }
                       }}
                       className="text-muted-foreground hover:text-destructive cursor-pointer"
@@ -295,7 +298,7 @@ export function SecretsTable({
           </TableBody>
         </Table>
 
-        <div className="border-t border-border"></div>
+        {/*<div className="border-t border-border"></div>*/}
         {/* Bottom bar: add secret + import */}
         <div className="flex items-center justify-between px-1 pb-2">
           <div className="flex items-center gap-2 grow">
@@ -335,10 +338,12 @@ export function SecretsTable({
         onSave={async (envIds) => {
           setSaving(true);
           try {
-            await saveSecretsAction(buildPayload(), envIds);
+            await saveSecretsAction({ edits: buildPayload(), environmentIds: envIds });
             setEdits({});
             setSaveOpen(false);
             await router.refresh();
+          } catch (e: any) {
+            alert(e?.message || "Failed to save secrets");
           } finally {
             setSaving(false);
           }
@@ -490,40 +495,54 @@ function AddSecretRow({
   environmentId: string;
   onDone: () => void;
 }) {
+  const router = getRouter<App>();
   return (
-    <form
-      className="flex items-center grow gap-2"
-      action={async (formData: FormData) => {
-        const result = await createSecretAction("", formData);
-        if (result.startsWith("Created")) onDone();
-      }}
+    <ErrorBoundary
+      fallback={
+        <div className="flex items-center grow gap-2">
+          <ErrorBoundary.ErrorMessage className="text-xs text-destructive" />
+          <ErrorBoundary.ResetButton className="text-xs text-destructive underline cursor-pointer">
+            Try again
+          </ErrorBoundary.ResetButton>
+        </div>
+      }
     >
-      <input type="hidden" name="environmentId" value={environmentId} />
-      <input
-        name="name"
-        placeholder="SECRET_KEY"
-        required
-        autoFocus
-        className="h-9 flex-1 rounded-lg border border-input bg-background px-2.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
-      />
-      <input
-        name="value"
-        type="text"
-        autoComplete="off"
-        data-1p-ignore
-        data-lpignore="true"
-        style={maskedInputStyle}
-        placeholder="secret value"
-        required
-        className="h-9 flex-1 rounded-lg border border-input bg-background px-2.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
-      />
-      <div className="flex-1" />
-      <Button size="sm" type="submit">
-        Add
-      </Button>
-      <Button size="sm" variant="ghost" onClick={onDone}>
-        Cancel
-      </Button>
-    </form>
+      <form
+        className="flex items-center grow gap-2"
+        action={async (formData: FormData) => {
+          const name = formData.get("name") as string;
+          const value = formData.get("value") as string;
+          await createSecretAction({ name, value, environmentId });
+          onDone();
+          await router.refresh();
+        }}
+      >
+        <input
+          name="name"
+          placeholder="SECRET_KEY"
+          required
+          autoFocus
+          className="h-9 flex-1 rounded-lg border border-input bg-background px-2.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+        <input
+          name="value"
+          type="text"
+          autoComplete="off"
+          data-1p-ignore
+          data-lpignore="true"
+          style={maskedInputStyle}
+          placeholder="secret value"
+          required
+          className="h-9 flex-1 rounded-lg border border-input bg-background px-2.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+        <div className="flex-1" />
+        <Button size="sm" type="submit">
+          Add
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onDone}>
+          Cancel
+        </Button>
+      </form>
+    </ErrorBoundary>
   );
 }

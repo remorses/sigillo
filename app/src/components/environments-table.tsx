@@ -11,6 +11,8 @@ import {
 } from "@tanstack/react-table";
 import { TrashIcon } from "lucide-react";
 import { useState } from "react";
+import { ErrorBoundary, getRouter } from "spiceflow/react";
+import type { App } from "../app.tsx";
 import { Badge } from "sigillo-app/src/components/ui/badge";
 import { Button } from "sigillo-app/src/components/ui/button";
 import { Frame } from "sigillo-app/src/components/ui/frame";
@@ -52,11 +54,14 @@ export function EnvironmentsTable({
   environments,
   selectedEnvId,
   onSelectEnv,
+  projectId,
 }: {
   environments: Environment[];
   selectedEnvId: string | null;
   onSelectEnv: (envId: string) => void;
+  projectId: string;
 }) {
+  const router = getRouter<App>();
   const [showNewRow, setShowNewRow] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -119,7 +124,12 @@ export function EnvironmentsTable({
           <button
             onClick={async () => {
               if (confirm(`Delete environment "${row.original.name}"?`)) {
-                await deleteEnvAction(row.original.id);
+                try {
+                  await deleteEnvAction({ id: row.original.id });
+                  await router.refresh();
+                } catch (e: any) {
+                  alert(e?.message || "Failed to delete environment");
+                }
               }
             }}
             className="text-muted-foreground hover:text-destructive cursor-pointer"
@@ -180,33 +190,47 @@ export function EnvironmentsTable({
 
       <div className="p-2 border-t border-border">
         {showNewRow ? (
-          <form
-            className="flex items-center gap-2"
-            action={async (formData: FormData) => {
-              const result = await createEnvAction("", formData);
-              setMessage(result);
-              if (result.startsWith("Created")) setShowNewRow(false);
-            }}
+          <ErrorBoundary
+            fallback={
+              <div className="flex items-center gap-2 px-2 py-1">
+                <ErrorBoundary.ErrorMessage className="text-xs text-destructive" />
+                <ErrorBoundary.ResetButton className="text-xs text-destructive underline cursor-pointer">
+                  Try again
+                </ErrorBoundary.ResetButton>
+              </div>
+            }
           >
-            <input
-              name="name"
-              placeholder="Environment name"
-              required
-              className="h-7 flex-1 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-            <input
-              name="slug"
-              placeholder="slug"
-              required
-              className="h-7 flex-1 rounded-md border border-input bg-background px-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-            <Button size="xs" type="submit">
-              Add
-            </Button>
-            <Button size="xs" variant="ghost" onClick={() => setShowNewRow(false)}>
-              Cancel
-            </Button>
-          </form>
+            <form
+              className="flex items-center gap-2"
+              action={async (formData: FormData) => {
+                const name = formData.get("name") as string;
+                const slug = formData.get("slug") as string;
+                await createEnvAction({ name, slug, projectId });
+                setShowNewRow(false);
+                setMessage("");
+                await router.refresh();
+              }}
+            >
+              <input
+                name="name"
+                placeholder="Environment name"
+                required
+                className="h-7 flex-1 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              <input
+                name="slug"
+                placeholder="slug"
+                required
+                className="h-7 flex-1 rounded-md border border-input bg-background px-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              <Button size="xs" type="submit">
+                Add
+              </Button>
+              <Button size="xs" variant="ghost" onClick={() => setShowNewRow(false)}>
+                Cancel
+              </Button>
+            </form>
+          </ErrorBoundary>
         ) : (
           <button
             onClick={() => setShowNewRow(true)}
@@ -215,7 +239,6 @@ export function EnvironmentsTable({
             + Add Environment
           </button>
         )}
-        {message && <p className="text-xs text-muted-foreground px-2 mt-1">{message}</p>}
       </div>
     </Frame>
   );
