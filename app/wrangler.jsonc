@@ -16,7 +16,7 @@
   ],
   "vars": {
     "PROVIDER_URL": "https://auth.sigillo.dev",
-    "APP_URL": "http://localhost:5188"
+
   },
   "secrets": {
     "required": ["BETTER_AUTH_SECRET", "ENCRYPTION_KEY", "OAUTH_CLIENT_ID"]
