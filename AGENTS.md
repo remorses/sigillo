@@ -62,6 +62,12 @@ Always load these skills before working on this project:
 - **`spiceflow`** — API routes + React Server Components framework (fetch latest README every time)
 
 
+## REST API reference
+
+The `app/src/api.ts` file contains the external REST API (for CLI, SDKs, agents). It's a separate Spiceflow sub-app mounted in `app/src/app.tsx` via `.use(apiApp)`.
+
+Doppler API reference for design comparison: https://docs.doppler.com/reference
+
 ## better auth
 
 if needed download source code from https://github.com/better-auth/better-auth to read how it works

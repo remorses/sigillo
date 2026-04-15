@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "types": "wrangler types",
     "deploy": "CLOUDFLARE_ENV=preview vite build && wrangler deploy --env preview",
-    "deploy:prod": "vite build && wrangler deploy && CLOUDFLARE_ENV=preview vite build && wrangler deploy --env preview"
+    "deploy:prod": "vite build && wrangler deploy && CLOUDFLARE_ENV=preview vite build && wrangler deploy --env preview",
+    "openapi": "tsx src/generate-openapi.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.0",

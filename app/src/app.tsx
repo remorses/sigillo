@@ -1,5 +1,5 @@
 // Spiceflow entry for the self-hosted secret sharing app.
-// Pages for secrets management UI, API routes for CRUD.
+// Pages for secrets management UI. REST API routes live in api.ts.
 // Also serves as the Cloudflare Worker entry via the default export.
 //
 // Two nested layouts:
@@ -11,17 +11,16 @@
 import './globals.css'
 import { Spiceflow, redirect } from 'spiceflow'
 import { Head, Link, ProgressBar } from 'spiceflow/react'
-import * as orm from 'drizzle-orm'
-import { z } from 'zod'
-import * as schema from 'db/src/app-schema.ts'
 import {
   getDb, getAuth, getSession,
-  requireApiSession, requirePageSession,
-  requireApiOrgMember, requirePageOrgMember,
+  requirePageSession,
+  requirePageOrgMember,
   getOrgIdForProject, getOrgIdForEnvironment,
   deriveSecrets,
-  encrypt, decrypt,
+  deriveAllSecretNames,
+  decrypt,
 } from './db.ts'
+import { apiApp } from './api.ts'
 import { createOrgAction, createProjectAction } from './actions.ts'
 import { formatTime } from 'sigillo-app/src/lib/utils'
 import { Sidebar, NewProjectButton } from 'sigillo-app/src/components/sidebar'
@@ -273,6 +272,8 @@ export const app = new Spiceflow({
 
     // Derive current secrets from the event log and decrypt values
     let secrets: { id: string; name: string; value: string; createdAt: number; updatedAt: number; createdBy: { id: string; name: string } | null }[] = []
+    // Collect all secret names across all environments for cross-env missing key detection
+    const allSecretNames = await deriveAllSecretNames(environments.map((e) => e.id))
     if (selectedEnvId) {
       const derived = await deriveSecrets(selectedEnvId)
       // Look up user info for each secret's latest event author
@@ -305,6 +306,7 @@ export const app = new Spiceflow({
           environments={environments}
           selectedEnvId={selectedEnvId}
           secrets={secrets}
+          allSecretNames={allSecretNames}
         />
       </div>
     )
@@ -515,210 +517,8 @@ export const app = new Spiceflow({
     )
   })
 
-  // ── API: Orgs ─────────────────────────────────────────────────
-  .route({
-    method: 'POST',
-    path: '/api/orgs',
-    request: z.object({ name: z.string().min(1) }),
-    async handler({ request }) {
-      const body = await request.json()
-      const session = await requireApiSession(request)
-      const db = getDb()
-      const [org] = await db.insert(schema.org).values({ name: body.name }).returning({ id: schema.org.id, name: schema.org.name })
-      await db.insert(schema.orgMember).values({ orgId: org!.id, userId: session.userId, role: 'admin' })
-      return { ok: true, ...org! }
-    },
-  })
-
-  .route({
-    method: 'GET',
-    path: '/api/orgs',
-    async handler({ request }) {
-      const session = await requireApiSession(request)
-      const db = getDb()
-      const members = await db.query.orgMember.findMany({
-        where: { userId: session.userId },
-        with: { org: true },
-      })
-      const orgs = members.filter((m) => m.org != null).map((m) => ({
-        id: m.org!.id!, name: m.org!.name!, role: m.role,
-        createdAt: m.org!.createdAt!, updatedAt: m.org!.updatedAt!,
-      }))
-      return { orgs }
-    },
-  })
-
-  // ── API: Projects ──────────────────────────────────────────────
-  .route({
-    method: 'POST',
-    path: '/api/projects',
-    request: z.object({ name: z.string().min(1), orgId: z.string().min(1) }),
-    async handler({ request }) {
-      const body = await request.json()
-      const session = await requireApiSession(request)
-      await requireApiOrgMember(session.userId, body.orgId)
-      const db = getDb()
-      const [proj] = await db.insert(schema.project).values({ name: body.name, orgId: body.orgId })
-        .returning({ id: schema.project.id, name: schema.project.name })
-      for (const e of schema.DEFAULT_ENVIRONMENTS) {
-        await db.insert(schema.environment).values({ projectId: proj!.id, name: e.name, slug: e.slug })
-      }
-      return { ok: true, ...proj! }
-    },
-  })
-
-  .route({
-    method: 'GET',
-    path: '/api/projects',
-    async handler({ request }) {
-      const url = new URL(request.url)
-      const orgId = url.searchParams.get('orgId')
-      if (!orgId) return new Response(JSON.stringify({ error: 'orgId required' }), { status: 400 })
-      const session = await requireApiSession(request)
-      await requireApiOrgMember(session.userId, orgId)
-      const db = getDb()
-      const projects = await db.query.project.findMany({ where: { orgId }, with: { environments: true }, orderBy: { createdAt: 'desc' } })
-      return { projects }
-    },
-  })
-
-  .route({
-    method: 'DELETE',
-    path: '/api/projects/:id',
-    async handler({ params, request }) {
-      const session = await requireApiSession(request)
-      const orgId = await getOrgIdForProject(params.id)
-      if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      await requireApiOrgMember(session.userId, orgId)
-      const db = getDb()
-      const [deleted] = await db.delete(schema.project).where(orm.eq(schema.project.id, params.id)).returning({ id: schema.project.id })
-      if (!deleted) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      return { ok: true, id: deleted.id }
-    },
-  })
-
-  // ── API: Environments ─────────────────────────────────────────
-  .route({
-    method: 'GET',
-    path: '/api/projects/:projectId/environments',
-    async handler({ params, request }) {
-      const session = await requireApiSession(request)
-      const orgId = await getOrgIdForProject(params.projectId)
-      if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      await requireApiOrgMember(session.userId, orgId)
-      const db = getDb()
-      const environments = await db.query.environment.findMany({ where: { projectId: params.projectId }, orderBy: { createdAt: 'asc' } })
-      return { projectId: params.projectId, environments }
-    },
-  })
-
-  .route({
-    method: 'POST',
-    path: '/api/projects/:projectId/environments',
-    request: z.object({ name: z.string().min(1), slug: z.string().min(1) }),
-    async handler({ request, params }) {
-      const body = await request.json()
-      const session = await requireApiSession(request)
-      const orgId = await getOrgIdForProject(params.projectId)
-      if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      await requireApiOrgMember(session.userId, orgId)
-      const db = getDb()
-      const [row] = await db.insert(schema.environment).values({ projectId: params.projectId, name: body.name, slug: body.slug })
-        .returning({ id: schema.environment.id, name: schema.environment.name, slug: schema.environment.slug })
-      return { ok: true, ...row! }
-    },
-  })
-
-  .route({
-    method: 'DELETE',
-    path: '/api/environments/:id',
-    async handler({ params, request }) {
-      const session = await requireApiSession(request)
-      const orgId = await getOrgIdForEnvironment(params.id)
-      if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      await requireApiOrgMember(session.userId, orgId)
-      const db = getDb()
-      const [deleted] = await db.delete(schema.environment).where(orm.eq(schema.environment.id, params.id)).returning({ id: schema.environment.id })
-      if (!deleted) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      return { ok: true, id: deleted.id }
-    },
-  })
-
-  // ── API: Secrets (scoped to environment, event-sourced) ─────────
-  .route({
-    method: 'GET',
-    path: '/api/environments/:environmentId/secrets',
-    async handler({ params, request }) {
-      const session = await requireApiSession(request)
-      const orgId = await getOrgIdForEnvironment(params.environmentId)
-      if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      await requireApiOrgMember(session.userId, orgId)
-      const derived = await deriveSecrets(params.environmentId)
-      const secrets = derived.map((d) => ({
-        id: d.id, name: d.name,
-        createdAt: d.createdAt, updatedAt: d.updatedAt,
-      }))
-      return { environmentId: params.environmentId, secrets }
-    },
-  })
-
-  .route({
-    method: 'POST',
-    path: '/api/environments/:environmentId/secrets',
-    request: z.object({ name: z.string().min(1), value: z.string().min(1) }),
-    async handler({ request, params }) {
-      const body = await request.json()
-      const session = await requireApiSession(request)
-      const orgId = await getOrgIdForEnvironment(params.environmentId)
-      if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      await requireApiOrgMember(session.userId, orgId)
-      const db = getDb()
-      const { encrypted, iv } = await encrypt(body.value)
-      const [row] = await db.insert(schema.secretEvent).values({
-        environmentId: params.environmentId, name: body.name,
-        operation: 'set', valueEncrypted: encrypted, iv, userId: session.userId,
-      }).returning({ id: schema.secretEvent.id, name: schema.secretEvent.name })
-      return { ok: true, environmentId: params.environmentId, id: row!.id, name: row!.name }
-    },
-  })
-
-  .route({
-    method: 'GET',
-    path: '/api/environments/:environmentId/secrets/:name',
-    async handler({ params, request }) {
-      const session = await requireApiSession(request)
-      const orgId = await getOrgIdForEnvironment(params.environmentId)
-      if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      await requireApiOrgMember(session.userId, orgId)
-      const derived = await deriveSecrets(params.environmentId)
-      const secret = derived.find((d) => d.name === params.name)
-      if (!secret) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      const value = await decrypt(secret.valueEncrypted, secret.iv)
-      return { id: secret.id, name: secret.name, value, environmentId: params.environmentId, createdAt: secret.createdAt, updatedAt: secret.updatedAt }
-    },
-  })
-
-  .route({
-    method: 'DELETE',
-    path: '/api/environments/:environmentId/secrets/:name',
-    async handler({ params, request }) {
-      const session = await requireApiSession(request)
-      const orgId = await getOrgIdForEnvironment(params.environmentId)
-      if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      await requireApiOrgMember(session.userId, orgId)
-      const db = getDb()
-      await db.insert(schema.secretEvent).values({
-        environmentId: params.environmentId, name: params.name,
-        operation: 'delete', userId: session.userId,
-      })
-      return { ok: true, name: params.name }
-    },
-  })
-
-  // ── Health ────────────────────────────────────────────────────
-  .get('/health', () => {
-    return { ok: true, service: 'sigillo-app' }
-  })
+  // ── REST API (separate sub-app) ─────────────────────────────────
+  .use(apiApp)
 
 function SigilloLogo({ className }: { className?: string }) {
   return (
