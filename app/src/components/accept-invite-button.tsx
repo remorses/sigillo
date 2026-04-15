@@ -4,13 +4,13 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "spiceflow/react"
+import { getRouter } from "spiceflow/react"
 import { acceptInviteAction } from "../actions.ts"
 
 export function AcceptInviteButton({ invitationId }: { invitationId: string }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const router = useRouter()
+  const router = getRouter()
 
   async function handleAccept() {
     setLoading(true)
