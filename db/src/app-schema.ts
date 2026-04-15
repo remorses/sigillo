@@ -76,6 +76,7 @@ export const orgMember = sqliteCore.sqliteTable('org_member', {
 }, (table) => [
   sqliteCore.index('org_member_org_id_idx').on(table.orgId),
   sqliteCore.index('org_member_user_id_idx').on(table.userId),
+  sqliteCore.uniqueIndex('org_member_org_id_user_id_unique').on(table.orgId, table.userId),
 ])
 
 // ── Org invitation table ────────────────────────────────────────────

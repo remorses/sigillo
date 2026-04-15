@@ -33,6 +33,13 @@ import { Frame } from 'sigillo-app/src/components/ui/frame'
 
 export { SecretsStore } from './secrets-store.ts'
 
+// Only allow local paths for redirects — prevents open redirect attacks
+// on /login?redirect=https://evil.example
+function safeRedirectPath(value: string | null): string {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return '/'
+  return value
+}
+
 export const app = new Spiceflow({
   // Allow tunnel origins for server actions (CSRF check)
   allowedActionOrigins: [/\.kimaki\.dev$/],
@@ -413,7 +420,7 @@ export const app = new Spiceflow({
   .page('/login', async ({ request }) => {
     const session = await getSession(request.headers)
     const url = new URL(request.url)
-    const redirectTo = url.searchParams.get('redirect') || '/'
+    const redirectTo = safeRedirectPath(url.searchParams.get('redirect'))
     if (session) return redirect(redirectTo)
     const { LoginButton } = await import('sigillo-app/src/components/login-button')
     return (

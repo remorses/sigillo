@@ -165,22 +165,25 @@ export async function acceptInviteAction({ invitationId }: { invitationId: strin
   if (!invitationId) throw new Error('Invitation ID is required')
   const session = await requireSession()
   const db = getDb()
-  const invite = await db.query.orgInvitation.findFirst({ where: { id: invitationId } })
-  if (!invite) throw new Error('Invitation not found')
-  if (invite.expiresAt < Date.now()) throw new Error('Invitation has expired')
-  // Check if already a member
-  const existing = await db.query.orgMember.findFirst({
-    where: { orgId: invite.orgId, userId: session.userId },
-  })
-  if (existing) return { orgId: invite.orgId, alreadyMember: true }
-  // Add as member and delete the invitation
-  await db.insert(schema.orgMember).values({
-    orgId: invite.orgId,
-    userId: session.userId,
-    role: invite.role,
-  })
-  await db.delete(schema.orgInvitation).where(orm.eq(schema.orgInvitation.id, invitationId))
-  return { orgId: invite.orgId, alreadyMember: false }
+  // Atomically consume the invite: DELETE ... RETURNING ensures only one
+  // caller can claim it even if two requests race.
+  const [invite] = await db.delete(schema.orgInvitation)
+    .where(orm.and(
+      orm.eq(schema.orgInvitation.id, invitationId),
+      orm.gte(schema.orgInvitation.expiresAt, Date.now()),
+    ))
+    .returning({
+      orgId: schema.orgInvitation.orgId,
+      role: schema.orgInvitation.role,
+    })
+  if (!invite) throw new Error('Invitation not found or expired')
+  // Insert membership, onConflictDoNothing handles the already-member case
+  // (unique index on org_id + user_id prevents duplicates).
+  const inserted = await db.insert(schema.orgMember)
+    .values({ orgId: invite.orgId, userId: session.userId, role: invite.role })
+    .onConflictDoNothing({ target: [schema.orgMember.orgId, schema.orgMember.userId] })
+    .returning({ id: schema.orgMember.id })
+  return { orgId: invite.orgId, alreadyMember: inserted.length === 0 }
 }
 
 export async function createOrgAction({ name }: { name: string }) {
