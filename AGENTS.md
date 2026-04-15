@@ -118,14 +118,19 @@ those platforms. Only CI can produce a correct release.
 To release:
 
 1. Bump the version in `cli/package.json`
-2. Commit and push to `main`
-3. GitHub Actions CI (`cli-ci.yml`) builds all artifacts and publishes
+2. Update `cli/CHANGELOG.md` with the new version and changes
+3. Commit and push to `main`
+4. GitHub Actions CI (`cli-ci.yml`) builds all artifacts and publishes
+5. CI auto-creates the GitHub release at tag `sigillo@x.y.z` and uploads
+   platform archives. You do NOT need to create the release manually.
 
 CI builds standalone executables per platform (macOS arm64/x64, Linux
-arm64/x64, Windows x64). On version bump the publish job:
+arm64/x64 musl, Windows arm64/x64) from a single Linux runner using Zig
+cross-compilation. On version bump the publish job:
 
 1. Publishes the npm package (with binaries for all platforms in `dist/`)
-2. Uploads platform archives to the GitHub release at tag `v$VERSION`
+2. Creates the GitHub release at tag `sigillo@x.y.z`
+3. Uploads platform tarballs/zips to the release
 
 The CI publish job checks whether the version is already on npm and skips if
 so. This means you can push multiple commits to `main` and only the version
