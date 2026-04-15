@@ -682,22 +682,24 @@ function Navbar() {
           <Link href="/" className="text-primary hover:opacity-80 transition-opacity">
             <SigilloLogo className="h-[36px] w-auto shrink-0" />
           </Link>
-          <a
-            href="https://github.com/remorses/sigillo/issues/new"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Feedback
-          </a>
-          <a
-            href="https://github.com/remorses/sigillo"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            GitHub
-          </a>
+          <div className="flex items-center gap-3">
+            <a
+              href="https://github.com/remorses/sigillo/issues/new"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              feedback
+            </a>
+            <a
+              href="https://github.com/remorses/sigillo"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              github
+            </a>
+          </div>
         </div>
       </div>
     </nav>
