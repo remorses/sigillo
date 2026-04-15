@@ -25,8 +25,9 @@ const hostTarget = `${os.platform()}-${os.arch()}`
 const targets: Target[] = [
   { name: 'darwin-arm64', zigTarget: 'aarch64-macos' },
   { name: 'darwin-x64', zigTarget: 'x86_64-macos' },
-  { name: 'linux-arm64', zigTarget: 'aarch64-linux-gnu' },
-  { name: 'linux-x64', zigTarget: 'x86_64-linux-gnu' },
+  { name: 'linux-arm64', zigTarget: 'aarch64-linux-musl' },
+  { name: 'linux-x64', zigTarget: 'x86_64-linux-musl' },
+  { name: 'win32-arm64', zigTarget: 'aarch64-windows-gnu' },
   { name: 'win32-x64', zigTarget: 'x86_64-windows-gnu' },
 ]
 

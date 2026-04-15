@@ -9,7 +9,11 @@ import { fileURLToPath } from 'node:url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 // Targets that ship prebuilt binaries (must match scripts/build.ts)
-const supportedTargets = new Set(['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-x64'])
+const supportedTargets = new Set([
+  'darwin-arm64', 'darwin-x64',
+  'linux-arm64', 'linux-x64',
+  'win32-arm64', 'win32-x64',
+])
 
 const target = `${process.platform}-${process.arch}`
 

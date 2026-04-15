@@ -1,14 +1,8 @@
-# CI for sigillo CLI: build Zig binaries per platform,
+# CI for sigillo CLI: cross-compile all Zig targets from a single Linux runner,
 # then publish to npm on push to main.
 #
-# macOS arm64 + x64 are built on macos-latest (Apple Silicon).
-# Zig cross-compiles x86_64-macos from ARM fine since both
-# use the same macOS SDK.
-#
-# linux-x64 is built natively on ubuntu-latest (x64).
-# linux-arm64 is built natively on ubuntu-24.04-arm (ARM64).
-#
-# win32-x64 is built on windows-latest.
+# The sigillo CLI has no native platform dependencies (no X11, no system libs),
+# so Zig can cross-compile all targets from one machine.
 
 name: sigillo CLI
 
@@ -29,50 +23,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-macos:
-    runs-on: macos-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.15.2
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Install pnpm
-        run: npm install -g pnpm
-
-      - name: Install dependencies
-        working-directory: cli
-        run: pnpm install
-
-      - name: Build native darwin-arm64
-        working-directory: cli
-        run: pnpm tsx scripts/build.ts darwin-arm64
-
-      - name: Build native darwin-x64
-        working-directory: cli
-        run: pnpm tsx scripts/build.ts darwin-x64
-
-      - name: Upload darwin-arm64
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-darwin-arm64
-          path: cli/dist/darwin-arm64/
-
-      - name: Upload darwin-x64
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-darwin-x64
-          path: cli/dist/darwin-x64/
-
-  build-linux-x64:
+  build:
     runs-on: ubuntu-latest
 
     steps:
@@ -95,84 +46,22 @@ jobs:
         working-directory: cli
         run: pnpm install
 
-      - name: Build native linux-x64
+      - name: Build all targets
         working-directory: cli
-        run: pnpm tsx scripts/build.ts linux-x64
+        run: pnpm tsx scripts/build.ts
 
-      - name: Upload linux-x64
+      - name: Build TypeScript
+        working-directory: cli
+        run: pnpm build
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: native-linux-x64
-          path: cli/dist/linux-x64/
-
-  build-linux-arm64:
-    runs-on: ubuntu-24.04-arm
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.15.2
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Install pnpm
-        run: npm install -g pnpm
-
-      - name: Install dependencies
-        working-directory: cli
-        run: pnpm install
-
-      - name: Build native linux-arm64
-        working-directory: cli
-        run: pnpm tsx scripts/build.ts linux-arm64
-
-      - name: Upload linux-arm64
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-linux-arm64
-          path: cli/dist/linux-arm64/
-
-  build-windows:
-    runs-on: windows-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.15.2
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Install pnpm
-        run: npm install -g pnpm
-
-      - name: Install dependencies
-        working-directory: cli
-        run: pnpm install
-
-      - name: Build native win32-x64
-        working-directory: cli
-        run: pnpm tsx scripts/build.ts win32-x64
-
-      - name: Upload win32-x64
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-win32-x64
-          path: cli/dist/win32-x64/
+          name: dist
+          path: cli/dist/
 
   publish:
-    needs: [build-macos, build-linux-x64, build-linux-arm64, build-windows]
+    needs: [build]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
@@ -198,35 +87,11 @@ jobs:
         working-directory: cli
         run: pnpm build
 
-      - name: Download darwin-arm64
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: native-darwin-arm64
-          path: cli/dist/darwin-arm64/
-
-      - name: Download darwin-x64
-        uses: actions/download-artifact@v4
-        with:
-          name: native-darwin-x64
-          path: cli/dist/darwin-x64/
-
-      - name: Download linux-x64
-        uses: actions/download-artifact@v4
-        with:
-          name: native-linux-x64
-          path: cli/dist/linux-x64/
-
-      - name: Download linux-arm64
-        uses: actions/download-artifact@v4
-        with:
-          name: native-linux-arm64
-          path: cli/dist/linux-arm64/
-
-      - name: Download win32-x64
-        uses: actions/download-artifact@v4
-        with:
-          name: native-win32-x64
-          path: cli/dist/win32-x64/
+          name: dist
+          path: cli/dist/
 
       - name: List dist contents
         run: ls -laR cli/dist/
@@ -268,13 +133,15 @@ jobs:
             exit 0
           fi
 
-          # Create platform tarballs
+          # Create platform tarballs (unix)
           for platform in darwin-arm64 darwin-x64 linux-x64 linux-arm64; do
             tar -czf "sigillo-${TAG}-${platform}.tar.gz" -C "cli/dist/${platform}" .
           done
 
-          # Create zip for Windows
-          (cd cli/dist/win32-x64 && zip -r "../../../sigillo-${TAG}-win32-x64.zip" .)
+          # Create zips for Windows
+          for platform in win32-x64 win32-arm64; do
+            (cd "cli/dist/${platform}" && zip -r "../../../sigillo-${TAG}-${platform}.zip" .)
+          done
 
           echo "Uploading release assets to ${TAG}..."
           gh release upload "$TAG" \
@@ -283,4 +150,5 @@ jobs:
             "sigillo-${TAG}-linux-x64.tar.gz" \
             "sigillo-${TAG}-linux-arm64.tar.gz" \
             "sigillo-${TAG}-win32-x64.zip" \
+            "sigillo-${TAG}-win32-arm64.zip" \
             --clobber
