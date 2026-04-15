@@ -37,12 +37,12 @@ const config_dir_name = ".sigillo";
 const config_file_name = "config.json";
 
 pub fn configFilePath(allocator: std.mem.Allocator) ![]const u8 {
-    const home = std.posix.getenv("HOME") orelse std.posix.getenv("USERPROFILE") orelse return error.NoHomeDir;
+    const home = try getHomeDir(allocator);
     return std.fs.path.join(allocator, &.{ home, config_dir_name, config_file_name });
 }
 
 pub fn configDirPath(allocator: std.mem.Allocator) ![]const u8 {
-    const home = std.posix.getenv("HOME") orelse std.posix.getenv("USERPROFILE") orelse return error.NoHomeDir;
+    const home = try getHomeDir(allocator);
     return std.fs.path.join(allocator, &.{ home, config_dir_name });
 }
 
@@ -242,10 +242,10 @@ pub fn resolve(allocator: std.mem.Allocator, cwd_input: []const u8, flags: Resol
         }
     }
 
-    if (std.posix.getenv("SIGILLO_TOKEN")) |value| result.token = value;
-    if (std.posix.getenv("SIGILLO_API_URL")) |value| result.api_url = value;
-    if (std.posix.getenv("SIGILLO_PROJECT")) |value| result.project = value;
-    if (std.posix.getenv("SIGILLO_ENVIRONMENT")) |value| result.environment = value;
+    if (try getEnvVarOptional(allocator, "SIGILLO_TOKEN")) |value| result.token = value;
+    if (try getEnvVarOptional(allocator, "SIGILLO_API_URL")) |value| result.api_url = value;
+    if (try getEnvVarOptional(allocator, "SIGILLO_PROJECT")) |value| result.project = value;
+    if (try getEnvVarOptional(allocator, "SIGILLO_ENVIRONMENT")) |value| result.environment = value;
 
     if (flags.token) |value| result.token = value;
     if (flags.api_url) |value| result.api_url = value;
@@ -257,6 +257,19 @@ pub fn resolve(allocator: std.mem.Allocator, cwd_input: []const u8, flags: Resol
         .api_url = if (result.api_url) |value| try allocator.dupe(u8, value) else null,
         .project = if (result.project) |value| try allocator.dupe(u8, value) else null,
         .environment = if (result.environment) |value| try allocator.dupe(u8, value) else null,
+    };
+}
+
+fn getHomeDir(allocator: std.mem.Allocator) ![]const u8 {
+    return (try getEnvVarOptional(allocator, "HOME")) orelse
+        (try getEnvVarOptional(allocator, "USERPROFILE")) orelse
+        error.NoHomeDir;
+}
+
+fn getEnvVarOptional(allocator: std.mem.Allocator, key: []const u8) !?[]const u8 {
+    return std.process.getEnvVarOwned(allocator, key) catch |err| switch (err) {
+        error.EnvironmentVariableNotFound => null,
+        else => err,
     };
 }
 
