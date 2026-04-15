@@ -89,6 +89,47 @@ pub fn jsonString(allocator: std.mem.Allocator, body: []const u8, field: []const
     };
 }
 
+/// A parsed {id, name} pair from an API list response.
+pub const NamedItem = struct {
+    id: []const u8,
+    name: []const u8,
+};
+
+/// Parse a JSON object body and extract an array field as a slice of NamedItem.
+/// Each element must have "id" and "name" string fields; others are skipped.
+pub fn jsonNamedArray(allocator: std.mem.Allocator, body: []const u8, field: []const u8) ![]NamedItem {
+    var result = std.ArrayListUnmanaged(NamedItem).empty;
+
+    const parsed = std.json.parseFromSliceLeaky(std.json.Value, allocator, body, .{}) catch return result.toOwnedSlice(allocator);
+    const root = switch (parsed) {
+        .object => |obj| obj,
+        else => return result.toOwnedSlice(allocator),
+    };
+    const arr_val = root.get(field) orelse return result.toOwnedSlice(allocator);
+    const arr = switch (arr_val) {
+        .array => |a| a,
+        else => return result.toOwnedSlice(allocator),
+    };
+    for (arr.items) |item| {
+        const obj = switch (item) {
+            .object => |o| o,
+            else => continue,
+        };
+        const id_val = obj.get("id") orelse continue;
+        const name_val = obj.get("name") orelse continue;
+        const id = switch (id_val) {
+            .string => |s| s,
+            else => continue,
+        };
+        const name = switch (name_val) {
+            .string => |s| s,
+            else => continue,
+        };
+        try result.append(allocator, .{ .id = id, .name = name });
+    }
+    return result.toOwnedSlice(allocator);
+}
+
 pub fn jsonInt(allocator: std.mem.Allocator, body: []const u8, field: []const u8) ?i64 {
     const parsed = std.json.parseFromSliceLeaky(std.json.Value, allocator, body, .{}) catch return null;
 

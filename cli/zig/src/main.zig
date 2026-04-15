@@ -60,9 +60,43 @@ fn loginAction(_: Login.Args, opts: Login.Options) !void {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const scope = opts.scope orelse "/";
-
     const cwd = config.getCwd(allocator) catch try allocator.dupe(u8, "/");
+
+    // Determine scope: explicit flag wins; otherwise prompt in TTY or error in non-TTY.
+    const scope: []const u8 = if (opts.scope) |s| s else blk: {
+        const is_tty = std.posix.isatty(File.stdin().handle) and
+            std.posix.isatty(File.stdout().handle);
+
+        if (is_tty) {
+            // Show interactive scope selector.
+            const cwd_option = try std.fmt.allocPrint(allocator, "Current directory ({s})", .{cwd});
+            const options = [_][]const u8{ "Global (/)", cwd_option };
+            const choice = try prompt.select("Where should auth be saved?", &options, 0) orelse {
+                try color.err(stderr, "error");
+                try stderr.print(": login cancelled\n", .{});
+                std.process.exit(1);
+            };
+            break :blk if (choice == 0) "/" else cwd;
+        } else {
+            // Non-TTY: only error if overriding existing global auth would be ambiguous.
+            const existing = try config.readConfig(allocator);
+            var has_global_auth = false;
+            for (existing.scopes.items) |record| {
+                if (std.mem.eql(u8, record.scope, "/") and record.entry.token != null) {
+                    has_global_auth = true;
+                    break;
+                }
+            }
+            if (has_global_auth) {
+                try color.err(stderr, "error");
+                try stderr.print(": --scope is required in non-interactive mode (existing global auth would be overridden)\n", .{});
+                try stderr.print("  pass --scope / to override global auth\n", .{});
+                try stderr.print("  pass --scope {s} for directory scope\n", .{cwd});
+                std.process.exit(1);
+            }
+            break :blk "/";
+        }
+    };
 
     const resolved = try config.resolve(allocator, cwd, .{
         .api_url = opts.api_url,
@@ -312,57 +346,119 @@ fn setupAction(_: Setup.Args, opts: Setup.Options) !void {
     };
     const api_url = resolved.api_url.?; // always set — defaults to https://sigillo.dev
 
-    const project = opts.project orelse {
+    const is_tty = std.posix.isatty(File.stdin().handle) and
+        std.posix.isatty(File.stdout().handle);
+
+    // ── Resolve project ────────────────────────────────────────────
+    const project: []const u8 = if (opts.project) |p| p else if (is_tty) proj: {
+        // Fetch orgs → projects and present an interactive select.
+        const me_res = client.request(allocator, .GET, api_url, "/api/me", token, null) catch |err| {
+            try color.err(stderr, "error");
+            try stderr.print(": failed to fetch user info: {s}\n", .{@errorName(err)});
+            std.process.exit(1);
+        };
+        if (me_res.status != 200) {
+            const message = client.parseError(allocator, me_res.body) orelse try allocator.dupe(u8, "unknown error");
+            try color.err(stderr, "error");
+            try stderr.print(": failed to fetch user info ({d}): {s}\n", .{ me_res.status, message });
+            std.process.exit(1);
+        }
+        const orgs = try client.jsonNamedArray(allocator, me_res.body, "orgs");
+        if (orgs.len == 0) {
+            try color.err(stderr, "error");
+            try stderr.print(": no organizations found — create one first\n", .{});
+            std.process.exit(1);
+        }
+
+        // Collect all projects across all orgs, tagging each with its org name.
+        const OrgProject = struct { id: []const u8, name: []const u8, org_name: []const u8 };
+        var all_projects = std.ArrayListUnmanaged(OrgProject).empty;
+        for (orgs) |org| {
+            const proj_path = try std.fmt.allocPrint(allocator, "/api/projects?orgId={s}", .{org.id});
+            const proj_res = client.request(allocator, .GET, api_url, proj_path, token, null) catch continue;
+            if (proj_res.status != 200) continue;
+            const items = try client.jsonNamedArray(allocator, proj_res.body, "projects");
+            for (items) |item| try all_projects.append(allocator, .{ .id = item.id, .name = item.name, .org_name = org.name });
+        }
+
+        if (all_projects.items.len == 0) {
+            try color.err(stderr, "error");
+            try stderr.print(": no projects found — create one first\n", .{});
+            std.process.exit(1);
+        }
+
+        // When member of multiple orgs, prefix project names with org name for disambiguation.
+        const multi_org = orgs.len > 1;
+        const proj_options = try allocator.alloc([]const u8, all_projects.items.len);
+        for (all_projects.items, 0..) |p, i| {
+            proj_options[i] = if (multi_org)
+                try std.fmt.allocPrint(allocator, "{s} / {s} ({s})", .{ p.org_name, p.name, p.id })
+            else
+                try std.fmt.allocPrint(allocator, "{s} ({s})", .{ p.name, p.id });
+        }
+        const proj_choice = try prompt.select("Select project", proj_options, 0) orelse {
+            try color.err(stderr, "error");
+            try stderr.print(": setup cancelled\n", .{});
+            std.process.exit(1);
+        };
+        break :proj all_projects.items[proj_choice].id;
+    } else {
         try color.err(stderr, "error");
         try stderr.print(": --project is required\n", .{});
         try stderr.writeAll("  sigillo setup --project <PROJECT_ID> --environment <ENVIRONMENT_ID>\n");
         std.process.exit(1);
     };
 
-    const environment = opts.environment orelse {
+    // ── Fetch environments for the chosen project ──────────────────
+    const env_path = try std.fmt.allocPrint(allocator, "/api/projects/{s}/environments", .{project});
+    const env_res = client.request(allocator, .GET, api_url, env_path, token, null) catch |err| {
+        try color.err(stderr, "error");
+        try stderr.print(": failed to fetch environments: {s}\n", .{@errorName(err)});
+        std.process.exit(1);
+    };
+    if (env_res.status != 200) {
+        const message = client.parseError(allocator, env_res.body) orelse try allocator.dupe(u8, "unknown error");
+        try color.err(stderr, "error");
+        try stderr.print(": failed to fetch environments ({d}): {s}\n", .{ env_res.status, message });
+        std.process.exit(1);
+    }
+    const all_envs = try client.jsonNamedArray(allocator, env_res.body, "environments");
+
+    // ── Resolve environment ────────────────────────────────────────
+    const environment: []const u8 = if (opts.environment) |e| env_val: {
+        // Validate the provided environment ID exists.
+        var found = false;
+        for (all_envs) |env| {
+            if (std.mem.eql(u8, env.id, e)) { found = true; break; }
+        }
+        if (!found) {
+            try color.err(stderr, "error");
+            try stderr.print(": environment {s} not found in project {s}\n", .{ e, project });
+            std.process.exit(1);
+        }
+        break :env_val e;
+    } else if (is_tty) env_sel: {
+        if (all_envs.len == 0) {
+            try color.err(stderr, "error");
+            try stderr.print(": no environments found in project {s}\n", .{project});
+            std.process.exit(1);
+        }
+        const env_options = try allocator.alloc([]const u8, all_envs.len);
+        for (all_envs, 0..) |e, i| {
+            env_options[i] = try std.fmt.allocPrint(allocator, "{s} ({s})", .{ e.name, e.id });
+        }
+        const env_choice = try prompt.select("Select environment", env_options, 0) orelse {
+            try color.err(stderr, "error");
+            try stderr.print(": setup cancelled\n", .{});
+            std.process.exit(1);
+        };
+        break :env_sel all_envs[env_choice].id;
+    } else {
         try color.err(stderr, "error");
         try stderr.print(": --environment is required\n", .{});
         try stderr.print("  sigillo setup --project {s} --environment <ENVIRONMENT_ID>\n", .{project});
         std.process.exit(1);
     };
-
-    const path = try std.fmt.allocPrint(allocator, "/api/projects/{s}/environments", .{project});
-    const res = client.request(allocator, .GET, api_url, path, token, null) catch |err| {
-        try color.err(stderr, "error");
-        try stderr.print(": failed to validate project: {s}\n", .{@errorName(err)});
-        std.process.exit(1);
-    };
-
-    if (res.status != 200) {
-        const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
-        try color.err(stderr, "error");
-        try stderr.print(": failed to validate project ({d}): {s}\n", .{ res.status, message });
-        std.process.exit(1);
-    }
-
-    var found_environment = false;
-    const parsed = try std.json.parseFromSliceLeaky(std.json.Value, allocator, res.body, .{});
-    if (parsed == .object) {
-        if (parsed.object.get("environments")) |environments_value| {
-            if (environments_value == .array) {
-                for (environments_value.array.items) |item| {
-                    if (item != .object) continue;
-                    const id_value = item.object.get("id") orelse continue;
-                    if (id_value != .string) continue;
-                    if (std.mem.eql(u8, id_value.string, environment)) {
-                        found_environment = true;
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    if (!found_environment) {
-        try color.err(stderr, "error");
-        try stderr.print(": environment {s} not found in project {s}\n", .{ environment, project });
-        std.process.exit(1);
-    }
 
     try config.setScope(allocator, cwd, .{
         .project = project,

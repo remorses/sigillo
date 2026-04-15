@@ -56,8 +56,8 @@ fn readKey(stdin: std.fs.File) !Key {
 pub fn select(prompt_text: []const u8, options: []const []const u8, default: ?usize) !?usize {
     if (options.len == 0) return null;
 
-    const stdin = std.io.getStdIn();
-    const stdout = std.io.getStdOut();
+    const stdin = std.fs.File.stdin();
+    const stdout = std.fs.File.stdout();
     const out = stdout.deprecatedWriter();
 
     // Non-TTY fallback: print numbered list, read a number
@@ -178,8 +178,8 @@ fn clearOptions(out: color.Writer, count: usize) !void {
 
 /// Non-interactive fallback: print numbered list, read a number.
 fn selectFallback(prompt_text: []const u8, options: []const []const u8, default: ?usize) !?usize {
-    const stdout = std.io.getStdOut();
-    const stdin = std.io.getStdIn();
+    const stdout = std.fs.File.stdout();
+    const stdin = std.fs.File.stdin();
     const out = stdout.deprecatedWriter();
 
     try out.writeAll(prompt_text);
