@@ -13,6 +13,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "cli": "zig build -Dtarget=aarch64-macos && ./zig-out/bin/sigillo",
     "build:zig": "zig build",
     "build:native": "tsx scripts/build.ts",
     "build:native:macos": "tsx scripts/build.ts darwin-arm64 darwin-x64",
