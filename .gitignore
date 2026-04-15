@@ -6,3 +6,5 @@ tmp
 .wrangler
 .dev.vars
 .env*
+.zig-cache
+zig-out
