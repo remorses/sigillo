@@ -6,18 +6,19 @@
 import { useState } from "react"
 import { getRouter } from "spiceflow/react"
 import { acceptInviteAction } from "../actions.ts"
+import type { App } from "../app.tsx"
 
 export function AcceptInviteButton({ invitationId }: { invitationId: string }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const router = getRouter()
+  const router = getRouter<App>()
 
   async function handleAccept() {
     setLoading(true)
     setError(null)
     try {
       const result = await acceptInviteAction({ invitationId })
-      router.push(`/orgs/${result.orgId}`)
+      router.push(router.href('/orgs/:orgId', { orgId: result.orgId }))
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to join organization")
       setLoading(false)

@@ -99,7 +99,7 @@ export function Sidebar({
           {orgs.map((org) => (
             <DropdownMenuLinkItem
               key={org.id}
-              href={`/orgs/${org.id}`}
+              href={router.href('/orgs/:orgId', { orgId: org.id })}
             >
               <div className="flex size-6 items-center justify-center rounded-md border">
                 <BuildingIcon className="size-3.5 shrink-0" />
@@ -111,7 +111,7 @@ export function Sidebar({
             </DropdownMenuLinkItem>
           ))}
           <DropdownMenuSeparator />
-          <DropdownMenuLinkItem href="/new-org">
+          <DropdownMenuLinkItem href={router.href('/new-org')}>
             <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
               <PlusIcon className="size-4" />
             </div>
@@ -137,8 +137,8 @@ export function Sidebar({
               <Link
                 key={project.id}
                 href={project.firstEnvId
-                  ? `/orgs/${currentOrgId}/projects/${project.id}/envs/${project.firstEnvId}`
-                  : `/orgs/${currentOrgId}/projects/${project.id}`}
+                  ? router.href('/orgs/:orgId/projects/:projectId/envs/:envId', { orgId: currentOrgId!, projectId: project.id, envId: project.firstEnvId })
+                  : router.href('/orgs/:orgId/projects/:id', { orgId: currentOrgId!, id: project.id })}
                 className={cn(
                   "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-sidebar-accent",
                   isActive && "bg-sidebar-accent text-primary font-medium",
@@ -227,7 +227,7 @@ export function Sidebar({
             <DropdownMenuItem
               onClick={async () => {
                 await authClient.signOut();
-                window.location.href = "/login";
+                window.location.href = router.href("/login");
               }}
             >
               <LogOutIcon className="size-4 text-muted-foreground" />
@@ -288,7 +288,7 @@ export function NewProjectDialog({
               const name = formData.get("name") as string;
               const result = await createProjectAction({ name, orgId });
               onOpenChange(false);
-              router.push(`/orgs/${orgId}/projects/${result.id}`);
+              router.push(router.href('/orgs/:orgId/projects/:id', { orgId: orgId!, id: result.id }));
             }}
           >
             <Input

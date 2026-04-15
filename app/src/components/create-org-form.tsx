@@ -29,7 +29,7 @@ export function CreateOrgForm() {
         action={async (formData: FormData) => {
           const name = formData.get("name") as string;
           const result = await createOrgAction({ name });
-          router.push(`/orgs/${result.id}`);
+          router.push(router.href('/orgs/:orgId', { orgId: result.id }));
         }}
       >
         <div>

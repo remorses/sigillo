@@ -66,7 +66,8 @@ export function ProjectPage({
           <Select
             defaultValue={selectedEnvId || ""}
             onValueChange={(val) => {
-              router.push(`/orgs/${orgId}/projects/${projectId}/envs/${val}`);
+              if (!val) return
+              router.push(router.href('/orgs/:orgId/projects/:projectId/envs/:envId', { orgId, projectId, envId: val }));
             }}
           >
             <SelectTrigger size="sm" className="w-auto min-w-40">

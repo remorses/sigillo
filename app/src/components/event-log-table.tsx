@@ -80,7 +80,8 @@ export function EventLogTable({
         <Select
           defaultValue={selectedEnvId || ""}
           onValueChange={(val) => {
-            router.push(`/orgs/${orgId}/projects/${projectId}/envs/${val}/event-log`);
+            if (!val) return
+            router.push(router.href('/orgs/:orgId/projects/:projectId/envs/:envId/event-log', { orgId, projectId, envId: val }));
           }}
         >
           <SelectTrigger size="sm" className="w-auto min-w-40">
