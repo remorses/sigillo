@@ -18,6 +18,7 @@ import {
   requireOrgMember,
   getOrgIdForProject, getOrgIdForEnvironment,
   encrypt,
+  generateApiToken,
 } from './db.ts'
 
 async function requireSession() {
@@ -191,6 +192,60 @@ export async function acceptInviteAction({ invitationId }: { invitationId: strin
     .onConflictDoNothing({ target: [schema.orgMember.orgId, schema.orgMember.userId] })
     .returning({ id: schema.orgMember.id })
   return { orgId: invite.orgId, alreadyMember: inserted.length === 0 }
+}
+
+// ── API Token actions ───────────────────────────────────────────────
+
+export async function createTokenAction({ name, projectId, environmentId }: {
+  name: string
+  projectId: string
+  environmentId?: string | null
+}) {
+  if (!name) throw new Error('Name is required')
+  if (!projectId) throw new Error('Project is required')
+  const session = await requireSession()
+  const orgId = await getOrgIdForProject(projectId)
+  if (!orgId) throw new Error('Project not found')
+  await requireOrgMember(session.userId, orgId)
+
+  // If environmentId is provided, verify it belongs to this project
+  if (environmentId) {
+    const db = getDb()
+    const env = await db.query.environment.findFirst({
+      where: { id: environmentId, projectId },
+      columns: { id: true },
+    })
+    if (!env) throw new Error('Environment not found in this project')
+  }
+
+  const { key, hashedKey, prefix } = await generateApiToken()
+  const db = getDb()
+  const [token] = await db.insert(schema.apiToken).values({
+    name,
+    projectId,
+    environmentId: environmentId || null,
+    prefix,
+    hashedKey,
+    createdBy: session.userId,
+  }).returning({ id: schema.apiToken.id })
+
+  // Return the full key — this is the only time it's ever available
+  return { id: token!.id, key }
+}
+
+export async function deleteTokenAction({ tokenId }: { tokenId: string }) {
+  if (!tokenId) throw new Error('Token ID is required')
+  const session = await requireSession()
+  const db = getDb()
+  const token = await db.query.apiToken.findFirst({
+    where: { id: tokenId },
+    columns: { projectId: true },
+  })
+  if (!token) throw new Error('Token not found')
+  const orgId = await getOrgIdForProject(token.projectId)
+  if (!orgId) throw new Error('Project not found')
+  await requireOrgMember(session.userId, orgId)
+  await db.delete(schema.apiToken).where(orm.eq(schema.apiToken.id, tokenId))
 }
 
 export async function createOrgAction({ name }: { name: string }) {

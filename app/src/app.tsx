@@ -446,6 +446,47 @@ export const app = new Spiceflow({
     )
   })
 
+  // ── Tokens page ────────────────────────────────────────────────────
+  .page('/orgs/:orgId/projects/:projectId/tokens', async ({ params }) => {
+    const db = getDb()
+    const { orgId, projectId } = params
+
+    const [project, environments, tokens] = await Promise.all([
+      db.query.project.findFirst({ where: { id: projectId }, columns: { name: true } }),
+      db.query.environment.findMany({ where: { projectId }, orderBy: { createdAt: 'asc' } }),
+      db.query.apiToken.findMany({
+        where: { projectId },
+        with: {
+          creator: { columns: { id: true, name: true } },
+          environment: { columns: { id: true, name: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ])
+
+    const { TokensPage } = await import('sigillo-app/src/components/tokens-page')
+
+    return (
+      <div className="flex flex-col gap-3 w-full">
+        <TokensPage
+          projectName={project?.name ?? 'Project'}
+          projectId={projectId}
+          orgId={orgId}
+          environments={environments}
+          tokens={tokens.map((t) => ({
+            id: t.id,
+            name: t.name,
+            prefix: t.prefix,
+            environmentId: t.environmentId,
+            environmentName: t.environment?.name ?? null,
+            createdBy: t.creator?.name ?? '—',
+            createdAt: t.createdAt,
+          }))}
+        />
+      </div>
+    )
+  })
+
   // ── Device flow verification page (standalone, no sidebar) ─────
   // Uses the proper BetterAuth device authorization client flow:
   // 1. Validate code via authClient.device({ query: { user_code } })
@@ -544,6 +585,7 @@ function TabBar({ orgId, projectId, pathname }: { orgId: string; projectId: stri
   const base = `/orgs/${orgId}/projects/${projectId}`
   const tabs = [
     { label: 'Secrets', href: base, active: pathname.startsWith(`${base}/envs`) || pathname === base },
+    { label: 'Tokens', href: `${base}/tokens`, active: pathname === `${base}/tokens` },
     { label: 'Access', href: `${base}/access`, active: pathname === `${base}/access` },
     { label: 'Event Log', href: `${base}/event-log`, active: pathname === `${base}/event-log` },
   ] as const

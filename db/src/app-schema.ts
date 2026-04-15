@@ -144,6 +144,30 @@ export const secretEvent = sqliteCore.sqliteTable('secret_event', {
   sqliteCore.index('secret_event_env_name_idx').on(table.environmentId, table.name, table.createdAt),
 ])
 
+// ── API tokens ──────────────────────────────────────────────────────
+// Programmatic access tokens scoped to a project (and optionally to a
+// specific environment). The full key is shown once at creation and never
+// stored — only a SHA-256 hash is persisted for verification. A short
+// prefix (e.g. "sig_abc1...") is kept for display in the UI.
+
+export const apiToken = sqliteCore.sqliteTable('api_token', {
+  id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
+  name: sqliteCore.text('name').notNull(),
+  // Project this token grants access to (always required)
+  projectId: sqliteCore.text('project_id').notNull().references(() => project.id, { onDelete: 'cascade' }),
+  // Optional: restrict to a single environment. Null = all envs in the project.
+  environmentId: sqliteCore.text('environment_id').references(() => environment.id, { onDelete: 'cascade' }),
+  // First 12 chars after the "sig_" prefix, for display (e.g. "sig_a1b2c3d4e5f6...")
+  prefix: sqliteCore.text('prefix').notNull(),
+  // SHA-256 hex digest of the full key — used for verification lookups
+  hashedKey: sqliteCore.text('hashed_key').notNull().unique(),
+  createdBy: sqliteCore.text('created_by').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
+}, (table) => [
+  sqliteCore.index('api_token_project_id_idx').on(table.projectId),
+  sqliteCore.index('api_token_hashed_key_idx').on(table.hashedKey),
+])
+
 // Default environments created for every new project
 export const DEFAULT_ENVIRONMENTS = [
   { name: 'Development', slug: 'development' },
@@ -185,7 +209,7 @@ export const deviceCode = sqliteCore.sqliteTable('device_code', {
 // ── Relations (v2 API) ──────────────────────────────────────────────
 
 export const relations = defineRelations(
-  { user, session, account, verification, org, orgMember, orgInvitation, project, environment, secretEvent, deviceCode, config },
+  { user, session, account, verification, org, orgMember, orgInvitation, project, environment, secretEvent, apiToken, deviceCode, config },
   (r) => ({
     user: {
       sessions: r.many.session(),
@@ -222,6 +246,7 @@ export const relations = defineRelations(
     project: {
       org: r.one.org({ from: r.project.orgId, to: r.org.id }),
       environments: r.many.environment(),
+      apiTokens: r.many.apiToken(),
     },
     environment: {
       project: r.one.project({ from: r.environment.projectId, to: r.project.id }),
@@ -230,6 +255,11 @@ export const relations = defineRelations(
     secretEvent: {
       environment: r.one.environment({ from: r.secretEvent.environmentId, to: r.environment.id }),
       user: r.one.user({ from: r.secretEvent.userId, to: r.user.id }),
+    },
+    apiToken: {
+      project: r.one.project({ from: r.apiToken.projectId, to: r.project.id }),
+      environment: r.one.environment({ from: r.apiToken.environmentId, to: r.environment.id }),
+      creator: r.one.user({ from: r.apiToken.createdBy, to: r.user.id }),
     },
     deviceCode: {
       user: r.one.user({ from: r.deviceCode.userId, to: r.user.id }),

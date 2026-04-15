@@ -253,6 +253,42 @@ export async function deriveAllSecretNames(environmentIds: string[]): Promise<st
   return [...allNames].sort()
 }
 
+// ── API token helpers ───────────────────────────────────────────────
+// Tokens use SHA-256 hashing — the full key is never stored, only shown
+// once at creation. generateApiToken() creates the raw key + hash + prefix.
+// verifyApiToken() looks up a key by its hash for API authentication.
+
+export async function hashTokenKey(key: string): Promise<string> {
+  const encoded = new TextEncoder().encode(key)
+  const digest = await crypto.subtle.digest('SHA-256', encoded)
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+export async function generateApiToken(): Promise<{ key: string; hashedKey: string; prefix: string }> {
+  const bytes = crypto.getRandomValues(new Uint8Array(32))
+  const raw = btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  const key = `sig_${raw}`
+  const hashedKey = await hashTokenKey(key)
+  const prefix = raw.slice(0, 12)
+  return { key, hashedKey, prefix }
+}
+
+export async function verifyApiToken(key: string): Promise<{
+  tokenId: string
+  projectId: string
+  environmentId: string | null
+} | null> {
+  const hashedKey = await hashTokenKey(key)
+  const db = getDb()
+  const token = await db.query.apiToken.findFirst({
+    where: { hashedKey },
+    columns: { id: true, projectId: true, environmentId: true },
+  })
+  if (!token) return null
+  return { tokenId: token.id, projectId: token.projectId, environmentId: token.environmentId }
+}
+
 // ── Encryption (AES-256-GCM) ────────────────────────────────────────
 
 async function getEncryptionKey(): Promise<CryptoKey> {
