@@ -5,8 +5,8 @@
     .fingerprint = 0x57a332a89162e80c,
     .dependencies = .{
         .zeke = .{
-            .url = "https://github.com/remorses/zeke/archive/b96d02bd4d446343aad61a057416c575f68ab260.tar.gz",
-            .hash = "zeke-0.1.0-fnPIzNM4AQCMjiyQ0fp23XCUBH0rEVl9WbqqmdCexgOD",
+            .url = "https://github.com/remorses/zeke/archive/fe752b383df7015913226375f65a4ea046912b76.tar.gz",
+            .hash = "zeke-0.1.0-fnPIzLY_AQBgzajQ2eWrMkhrsC6HrSM2d_5jO3b_SDau",
         },
     },
     .paths = .{

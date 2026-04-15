@@ -44,6 +44,7 @@ const Setup = zeke.cmd("setup", "Save project and environment for the current di
 
 const Run = zeke.cmd("run <...cmd>", "Run a command with secrets injected")
     .option("--command [cmd]", "Run a shell command string")
+    .option("--disable-redaction", "Print child output without secret redaction")
     .option("--project [id]", "Project ID override")
     .option("--environment [id]", "Environment ID override")
     .option("--token [token]", "Auth token override")
@@ -548,6 +549,10 @@ fn runAction(args: Run.Args, opts: Run.Options) !void {
     var env_map = try std.process.getEnvMap(gpa.allocator());
     defer env_map.deinit();
     try mergeSecretsIntoEnvMap(&env_map, secrets);
+    const redact_values = if (opts.disable_redaction)
+        &.{}
+    else
+        try collectLikelySecretValues(allocator, secrets);
 
     const argv: []const []const u8 = if (use_shell)
         try shellCommandArgv(allocator, opts.command.?)
@@ -558,11 +563,25 @@ fn runAction(args: Run.Args, opts: Run.Options) !void {
 
     var child = std.process.Child.init(argv, gpa.allocator());
     child.stdin_behavior = .Inherit;
-    child.stdout_behavior = .Inherit;
-    child.stderr_behavior = .Inherit;
+    child.stdout_behavior = if (redact_values.len == 0) .Inherit else .Pipe;
+    child.stderr_behavior = if (redact_values.len == 0) .Inherit else .Pipe;
     child.env_map = &env_map;
 
     try child.spawn();
+    if (redact_values.len > 0) {
+        var stdout_buf = std.ArrayListUnmanaged(u8).empty;
+        defer stdout_buf.deinit(gpa.allocator());
+        var stderr_buf = std.ArrayListUnmanaged(u8).empty;
+        defer stderr_buf.deinit(gpa.allocator());
+
+        try child.collectOutput(gpa.allocator(), &stdout_buf, &stderr_buf, 4096);
+
+        const stdout_redacted = try redactOutputAlloc(allocator, stdout_buf.items, redact_values);
+        const stderr_redacted = try redactOutputAlloc(allocator, stderr_buf.items, redact_values);
+
+        if (stdout_redacted.len > 0) try File.stdout().writeAll(stdout_redacted);
+        if (stderr_redacted.len > 0) try File.stderr().writeAll(stderr_redacted);
+    }
     const term = try child.wait();
     switch (term) {
         .Exited => |code| std.process.exit(code),
@@ -575,6 +594,97 @@ fn mergeSecretsIntoEnvMap(env_map: *std.process.EnvMap, secrets: std.json.Object
     while (iter.next()) |entry| {
         if (entry.value_ptr.* != .string) continue;
         try env_map.put(entry.key_ptr.*, entry.value_ptr.*.string);
+    }
+}
+
+fn collectLikelySecretValues(allocator: std.mem.Allocator, secrets: std.json.ObjectMap) ![]const []const u8 {
+    var values = std.ArrayListUnmanaged([]const u8).empty;
+    errdefer values.deinit(allocator);
+
+    var iter = secrets.iterator();
+    while (iter.next()) |entry| {
+        if (entry.value_ptr.* != .string) continue;
+        const value = entry.value_ptr.*.string;
+        if (!isLikelySecretValue(value)) continue;
+        try values.append(allocator, value);
+    }
+
+    std.mem.sort([]const u8, values.items, {}, struct {
+        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+            return a.len > b.len;
+        }
+    }.lessThan);
+
+    return values.toOwnedSlice(allocator);
+}
+
+fn isLikelySecretValue(value: []const u8) bool {
+    var start: usize = 0;
+    while (start < value.len) {
+        while (start < value.len and !std.ascii.isAlphanumeric(value[start])) : (start += 1) {}
+        if (start >= value.len) break;
+
+        var end = start;
+        while (end < value.len and std.ascii.isAlphanumeric(value[end])) : (end += 1) {}
+
+        const segment = value[start..end];
+        if (segment.len >= 16 and shannonEntropy(segment) >= 3.5) return true;
+        start = end;
+    }
+
+    return false;
+}
+
+fn shannonEntropy(value: []const u8) f64 {
+    if (value.len == 0) return 0;
+
+    var counts = [_]usize{0} ** 256;
+    for (value) |char| {
+        counts[char] += 1;
+    }
+
+    const len: f64 = @floatFromInt(value.len);
+    var entropy: f64 = 0;
+    for (counts) |count| {
+        if (count == 0) continue;
+        const frequency = @as(f64, @floatFromInt(count)) / len;
+        entropy -= frequency * std.math.log2(frequency);
+    }
+    return entropy;
+}
+
+fn redactOutputAlloc(
+    allocator: std.mem.Allocator,
+    input: []const u8,
+    redact_values: []const []const u8,
+) ![]u8 {
+    const output = try allocator.dupe(u8, input);
+    const sorted_values = try allocator.dupe([]const u8, redact_values);
+    std.mem.sort([]const u8, sorted_values, {}, struct {
+        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+            return a.len > b.len;
+        }
+    }.lessThan);
+
+    for (sorted_values) |value| {
+        redactInPlace(output, value);
+    }
+    return output;
+}
+
+fn maskOfLen(allocator: std.mem.Allocator, len: usize) ![]u8 {
+    const mask = try allocator.alloc(u8, len);
+    @memset(mask, '*');
+    return mask;
+}
+
+fn redactInPlace(output: []u8, secret: []const u8) void {
+    if (secret.len == 0 or secret.len > output.len) return;
+
+    var start: usize = 0;
+    while (std.mem.indexOfPos(u8, output, start, secret)) |index| {
+        @memset(output[index .. index + secret.len], '*');
+        start = index + secret.len;
     }
 }
 
@@ -646,6 +756,164 @@ fn isSupportedShell(shell_path: []const u8) bool {
         if (std.mem.endsWith(u8, shell_path, suffix)) return true;
     }
     return false;
+}
+
+test "high entropy strings are treated as likely secrets" {
+    try std.testing.expect(isLikelySecretValue("sk_live_51QwertyUIOPasdfGHJKLzxcvbnm1234567890"));
+    try std.testing.expect(isLikelySecretValue("9f8c2b6a1d4e7f0a3c5b8d1e4f7a9b2c"));
+}
+
+test "short or low entropy strings are not treated as secrets" {
+    try std.testing.expect(!isLikelySecretValue("development"));
+    try std.testing.expect(!isLikelySecretValue("current environment"));
+    try std.testing.expect(!isLikelySecretValue("aaaaaaaaaaaaaaaaaaaaaaaa"));
+    try std.testing.expect(!isLikelySecretValue("https://example.com/dashboard"));
+    try std.testing.expect(!isLikelySecretValue("postgres://localhost:5432/app"));
+}
+
+test "entropy distinguishes random strings from structured text" {
+    try std.testing.expect(shannonEntropy("Qx7mP2vN9kL4rT8yW1cB6hJ3sD5fG0zA") > 3.5);
+    try std.testing.expect(shannonEntropy("dashboard") < 3.5);
+}
+
+test "collectLikelySecretValues keeps only likely secrets and sorts longer first" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const parsed = try std.json.parseFromSliceLeaky(std.json.Value, allocator,
+        \\{
+        \\  "PUBLIC_URL": "https://example.com/dashboard",
+        \\  "ENV_NAME": "development",
+        \\  "TOKEN": "sk_live_51QwertyUIOPasdfGHJKLzxcvbnm1234567890",
+        \\  "HEX": "9f8c2b6a1d4e7f0a3c5b8d1e4f7a9b2c"
+        \\}
+    , .{});
+
+    const secrets = switch (parsed) {
+        .object => |value| value,
+        else => unreachable,
+    };
+
+    const values = try collectLikelySecretValues(allocator, secrets);
+    try std.testing.expectEqual(@as(usize, 2), values.len);
+    try std.testing.expect(values[0].len >= values[1].len);
+    try std.testing.expectEqualStrings("sk_live_51QwertyUIOPasdfGHJKLzxcvbnm1234567890", values[0]);
+    try std.testing.expectEqualStrings("9f8c2b6a1d4e7f0a3c5b8d1e4f7a9b2c", values[1]);
+}
+
+test "redactOutputAlloc replaces secrets with same length mask" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const secret = "sk_live_51QwertyUIOPasdfGHJKLzxcvbnm1234567890";
+    const input = "before sk_live_51QwertyUIOPasdfGHJKLzxcvbnm1234567890 after";
+    const output = try redactOutputAlloc(allocator, input, &.{secret});
+    const mask = try maskOfLen(allocator, secret.len);
+    const expected = try std.fmt.allocPrint(allocator, "before {s} after", .{mask});
+
+    try std.testing.expectEqualStrings(expected, output);
+    try std.testing.expectEqual(secret.len, mask.len);
+}
+
+test "redaction leaves non secret values visible" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const output = try redactOutputAlloc(
+        allocator,
+        "url=https://example.com env=development",
+        &.{}
+    );
+
+    try std.testing.expectEqualStrings("url=https://example.com env=development", output);
+}
+
+test "redaction handles repeated and multiple secret values" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const token = "sk_live_51QwertyUIOPasdfGHJKLzxcvbnm1234567890";
+    const hex = "9f8c2b6a1d4e7f0a3c5b8d1e4f7a9b2c";
+    const input =
+        "token=sk_live_51QwertyUIOPasdfGHJKLzxcvbnm1234567890\nhex=9f8c2b6a1d4e7f0a3c5b8d1e4f7a9b2c\nagain=sk_live_51QwertyUIOPasdfGHJKLzxcvbnm1234567890";
+
+    const output = try redactOutputAlloc(allocator, input, &.{ token, hex });
+    const token_mask = try maskOfLen(allocator, token.len);
+    const hex_mask = try maskOfLen(allocator, hex.len);
+    const expected = try std.fmt.allocPrint(
+        allocator,
+        "token={s}\nhex={s}\nagain={s}",
+        .{ token_mask, hex_mask, token_mask },
+    );
+
+    try std.testing.expectEqualStrings(expected, output);
+}
+
+test "longer secrets are redacted before shorter overlapping ones" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const long = "abcd1234wxyz9876";
+    const short = "1234wxyz";
+    const output = try redactOutputAlloc(allocator, "value=abcd1234wxyz9876", &.{ short, long });
+
+    try std.testing.expectEqualStrings("value=****************", output);
+}
+
+test "run command keeps argv after double dash as positional command" {
+    const State = struct {
+        var captured_cmd: []const []const u8 = &.{};
+        var used_disable_redaction = false;
+        var used_command: ?[]const u8 = null;
+
+        fn action(args: Run.Args, opts: Run.Options) !void {
+            captured_cmd = try std.testing.allocator.dupe([]const u8, args.cmd);
+            used_disable_redaction = opts.disable_redaction;
+            used_command = opts.command;
+        }
+    };
+
+    defer if (State.captured_cmd.len > 0) std.testing.allocator.free(State.captured_cmd);
+
+    const TestRun = Run.bind(State.action);
+
+    var app = zeke.App(.{TestRun}).init(std.testing.allocator, "sigillo");
+    try app.dispatch(&.{ "run", "--", "next", "dev" });
+
+    try std.testing.expectEqual(@as(usize, 2), State.captured_cmd.len);
+    try std.testing.expectEqualStrings("next", State.captured_cmd[0]);
+    try std.testing.expectEqualStrings("dev", State.captured_cmd[1]);
+    try std.testing.expectEqual(@as(?[]const u8, null), State.used_command);
+    try std.testing.expect(!State.used_disable_redaction);
+}
+
+test "run command still parses flags before double dash" {
+    const State = struct {
+        var captured_cmd: []const []const u8 = &.{};
+        var used_disable_redaction = false;
+
+        fn action(args: Run.Args, opts: Run.Options) !void {
+            captured_cmd = try std.testing.allocator.dupe([]const u8, args.cmd);
+            used_disable_redaction = opts.disable_redaction;
+        }
+    };
+
+    defer if (State.captured_cmd.len > 0) std.testing.allocator.free(State.captured_cmd);
+
+    const TestRun = Run.bind(State.action);
+
+    var app = zeke.App(.{TestRun}).init(std.testing.allocator, "sigillo");
+    try app.dispatch(&.{ "run", "--disable-redaction", "--", "next", "dev" });
+
+    try std.testing.expectEqual(@as(usize, 2), State.captured_cmd.len);
+    try std.testing.expectEqualStrings("next", State.captured_cmd[0]);
+    try std.testing.expectEqualStrings("dev", State.captured_cmd[1]);
+    try std.testing.expect(State.used_disable_redaction);
 }
 
 fn openBrowser(allocator: std.mem.Allocator, url: []const u8) void {

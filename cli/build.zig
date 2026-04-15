@@ -37,10 +37,15 @@ pub fn build(b: *std.Build) void {
 
     // Tests
     const test_mod = b.createModule(.{
-        .root_source_file = b.path("zig/src/config.zig"),
+        .root_source_file = b.path("zig/src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
+    test_mod.addImport("build_options", version_options.createModule());
+    test_mod.addImport("zeke", b.dependency("zeke", .{
+        .target = target,
+        .optimize = optimize,
+    }).module("zeke"));
     const test_step = b.step("test", "Run unit tests");
     const test_exe = b.addTest(.{
         .root_module = test_mod,
