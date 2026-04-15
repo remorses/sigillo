@@ -22,7 +22,6 @@ import {
   decrypt,
 } from './db.ts'
 import { apiApp } from './api.ts'
-import { createOrgAction, createProjectAction } from './actions.ts'
 import { formatTime } from 'sigillo-app/src/lib/utils'
 import { Sidebar, NewProjectButton, FooterColo } from 'sigillo-app/src/components/sidebar'
 import { ProjectPage } from 'sigillo-app/src/components/project-page'

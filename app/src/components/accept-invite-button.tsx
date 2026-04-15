@@ -3,38 +3,29 @@
 
 "use client"
 
-import { useState } from "react"
-import { getRouter } from "spiceflow/react"
+import { ErrorBoundary } from "spiceflow/react"
+import { Button } from "sigillo-app/src/components/ui/button"
 import { acceptInviteAction } from "../actions.ts"
-import type { App } from "../app.tsx"
 
 export function AcceptInviteButton({ invitationId }: { invitationId: string }) {
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const router = getRouter<App>()
-
-  async function handleAccept() {
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await acceptInviteAction({ invitationId })
-      router.push(router.href('/orgs/:orgId', { orgId: result.orgId }))
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to join organization")
-      setLoading(false)
-    }
-  }
-
   return (
     <div className="flex flex-col items-center gap-2">
-      <button
-        onClick={handleAccept}
-        disabled={loading}
-        className="h-10 px-6 rounded-lg bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-50"
+      <ErrorBoundary
+        fallback={
+          <div className="flex flex-col items-center gap-2">
+            <ErrorBoundary.ErrorMessage className="text-sm text-destructive" />
+            <ErrorBoundary.ResetButton className="text-sm text-destructive underline cursor-pointer">
+              Try again
+            </ErrorBoundary.ResetButton>
+          </div>
+        }
       >
-        {loading ? "Joining…" : "Join organization"}
-      </button>
-      {error && <p className="text-sm text-destructive">{error}</p>}
+        <form action={async () => {
+          await acceptInviteAction({ invitationId })
+        }}>
+          <Button type="submit">Join organization</Button>
+        </form>
+      </ErrorBoundary>
     </div>
   )
 }

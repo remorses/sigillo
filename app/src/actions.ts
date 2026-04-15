@@ -14,7 +14,7 @@ import { ulid } from 'ulid'
 import * as orm from 'drizzle-orm'
 import type { BatchItem } from 'drizzle-orm/batch'
 import * as schema from 'db/src/app-schema.ts'
-import { getActionRequest } from 'spiceflow'
+import { getActionRequest, redirect } from 'spiceflow'
 import {
   getDb, getSession,
   requireOrgMember,
@@ -44,7 +44,7 @@ export async function createProjectAction({ name, orgId }: { name: string; orgId
       db.insert(schema.environment).values({ projectId, name: e.name, slug: e.slug }),
     ),
   ] as const)
-  return { id: proj!.id, name: proj!.name }
+  throw redirect(`/orgs/${orgId}/projects/${proj!.id}`)
 }
 
 // All secret mutations append to the secretEvent log. Never update or delete events.
@@ -208,25 +208,20 @@ export async function acceptInviteAction({ invitationId }: { invitationId: strin
   if (!invitationId) throw new Error('Invitation ID is required')
   const session = await requireSession()
   const db = getDb()
-  // Atomically consume the invite: DELETE ... RETURNING ensures only one
-  // caller can claim it even if two requests race.
-  const [invite] = await db.delete(schema.orgInvitation)
-    .where(orm.and(
-      orm.eq(schema.orgInvitation.id, invitationId),
-      orm.gte(schema.orgInvitation.expiresAt, Date.now()),
-    ))
-    .returning({
-      orgId: schema.orgInvitation.orgId,
-      role: schema.orgInvitation.role,
-    })
-  if (!invite) throw new Error('Invitation not found or expired')
+  // Look up the invite without deleting — it stays valid until it expires.
+  // This avoids a race where the page re-renders after accept and shows
+  // "Invalid Invitation" because the row was already deleted.
+  const invite = await db.query.orgInvitation.findFirst({
+    where: { id: invitationId },
+  })
+  if (!invite || invite.expiresAt < Date.now()) throw new Error('Invitation not found or expired')
   // Insert membership, onConflictDoNothing handles the already-member case
   // (unique index on org_id + user_id prevents duplicates).
   const inserted = await db.insert(schema.orgMember)
     .values({ orgId: invite.orgId, userId: session.userId, role: invite.role })
     .onConflictDoNothing({ target: [schema.orgMember.orgId, schema.orgMember.userId] })
     .returning({ id: schema.orgMember.id })
-  return { orgId: invite.orgId, alreadyMember: inserted.length === 0 }
+  throw redirect(`/orgs/${invite.orgId}`)
 }
 
 // ── API Token actions ───────────────────────────────────────────────
@@ -292,5 +287,5 @@ export async function createOrgAction({ name }: { name: string }) {
     db.insert(schema.org).values({ id: orgId, name }).returning({ id: schema.org.id, name: schema.org.name }),
     db.insert(schema.orgMember).values({ orgId, userId: session.userId, role: 'admin' }),
   ] as const)
-  return { id: org!.id, name: org!.name }
+  throw redirect(`/orgs/${org!.id}`)
 }

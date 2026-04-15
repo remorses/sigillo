@@ -286,9 +286,7 @@ export function NewProjectDialog({
             action={async (formData: FormData) => {
               if (!orgId) return;
               const name = formData.get("name") as string;
-              const result = await createProjectAction({ name, orgId });
-              onOpenChange(false);
-              router.push(router.href('/orgs/:orgId/projects/:id', { orgId: orgId!, id: result.id }));
+              await createProjectAction({ name, orgId });
             }}
           >
             <Input
