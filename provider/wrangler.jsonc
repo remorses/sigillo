@@ -1,6 +1,7 @@
 {
   "name": "sigillo-provider",
   "compatibility_date": "2025-06-01",
+  "placement": { "region": "aws:us-east-1" },
   "compatibility_flags": ["nodejs_compat"],
   "main": "spiceflow/cloudflare-entrypoint",
   "rules": [
