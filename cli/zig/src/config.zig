@@ -225,6 +225,11 @@ pub fn resolve(allocator: std.mem.Allocator, cwd_input: []const u8, flags: Resol
     if (flags.project) |value| result.project = value;
     if (flags.environment) |value| result.environment = value;
 
+    // Default api_url to sigillo.dev when not configured anywhere
+    if (result.api_url == null) {
+        result.api_url = "https://sigillo.dev";
+    }
+
     return result;
 }
 
