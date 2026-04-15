@@ -48,15 +48,24 @@ export const app = new Spiceflow()
   .get('/sign-in', async ({ request }) => {
     const currentUrl = new URL(request.url)
     const auth = getAuth()
-    // Preserve the full URL (including OAuth query params) so
-    // BetterAuth can resume the authorization flow after Google login.
-    const res = await auth.api.signInSocial({
+    // Use returnHeaders so we get both the redirect URL and the Set-Cookie
+    // headers (state cookie for CSRF). A bare Response.redirect() drops
+    // those cookies → state_mismatch on the Google callback.
+    const { headers: responseHeaders, response } = await auth.api.signInSocial({
       body: { provider: 'google', callbackURL: currentUrl.href },
+      headers: request.headers,
+      returnHeaders: true,
     })
-    if (res?.url) {
-      return Response.redirect(res.url, 302)
+    if (!response?.url) {
+      return new Response('Failed to initiate Google sign-in', { status: 500 })
     }
-    return new Response('Failed to initiate Google sign-in', { status: 500 })
+    const redirect = new Response(null, { status: 302, headers: { Location: response.url } })
+    // Forward all Set-Cookie headers from BetterAuth (state cookie for CSRF).
+    // getSetCookie() returns each cookie separately — append preserves multiples.
+    for (const cookie of responseHeaders.getSetCookie()) {
+      redirect.headers.append('Set-Cookie', cookie)
+    }
+    return redirect
   })
 
   // ── Well-known endpoints ─────────────────────────────────────
