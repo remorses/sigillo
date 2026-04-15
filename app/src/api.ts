@@ -278,6 +278,24 @@ export const apiApp = new Spiceflow()
     },
   })
 
+  // ── Me ───────────────────────────────────────────────────────────
+  .route({
+    method: 'GET',
+    path: '/api/me',
+    async handler({ request }) {
+      const session = await requireApiSession(request)
+      const db = getDb()
+      const members = await db.query.orgMember.findMany({
+        where: { userId: session.userId },
+        with: { org: true },
+      })
+      const orgs = members.filter((m) => m.org != null).map((m) => ({
+        id: m.org!.id!, name: m.org!.name!, role: m.role,
+      }))
+      return { user: session.user, orgs }
+    },
+  })
+
   // ── Health ──────────────────────────────────────────────────────
   .get('/health', () => {
     return { ok: true, service: 'sigillo-app' }
