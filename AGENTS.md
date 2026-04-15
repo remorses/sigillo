@@ -26,6 +26,26 @@ Each worker has a single Durable Object (`AuthStore` / `SecretsStore`) that hold
 
 Secrets are AES-256-GCM encrypted in the `SecretsStore` DO. The encryption key is a Cloudflare secret (`ENCRYPTION_KEY`), never stored in the DB. Each secret gets a random 12-byte IV.
 
+Generate a valid `ENCRYPTION_KEY` (32 random bytes, base64-encoded):
+
+```bash
+openssl rand -base64 32
+```
+
+Set it as a Cloudflare secret for production:
+
+```bash
+echo "$(openssl rand -base64 32)" | wrangler secret put ENCRYPTION_KEY
+```
+
+For local dev, add it to `app/.dev.vars`:
+
+```
+ENCRYPTION_KEY=<output of openssl rand -base64 32>
+```
+
+The value must be valid base64 — `atob()` is used to decode it at runtime. If it's malformed or missing, all encrypt/decrypt operations fail silently (the server action throws but the error was not visible until we added ErrorBoundary).
+
 ## Auth flow
 
 1. Self-hosted app calls `POST /api/setup` on first deploy → registers with provider via dynamic client registration
