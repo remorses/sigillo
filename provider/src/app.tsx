@@ -1,31 +1,25 @@
 // Spiceflow entry for the middleman OAuth provider.
-// Renders login + consent pages, serves BetterAuth API, health check.
+// BetterAuth runs in the worker (not the DO) — the DO is a thin SQL proxy.
+// Serves BetterAuth API, redirects login straight to Google, well-known
+// endpoints, and health check.
 // Also serves as the Cloudflare Worker entry via the default export.
 
 import { Spiceflow } from 'spiceflow'
-import { Head, Link } from 'spiceflow/react'
-import { env } from 'cloudflare:workers'
-import type { AuthStore } from './auth-store.ts'
-import { GoogleSignInButton } from './components/google-sign-in-button.tsx'
+import { Head } from 'spiceflow/react'
+import { getAuth } from './db.ts'
 
 export { AuthStore } from './auth-store.ts'
-
-function getAuthStoreStub() {
-  const id = env.AUTH_STORE.idFromName('main')
-  return env.AUTH_STORE.get(id) as DurableObjectStub<AuthStore>
-}
 
 export const app = new Spiceflow()
 
   // ── BetterAuth middleware ──────────────────────────────────────
-  // Forward /api/auth/* requests to the DO's BetterAuth handler.
-  // Falls through to spiceflow routes on 404 so we can register our own
-  // routes under /api/auth/* (e.g. .well-known, custom endpoints).
+  // BetterAuth runs in the worker, not the DO. Only SQL crosses the
+  // DO boundary via sqlite-proxy.
   .use(async ({ request }, next) => {
     const url = new URL(request.url)
     if (url.pathname.startsWith('/api/auth')) {
-      const stub = getAuthStoreStub()
-      const res = await stub.authHandler(request)
+      const auth = getAuth()
+      const res = await auth.handler(request)
       if (res.ok || res.status !== 404) return res
     }
     return next()
@@ -47,19 +41,22 @@ export const app = new Spiceflow()
     )
   })
 
-  // ── Login page ────────────────────────────────────────────────
+  // ── Login redirect ─────────────────────────────────────────────
   // BetterAuth oauthProvider redirects here when user is not logged in.
-  // User clicks "Sign in with Google" which hits BetterAuth's Google social endpoint.
-  .page('/sign-in', async () => {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
-        <div style={{ textAlign: 'center', maxWidth: 400 }}>
-          <h1>Sigillo</h1>
-          <p>Sign in to continue</p>
-          <GoogleSignInButton />
-        </div>
-      </div>
-    )
+  // Instead of showing a button, redirect straight to Google via the
+  // type-safe BetterAuth API — now runs directly in the worker.
+  .get('/sign-in', async ({ request }) => {
+    const currentUrl = new URL(request.url)
+    const auth = getAuth()
+    // Preserve the full URL (including OAuth query params) so
+    // BetterAuth can resume the authorization flow after Google login.
+    const res = await auth.api.signInSocial({
+      body: { provider: 'google', callbackURL: currentUrl.href },
+    })
+    if (res?.url) {
+      return Response.redirect(res.url, 302)
+    }
+    return new Response('Failed to initiate Google sign-in', { status: 500 })
   })
 
   // ── Well-known endpoints ─────────────────────────────────────
@@ -69,17 +66,17 @@ export const app = new Spiceflow()
   //   OIDC:    [issuer-path]/.well-known/openid-configuration
   //   OAuth AS: /.well-known/oauth-authorization-server[issuer-path]
   .get('/api/auth/.well-known/openid-configuration', async () => {
-    const stub = getAuthStoreStub()
-    return Response.json(await stub.getOpenIdConfig())
+    const auth = getAuth()
+    return Response.json(await auth.api.getOpenIdConfig({ headers: new Headers() }))
   })
   .get('/.well-known/oauth-authorization-server/api/auth', async () => {
-    const stub = getAuthStoreStub()
-    return Response.json(await stub.getOAuthServerConfig())
+    const auth = getAuth()
+    return Response.json(await auth.api.getOAuthServerConfig({ headers: new Headers() }))
   })
   // Also serve at root for clients that ignore the issuer path
   .get('/.well-known/openid-configuration', async () => {
-    const stub = getAuthStoreStub()
-    return Response.json(await stub.getOpenIdConfig())
+    const auth = getAuth()
+    return Response.json(await auth.api.getOpenIdConfig({ headers: new Headers() }))
   })
 
   // ── Health check ──────────────────────────────────────────────
@@ -97,5 +94,3 @@ export default {
     return app.handle(request)
   },
 } satisfies ExportedHandler<Env>
-
-

@@ -14,10 +14,10 @@
     "deploy:prod": "vite build && wrangler deploy"
   },
   "dependencies": {
+    "@better-auth/drizzle-adapter": "https://pkg.pr.new/better-auth/better-auth/@better-auth/drizzle-adapter@6913",
     "@better-auth/oauth-provider": "latest",
     "better-auth": "latest",
     "drizzle-orm": "1.0.0-beta.21",
-    "libsqlproxy": "latest",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "spiceflow": "workspace:^",

@@ -1,0 +1,62 @@
+// Worker-level database client and BetterAuth instance for the provider.
+// The DO is a thin SQL proxy — all logic runs here in the worker.
+//
+// getDb() creates a drizzle-orm/sqlite-proxy client that routes SQL to the
+// DO's executeSql() RPC. getAuth() creates a BetterAuth instance backed by
+// the same drizzle client with oauthProvider + jwt + Google social.
+//
+// This mirrors the app's db.ts pattern exactly: BetterAuth runs in the worker,
+// only raw SQL crosses the DO boundary via sqlite-proxy.
+
+import { env } from 'cloudflare:workers'
+import { drizzle } from 'drizzle-orm/sqlite-proxy'
+import * as schema from './schema.ts'
+import { betterAuth } from 'better-auth'
+import { jwt } from 'better-auth/plugins'
+import { oauthProvider } from '@better-auth/oauth-provider'
+import { drizzleAdapter } from '@better-auth/drizzle-adapter/relations-v2'
+import type { AuthStore } from './auth-store.ts'
+
+// ── DO stub ─────────────────────────────────────────────────────────
+
+function getStub() {
+  const id = env.AUTH_STORE.idFromName('main')
+  return env.AUTH_STORE.get(id) as DurableObjectStub<AuthStore>
+}
+
+// ── Drizzle client via sqlite-proxy ─────────────────────────────────
+
+export function getDb() {
+  const stub = getStub()
+  return drizzle(async (sql, params, method) => {
+    return stub.executeSql(sql, params, method)
+  }, { schema, relations: schema.relations })
+}
+
+// ── BetterAuth ──────────────────────────────────────────────────────
+
+export function getAuth() {
+  const db = getDb()
+  return betterAuth({
+    baseURL: env.BETTER_AUTH_URL,
+    secret: env.BETTER_AUTH_SECRET,
+    database: drizzleAdapter(db, { provider: 'sqlite' }),
+    socialProviders: {
+      google: {
+        clientId: env.GOOGLE_CLIENT_ID,
+        clientSecret: env.GOOGLE_CLIENT_SECRET,
+      },
+    },
+    plugins: [
+      jwt(),
+      oauthProvider({
+        loginPage: '/sign-in',
+        consentPage: '/sign-in', // unused — skipConsent defaults to true for all clients
+        allowDynamicClientRegistration: true,
+        allowUnauthenticatedClientRegistration: true,
+        scopes: ['openid', 'email', 'profile', 'offline_access'],
+        clientRegistrationDefaultScopes: ['openid', 'email', 'profile'],
+      }),
+    ],
+  })
+}
