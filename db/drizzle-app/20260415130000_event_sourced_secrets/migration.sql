@@ -7,7 +7,7 @@ CREATE TABLE `secret_event` (
 	`operation` text NOT NULL,
 	`value_encrypted` text,
 	`iv` text,
-	`user_id` text NOT NULL,
+	`user_id` text,
 	`created_at` integer NOT NULL,
 	CONSTRAINT `fk_secret_event_environment_id_environment_id_fk` FOREIGN KEY (`environment_id`) REFERENCES `environment`(`id`) ON DELETE CASCADE,
 	CONSTRAINT `fk_secret_event_user_id_user_id_fk` FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON DELETE CASCADE

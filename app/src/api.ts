@@ -177,12 +177,13 @@ export const apiApp = new Spiceflow()
     request: z.object({ name: z.string().min(1), value: z.string().min(1) }),
     async handler({ request, params }) {
       const body = await request.json()
-      const { userId } = await requireSecretsApiAuth(request, params.environmentId)
+      const auth = await requireSecretsApiAuth(request, params.environmentId)
       const db = getDb()
       const { encrypted, iv } = await encrypt(body.value)
       const [row] = await db.insert(schema.secretEvent).values({
         environmentId: params.environmentId, name: body.name,
-        operation: 'set', valueEncrypted: encrypted, iv, userId,
+        operation: 'set', valueEncrypted: encrypted, iv,
+        userId: auth.userId, apiTokenId: auth.apiTokenId,
       }).returning({ id: schema.secretEvent.id, name: schema.secretEvent.name })
       return { ok: true, environmentId: params.environmentId, id: row!.id, name: row!.name }
     },
@@ -205,11 +206,11 @@ export const apiApp = new Spiceflow()
     method: 'DELETE',
     path: '/api/environments/:environmentId/secrets/:name',
     async handler({ params, request }) {
-      const { userId } = await requireSecretsApiAuth(request, params.environmentId)
+      const auth = await requireSecretsApiAuth(request, params.environmentId)
       const db = getDb()
       await db.insert(schema.secretEvent).values({
         environmentId: params.environmentId, name: params.name,
-        operation: 'delete', userId,
+        operation: 'delete', userId: auth.userId, apiTokenId: auth.apiTokenId,
       })
       return { ok: true, name: params.name }
     },
@@ -260,7 +261,7 @@ export const apiApp = new Spiceflow()
     request: z.object({ secrets: z.record(z.string(), z.string()) }),
     async handler({ request, params }) {
       const body = await request.json()
-      const { userId } = await requireSecretsApiAuth(request, params.environmentId)
+      const auth = await requireSecretsApiAuth(request, params.environmentId)
       const db = getDb()
 
       const names: string[] = []
@@ -268,7 +269,8 @@ export const apiApp = new Spiceflow()
         const { encrypted, iv } = await encrypt(value)
         await db.insert(schema.secretEvent).values({
           environmentId: params.environmentId, name,
-          operation: 'set', valueEncrypted: encrypted, iv, userId,
+          operation: 'set', valueEncrypted: encrypted, iv,
+          userId: auth.userId, apiTokenId: auth.apiTokenId,
         })
         names.push(name)
       }

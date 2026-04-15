@@ -412,7 +412,10 @@ export const app = new Spiceflow({
       const envMap = new Map(environments.map((e) => [e.id, e.name]))
       const rows = await db.query.secretEvent.findMany({
         where: { environmentId: selectedEnvId },
-        with: { user: { columns: { id: true, name: true } } },
+        with: {
+          user: { columns: { id: true, name: true } },
+          apiToken: { columns: { id: true, name: true } },
+        },
         orderBy: { createdAt: 'desc' },
       })
       events = rows.map((r) => ({
@@ -423,7 +426,7 @@ export const app = new Spiceflow({
         iv: r.iv,
         createdAt: r.createdAt,
         environmentName: envMap.get(r.environmentId) ?? '—',
-        userName: r.user?.name ?? '—',
+        userName: r.user?.name ?? r.apiToken?.name ?? '—',
       }))
     }
 

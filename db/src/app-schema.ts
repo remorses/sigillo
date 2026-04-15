@@ -138,7 +138,10 @@ export const secretEvent = sqliteCore.sqliteTable('secret_event', {
   valueEncrypted: sqliteCore.text('value_encrypted'),
   // AES-GCM initialization vector, stored as base64. Null for delete events.
   iv: sqliteCore.text('iv'),
-  userId: sqliteCore.text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  // Exactly one of userId/apiTokenId is set — identifies who performed the action.
+  // userId for human users (session auth), apiTokenId for programmatic access (bearer token).
+  userId: sqliteCore.text('user_id').references(() => user.id, { onDelete: 'cascade' }),
+  apiTokenId: sqliteCore.text('api_token_id').references(() => apiToken.id, { onDelete: 'cascade' }),
   createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
 }, (table) => [
   sqliteCore.index('secret_event_env_name_idx').on(table.environmentId, table.name, table.createdAt),
@@ -255,6 +258,7 @@ export const relations = defineRelations(
     secretEvent: {
       environment: r.one.environment({ from: r.secretEvent.environmentId, to: r.environment.id }),
       user: r.one.user({ from: r.secretEvent.userId, to: r.user.id }),
+      apiToken: r.one.apiToken({ from: r.secretEvent.apiTokenId, to: r.apiToken.id }),
     },
     apiToken: {
       project: r.one.project({ from: r.apiToken.projectId, to: r.project.id }),

@@ -18,6 +18,8 @@ CREATE INDEX `api_token_project_id_idx` ON `api_token` (`project_id`);
 --> statement-breakpoint
 CREATE INDEX `api_token_hashed_key_idx` ON `api_token` (`hashed_key`);
 --> statement-breakpoint
+ALTER TABLE `secret_event` ADD COLUMN `api_token_id` text REFERENCES `api_token`(`id`) ON DELETE CASCADE;
+--> statement-breakpoint
 CREATE TRIGGER `api_token_env_project_check`
 BEFORE INSERT ON `api_token`
 WHEN NEW.`environment_id` IS NOT NULL
