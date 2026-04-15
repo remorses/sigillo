@@ -58,7 +58,7 @@ export function ProjectPage({
         <div className="flex items-center gap-2">
           {secrets.length > 0 && (
             <Button variant="ghost" size="sm" onClick={() => setAllVisible((v) => !v)}>
-              {allVisible ? "Hide all" : "Show all"}
+              {allVisible ? "Hide all secrets" : "Show all secrets"}
             </Button>
           )}
           <Select
