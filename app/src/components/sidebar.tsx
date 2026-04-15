@@ -42,6 +42,7 @@ import {
 } from "sigillo-app/src/components/ui/dropdown-menu";
 import { createProjectAction } from "../actions.ts";
 import type { App } from "../app.tsx";
+import { authClient } from "../auth-client.ts";
 
 export function Sidebar({
   orgs,
@@ -221,10 +222,15 @@ export function Sidebar({
               </div>
             </div>
             <DropdownMenuSeparator />
-            <DropdownMenuLinkItem href="/api/auth/sign-out">
+            <DropdownMenuItem
+              onClick={async () => {
+                await authClient.signOut();
+                window.location.href = "/login";
+              }}
+            >
               <LogOutIcon className="size-4 text-muted-foreground" />
               Log out
-            </DropdownMenuLinkItem>
+            </DropdownMenuItem>
           </DropdownMenuPopup>
         </DropdownMenu>
       </div>
