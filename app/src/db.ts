@@ -80,6 +80,12 @@ export async function getAuth() {
     baseURL: env.APP_URL,
     secret: env.BETTER_AUTH_SECRET,
     database: drizzleAdapter(db, { provider: 'sqlite' }),
+    session: {
+      cookieCache: {
+        enabled: true,
+        maxAge: 5 * 60, // 5 minutes — avoids a DO SQL round-trip on every request
+      },
+    },
     plugins: [
       genericOAuth({
         config: [
@@ -98,6 +104,12 @@ export async function getAuth() {
       bearer(),
     ],
   })
+}
+
+// ── Data center location ────────────────────────────────────────────
+
+export function getDataCenter(): Promise<string> {
+  return getStub().getColo()
 }
 
 // ── Session helpers ─────────────────────────────────────────────────

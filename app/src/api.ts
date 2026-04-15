@@ -12,6 +12,7 @@ import { z } from 'zod'
 import * as schema from 'db/src/app-schema.ts'
 import {
   getDb,
+  getDataCenter,
   requireApiSession,
   requireApiOrgMember,
   requireSecretsApiAuth,
@@ -314,6 +315,14 @@ export const apiApp = new Spiceflow()
       }))
       return { user: session.user, orgs }
     },
+  })
+
+  // ── Info (public) ───────────────────────────────────────────────
+  // Returns the IATA colo code of the Durable Object's data center.
+  // Used by the UI footer to display "database in <region>".
+  .get('/api/info', async () => {
+    const colo = await getDataCenter()
+    return { colo }
   })
 
   // ── Health ──────────────────────────────────────────────────────

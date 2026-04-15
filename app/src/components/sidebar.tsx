@@ -8,7 +8,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { getRouter, Link, ErrorBoundary } from "spiceflow/react";
 import {
   PlusIcon,
@@ -306,6 +306,29 @@ export function NewProjectDialog({
         </ErrorBoundary>
       </DialogPopup>
     </Dialog>
+  );
+}
+
+// ── Footer colo badge ──────────────────────────────────────────
+// Client-side fetch so it doesn't add a DO round-trip to SSR.
+// The colo is cached permanently in the DO — DOs never move.
+
+export function FooterColo() {
+  const [colo, setColo] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/info")
+      .then((r) => r.json())
+      .then((data: unknown) => setColo((data as { colo: string }).colo))
+      .catch(() => {});
+  }, []);
+
+  if (!colo) return null;
+
+  return (
+    <span className="text-xs text-muted-foreground">
+      database in {colo}
+    </span>
   );
 }
 

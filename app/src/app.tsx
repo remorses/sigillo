@@ -24,7 +24,7 @@ import {
 import { apiApp } from './api.ts'
 import { createOrgAction, createProjectAction } from './actions.ts'
 import { formatTime } from 'sigillo-app/src/lib/utils'
-import { Sidebar, NewProjectButton } from 'sigillo-app/src/components/sidebar'
+import { Sidebar, NewProjectButton, FooterColo } from 'sigillo-app/src/components/sidebar'
 import { ProjectPage } from 'sigillo-app/src/components/project-page'
 import { CreateOrgForm } from 'sigillo-app/src/components/create-org-form'
 import {
@@ -720,6 +720,7 @@ function Footer() {
       <div className="border-t border-border" />
       <div className="max-w-(--content-max-width) grow mx-auto w-full border-x border-border">
         <div className="flex items-center justify-end gap-4 px-6 py-4">
+          <FooterColo />
           <span className="text-xs text-muted-foreground">
             © {new Date().getFullYear()} Sigillo
           </span>

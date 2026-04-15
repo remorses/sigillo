@@ -21,6 +21,22 @@ export class SecretsStore extends DurableObject<Env> {
     })
   }
 
+  // RPC: return the IATA airport code of the colo this DO runs in.
+  // Fetches https://cloudflare.com/cdn-cgi/trace which egresses from the DO's
+  // own data center. Result is cached in DO KV storage permanently — DOs
+  // never move after creation, so the colo is constant.
+  async getColo(): Promise<string> {
+    const cached = await this.ctx.storage.get<string>('_colo')
+    if (cached) return cached
+
+    const res = await fetch('https://cloudflare.com/cdn-cgi/trace')
+    const text = await res.text()
+    const colo = text.match(/colo=(\w+)/)?.[1] ?? 'unknown'
+
+    await this.ctx.storage.put('_colo', colo)
+    return colo
+  }
+
   // RPC: execute a SQL query on the DO's SQLite database.
   // Called by the worker's drizzle-orm/sqlite-proxy callback.
   // method is 'all' | 'get' | 'run' | 'values'
