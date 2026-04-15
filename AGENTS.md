@@ -68,6 +68,40 @@ The `app/src/api.ts` file contains the external REST API (for CLI, SDKs, agents)
 
 Doppler API reference for design comparison: https://docs.doppler.com/reference
 
+## CLI
+
+The Sigillo CLI lives in `cli/` and is implemented in Zig as a standalone
+binary.
+
+Files to know:
+
+- `cli/zig/src/main.zig` — command wiring and process execution
+- `cli/zig/src/client.zig` — HTTP client for the app API
+- `cli/zig/src/config.zig` — global scoped config in `~/.sigillo/config.json`
+- `app/src/api.ts` — server endpoints the CLI talks to
+
+Command and UX design should stay close to Doppler where it makes Sigillo
+simpler to use. Use these as the reference when deciding which commands to add
+or how flags and behavior should work:
+
+- Doppler CLI source: https://github.com/DopplerHQ/cli
+- Doppler CLI docs: https://docs.doppler.com/docs/cli
+- Doppler API reference: https://docs.doppler.com/reference
+
+When implementing new CLI commands, prefer the smallest useful subset of the
+Doppler UX rather than inventing a new interface.
+
+## CLI development process
+
+- Prefer editing the Zig CLI directly in `cli/`.
+- Use `zig build` and `zig build test` for local validation.
+- Keep command implementations simple and short-lived.
+- Prefer arenas backed by a general allocator for command-scoped memory.
+- Allocate at command start, free at command end, and avoid complex per-value
+  lifetime management when a command-scoped arena is enough.
+- If command parsing behavior needs to change, check `zeke` first before adding
+  local workarounds in Sigillo.
+
 ## better auth
 
 if needed download source code from https://github.com/better-auth/better-auth to read how it works
@@ -76,18 +110,33 @@ read docs at https://better-auth.com/llms.txt. that page is only an index, you m
 
 ## Publishing
 
-**NEVER publish the CLI from a local machine.** Do not run local release or
-publish commands for the Sigillo CLI. Local builds are only for development and
-validation.
+**NEVER run `npm publish`, `pnpm publish`, or any publish command locally.**
+Local builds only produce macOS binaries. The published package must include
+Linux and Windows binaries too, which require building on actual runners for
+those platforms. Only CI can produce a correct release.
 
-CLI releases must be produced by CI so every platform build is created in a
-clean environment and attached to the GitHub release consistently.
+To release:
 
-Rules:
+1. Bump the version in `cli/package.json`
+2. Commit and push to `main`
+3. GitHub Actions CI (`cli-ci.yml`) builds all artifacts and publishes
 
-- Never do local binary publishing by hand.
-- Let GitHub Actions build release binaries for all supported targets.
-- Published binaries should be attached to the GitHub release, not just left as
-  local files or ad-hoc workflow artifacts.
-- When updating release automation, prefer CI-driven release creation/upload and
-  keep the local workflow limited to `zig build`, tests, and smoke checks.
+CI builds standalone executables per platform (macOS arm64/x64, Linux
+arm64/x64, Windows x64). On version bump the publish job:
+
+1. Publishes the npm package (with binaries for all platforms in `dist/`)
+2. Uploads platform archives to the GitHub release at tag `v$VERSION`
+
+The CI publish job checks whether the version is already on npm and skips if
+so. This means you can push multiple commits to `main` and only the version
+bump commit triggers an actual publish.
+
+**After pushing a version bump, ALWAYS watch CI to confirm it publishes
+successfully:**
+
+```bash
+gh run watch --exit-status
+```
+
+Report the result to the user. Do not consider the release done until CI
+is green and the publish step has completed.

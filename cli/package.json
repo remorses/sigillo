@@ -1,0 +1,52 @@
+{
+  "name": "sigillo",
+  "version": "0.0.2",
+  "type": "module",
+  "description": "CLI for Sigillo — self-hostable secret manager. Manage secrets, environments, and configs from the terminal.",
+  "bin": "./dist/bin.js",
+  "files": [
+    "dist",
+    "zig",
+    "build.zig",
+    "build.zig.zon",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "build:zig": "zig build",
+    "build:native": "tsx scripts/build.ts",
+    "build:native:macos": "tsx scripts/build.ts darwin-arm64 darwin-x64",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "[ -n \"$CI\" ] || (pnpm build && pnpm build:native:macos)"
+  },
+  "keywords": [
+    "secrets",
+    "env",
+    "environment",
+    "variables",
+    "doppler",
+    "vault",
+    "config",
+    "cli"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/remorses/sigillo.git",
+    "directory": "cli"
+  },
+  "homepage": "https://github.com/remorses/sigillo",
+  "bugs": {
+    "url": "https://github.com/remorses/sigillo/issues"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "tsx": "^4.21.0",
+    "typescript": "^5.8.3"
+  }
+}
