@@ -264,12 +264,11 @@ export async function deriveAllSecretNames(environmentIds: string[]): Promise<st
 
 // ── Secrets API auth (session OR bearer token) ─────────────────────
 // Unified auth for secrets API routes. Accepts either:
-// 1. Session cookie → verifies org membership as before
+// 1. Session cookie → verifies org membership
 // 2. Authorization: Bearer <token> → verifies token scope (project + optional env)
 //
-// Returns { userId } for session auth (used for secretEvent.userId on writes)
-// or { userId: null } for token auth (tokens don't have a user identity for writes).
-// The caller should use a system user ID or the token creator's ID for write operations.
+// Always returns { userId } — for tokens this is the token creator's ID,
+// so the audit trail (secretEvent.userId) always points to a real user.
 
 function unauthorizedResponse(): Response {
   return new Response(JSON.stringify({ error: 'unauthorized' }), {
@@ -283,21 +282,16 @@ function forbiddenResponse(msg = 'forbidden'): Response {
   })
 }
 
-export type ApiAuth =
-  | { kind: 'session'; userId: string }
-  | { kind: 'token'; tokenId: string; createdBy: string; projectId: string; environmentId: string | null }
-
-export async function requireSecretsApiAuth(request: Request, environmentId: string): Promise<ApiAuth> {
+export async function requireSecretsApiAuth(request: Request, environmentId: string): Promise<{ userId: string }> {
   const authHeader = request.headers.get('authorization')
   const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
 
   if (bearer) {
-    // Token auth path
     const hashedKey = await hashTokenKey(bearer)
     const db = getDb()
     const token = await db.query.apiToken.findFirst({
       where: { hashedKey },
-      columns: { id: true, projectId: true, environmentId: true, createdBy: true },
+      columns: { projectId: true, environmentId: true, createdBy: true },
     })
     if (!token) throw unauthorizedResponse()
 
@@ -310,10 +304,10 @@ export async function requireSecretsApiAuth(request: Request, environmentId: str
       throw forbiddenResponse('token is scoped to a different environment')
     }
 
-    return { kind: 'token', tokenId: token.id, createdBy: token.createdBy, projectId: token.projectId, environmentId: token.environmentId }
+    return { userId: token.createdBy }
   }
 
-  // Session cookie auth path (existing behavior)
+  // Session cookie auth path
   const session = await getSession(request.headers)
   if (!session) throw unauthorizedResponse()
 
@@ -326,7 +320,7 @@ export async function requireSecretsApiAuth(request: Request, environmentId: str
     throw forbiddenResponse()
   }
 
-  return { kind: 'session', userId: session.userId }
+  return { userId: session.userId }
 }
 
 // ── API token helpers ───────────────────────────────────────────────

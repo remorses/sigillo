@@ -177,8 +177,7 @@ export const apiApp = new Spiceflow()
     request: z.object({ name: z.string().min(1), value: z.string().min(1) }),
     async handler({ request, params }) {
       const body = await request.json()
-      const auth = await requireSecretsApiAuth(request, params.environmentId)
-      const userId = auth.kind === 'session' ? auth.userId : auth.createdBy
+      const { userId } = await requireSecretsApiAuth(request, params.environmentId)
       const db = getDb()
       const { encrypted, iv } = await encrypt(body.value)
       const [row] = await db.insert(schema.secretEvent).values({
@@ -206,8 +205,7 @@ export const apiApp = new Spiceflow()
     method: 'DELETE',
     path: '/api/environments/:environmentId/secrets/:name',
     async handler({ params, request }) {
-      const auth = await requireSecretsApiAuth(request, params.environmentId)
-      const userId = auth.kind === 'session' ? auth.userId : auth.createdBy
+      const { userId } = await requireSecretsApiAuth(request, params.environmentId)
       const db = getDb()
       await db.insert(schema.secretEvent).values({
         environmentId: params.environmentId, name: params.name,
@@ -262,8 +260,7 @@ export const apiApp = new Spiceflow()
     request: z.object({ secrets: z.record(z.string(), z.string()) }),
     async handler({ request, params }) {
       const body = await request.json()
-      const auth = await requireSecretsApiAuth(request, params.environmentId)
-      const userId = auth.kind === 'session' ? auth.userId : auth.createdBy
+      const { userId } = await requireSecretsApiAuth(request, params.environmentId)
       const db = getDb()
 
       const names: string[] = []
