@@ -292,7 +292,7 @@ function CreateTokenDialog({
             <DialogClose render={<Button variant="outline" />}>
               Cancel
             </DialogClose>
-            <Button type="submit" loading={creating}>
+            <Button type="submit">
               Create token
             </Button>
           </DialogFooter>

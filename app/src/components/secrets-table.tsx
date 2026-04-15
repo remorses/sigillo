@@ -450,7 +450,7 @@ function ImportEnvDialog({
             <DialogClose render={<Button variant="outline" />}>
               Cancel
             </DialogClose>
-            <Button type="submit" loading={importing}>
+            <Button type="submit">
               Import
             </Button>
           </DialogFooter>

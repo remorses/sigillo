@@ -4,6 +4,7 @@ import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
 import type * as React from "react";
+import { useFormStatus } from "react-dom";
 import { cn } from "sigillo-app/src/lib/utils";
 import { Spinner } from "sigillo-app/src/components/ui/spinner";
 
@@ -58,10 +59,16 @@ export function Button({
   size,
   render,
   children,
-  loading = false,
+  loading: loadingProp = false,
   disabled: disabledProp,
   ...props
 }: ButtonProps): React.ReactElement {
+  const { pending } = useFormStatus();
+  // Auto-detect form submission: show loading when this button's form is pending
+  // and this is a submit button (type="submit"). The explicit loading prop takes
+  // precedence for non-form use cases.
+  const isSubmit = props.type === "submit";
+  const loading = loadingProp || (isSubmit && pending);
   const isDisabled: boolean = Boolean(loading || disabledProp);
   const typeValue: React.ButtonHTMLAttributes<HTMLButtonElement>["type"] =
     render ? undefined : "button";
