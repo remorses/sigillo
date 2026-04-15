@@ -124,11 +124,13 @@ export function SecretsTable({
   environmentId,
   environments,
   allVisible,
+  allSecretNames,
 }: {
   secrets: Secret[];
   environmentId: string;
   environments: Environment[];
   allVisible: boolean;
+  allSecretNames: string[];
 }) {
   const router = getRouter<App>();
   const [showNewRow, setShowNewRow] = useState(false);
@@ -142,6 +144,8 @@ export function SecretsTable({
 
   // Track edits per secret id
   const [edits, setEdits] = useState<Record<string, { name?: string; value?: string }>>({});
+  // Track values typed into missing-key rows (keyed by secret name)
+  const [missingEdits, setMissingEdits] = useState<Record<string, string>>({});
 
   const setEdit = useCallback((id: string, field: "name" | "value", val: string) => {
     setEdits((prev) => ({
@@ -150,6 +154,10 @@ export function SecretsTable({
     }));
   }, []);
 
+  // Keys that exist in other envs but not in this one
+  const existingNames = new Set(secrets.map((s) => s.name));
+  const missingKeys = allSecretNames.filter((name) => !existingNames.has(name));
+
   const dirtySecrets = secrets.filter((s) => {
     const e = edits[s.id];
     if (!e) return false;
@@ -157,6 +165,11 @@ export function SecretsTable({
     if (e.value !== undefined) return true;
     return false;
   });
+
+  // Missing keys that have a value typed in
+  const dirtyMissingKeys = missingKeys.filter((name) => missingEdits[name]?.trim());
+
+  const totalDirtyCount = dirtySecrets.length + dirtyMissingKeys.length;
 
   const buildPayload = useCallback(() => {
     return dirtySecrets.map((s) => {
@@ -188,8 +201,8 @@ export function SecretsTable({
     }
   }, [environmentId, router]);
 
-  // Empty state
-  if (secrets.length === 0 && !showNewRow) {
+  // Empty state (only show when no secrets AND no missing keys from other envs)
+  if (secrets.length === 0 && missingKeys.length === 0 && !showNewRow) {
     return (
       <>
         <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -290,6 +303,37 @@ export function SecretsTable({
                 </TableRow>
               );
             })}
+            {/* Missing keys: exist in other envs but not this one */}
+            {missingKeys.map((name) => {
+              const hasValue = missingEdits[name]?.trim();
+              return (
+                <TableRow key={`missing-${name}`} className="bg-destructive/5 dark:bg-destructive/10">
+                  <TableCell>
+                    <span className="px-1.5 font-mono font-medium text-destructive/70 text-sm">
+                      {name}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <Input
+                      type="text"
+                      inputSize="sm"
+                      autoComplete="off"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      placeholder="Missing — add a value"
+                      value={missingEdits[name] ?? ""}
+                      onChange={(e) => setMissingEdits((prev) => ({ ...prev, [name]: e.target.value }))}
+                      style={!hasValue ? maskedInputStyle : undefined}
+                      className={`min-w-0 flex-1 font-mono border-destructive/30 ${hasValue ? "bg-amber-50/50 dark:bg-amber-950/20" : "bg-transparent"}`}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-destructive/50 text-xs">missing</span>
+                  </TableCell>
+                  <TableCell />
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
 
@@ -328,13 +372,21 @@ export function SecretsTable({
         onOpenChange={setSaveOpen}
         environments={environments}
         currentEnvId={environmentId}
-        dirtyCount={dirtySecrets.length}
+        dirtyCount={totalDirtyCount}
         saving={saving}
         onSave={async (envIds) => {
           setSaving(true);
           try {
-            await saveSecretsAction({ edits: buildPayload(), environmentIds: envIds });
+            // Save existing secret edits
+            if (dirtySecrets.length > 0) {
+              await saveSecretsAction({ edits: buildPayload(), environmentIds: envIds });
+            }
+            // Create missing keys that have values typed in
+            for (const name of dirtyMissingKeys) {
+              await createSecretAction({ name, value: missingEdits[name]!, environmentId });
+            }
             setEdits({});
+            setMissingEdits({});
             setSaveOpen(false);
             router.refresh();
           } catch (e: any) {
@@ -346,10 +398,10 @@ export function SecretsTable({
       />
 
       {/* Save bar */}
-      {dirtySecrets.length > 0 && (
+      {totalDirtyCount > 0 && (
         <div className="flex justify-end mt-3">
           <Button onClick={() => setSaveOpen(true)}>
-            Save {dirtySecrets.length} secret{dirtySecrets.length > 1 ? "s" : ""}
+            Save {totalDirtyCount} secret{totalDirtyCount > 1 ? "s" : ""}
           </Button>
         </div>
       )}

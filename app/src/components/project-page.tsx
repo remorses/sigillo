@@ -33,6 +33,7 @@ export function ProjectPage({
   environments,
   selectedEnvId,
   secrets,
+  allSecretNames,
 }: {
   projectId: string;
   projectName: string;
@@ -46,6 +47,7 @@ export function ProjectPage({
   }[];
   selectedEnvId: string | null;
   secrets: Secret[];
+  allSecretNames: string[];
 }) {
   const router = getRouter<App>();
   const [allVisible, setAllVisible] = useState(false);
@@ -90,6 +92,7 @@ export function ProjectPage({
           environmentId={selectedEnvId}
           environments={environments}
           allVisible={allVisible}
+          allSecretNames={allSecretNames}
         />
       ) : (
         <p className="text-muted-foreground text-sm">No environments yet.</p>
