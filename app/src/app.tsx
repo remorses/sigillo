@@ -318,6 +318,27 @@ export const app = new Spiceflow({
     )
   })
 
+  .page('/orgs/:orgId/projects/:projectId/environments', async ({ params }) => {
+    const db = getDb()
+    const { projectId } = params
+
+    const [project, environments] = await Promise.all([
+      db.query.project.findFirst({ where: { id: projectId }, columns: { name: true } }),
+      db.query.environment.findMany({ where: { projectId }, orderBy: { createdAt: 'asc' } }),
+    ])
+
+    const { EnvironmentsTable } = await import('sigillo-app/src/components/environments-table')
+
+    return (
+      <div className="flex flex-col gap-3 w-full">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold tracking-tight">{project?.name ?? 'Project'}</h1>
+        </div>
+        <EnvironmentsTable environments={environments} projectId={projectId} />
+      </div>
+    )
+  })
+
   // ── Access page (read-only org members table) ─────────────────
   .page('/orgs/:orgId/projects/:projectId/access', async ({ params }) => {
     const db = getDb()
@@ -611,6 +632,7 @@ function TabBar({ orgId, projectId, pathname }: { orgId: string; projectId: stri
   const currentEnvBase = envMatch ? `${base}/envs/${envMatch[1]}` : null
   const tabs = [
     { label: 'Secrets', href: base, active: pathname === base || (pathname.startsWith(`${base}/envs`) && !pathname.endsWith('/event-log')) },
+    { label: 'Environments', href: `${base}/environments`, active: pathname === `${base}/environments` },
     { label: 'Tokens', href: `${base}/tokens`, active: pathname === `${base}/tokens` },
     { label: 'Access', href: `${base}/access`, active: pathname === `${base}/access` },
     {

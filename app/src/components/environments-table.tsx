@@ -10,7 +10,7 @@ import {
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { PencilIcon, TrashIcon, CheckIcon, XIcon } from "lucide-react";
+import { PencilIcon, TrashIcon } from "lucide-react";
 import { useState, useRef } from "react";
 import { ErrorBoundary, getRouter } from "spiceflow/react";
 import type { App } from "../app.tsx";
@@ -43,7 +43,7 @@ const envColors: Record<string, string> = {
   production: "bg-emerald-500",
 };
 
-// Inline editable name+slug cell for a single environment row
+// Inline editable name+slug cell for a single environment row.
 function EditableEnvCell({ env, field }: { env: Environment; field: "name" | "slug" }) {
   const router = getRouter<App>();
   const [editing, setEditing] = useState(false);
