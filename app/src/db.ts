@@ -10,7 +10,7 @@ import { drizzle } from 'drizzle-orm/sqlite-proxy'
 import * as orm from 'drizzle-orm'
 import * as schema from 'db/src/app-schema.ts'
 import { betterAuth } from 'better-auth'
-import { genericOAuth, deviceAuthorization } from 'better-auth/plugins'
+import { genericOAuth, deviceAuthorization, bearer } from 'better-auth/plugins'
 import { drizzleAdapter } from '@better-auth/drizzle-adapter/relations-v2'
 import { redirect } from 'spiceflow'
 import type { SecretsStore } from './secrets-store.ts'
@@ -95,6 +95,7 @@ export async function getAuth() {
         ],
       }),
       deviceAuthorization({ verificationUri: '/device' }),
+      bearer(),
     ],
   })
 }
@@ -286,7 +287,9 @@ export async function requireSecretsApiAuth(request: Request, environmentId: str
   const authHeader = request.headers.get('authorization')
   const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
 
-  if (bearer) {
+  // API tokens use the "sig_" prefix — check those first.
+  // Non-prefixed bearer tokens fall through to session auth (BetterAuth bearer plugin).
+  if (bearer?.startsWith('sig_')) {
     const hashedKey = await hashTokenKey(bearer)
     const db = getDb()
     const token = await db.query.apiToken.findFirst({
@@ -307,7 +310,7 @@ export async function requireSecretsApiAuth(request: Request, environmentId: str
     return { userId: token.createdBy }
   }
 
-  // Session cookie auth path
+  // Session auth path — works with both cookies and BetterAuth bearer tokens
   const session = await getSession(request.headers)
   if (!session) throw unauthorizedResponse()
 
