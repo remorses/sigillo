@@ -394,17 +394,32 @@ export const app = new Spiceflow({
   })
 
   // ── Event Log page ─────────────────────────────────────────────
-  .page('/orgs/:orgId/projects/:projectId/event-log', async ({ params, request }) => {
+  .get('/orgs/:orgId/projects/:projectId/event-log', async ({ params }) => {
     const db = getDb()
-    const { orgId, projectId } = params
-    const url = new URL(request.url)
+    const environments = await db.query.environment.findMany({
+      where: { projectId: params.projectId },
+      orderBy: { createdAt: 'asc' },
+    })
+    const firstEnvId = environments[0]?.id || '_'
+    return redirect(`/orgs/${params.orgId}/projects/${params.projectId}/envs/${firstEnvId}/event-log`)
+  })
+
+  .page('/orgs/:orgId/projects/:projectId/envs/:envId/event-log', async ({ params }) => {
+    const db = getDb()
+    const { orgId, projectId, envId } = params
 
     const [project, environments] = await Promise.all([
       db.query.project.findFirst({ where: { id: projectId }, columns: { name: true } }),
       db.query.environment.findMany({ where: { projectId }, orderBy: { createdAt: 'asc' } }),
     ])
 
-    const selectedEnvId = url.searchParams.get('envId') || environments[0]?.id || null
+    const selectedEnvId = environments.some((environment) => environment.id === envId)
+      ? envId
+      : environments[0]?.id || null
+
+    if (selectedEnvId && selectedEnvId !== envId) {
+      return redirect(`/orgs/${orgId}/projects/${projectId}/envs/${selectedEnvId}/event-log`)
+    }
 
     // Load events for selected env, sorted by createdAt DESC
     let events: { id: string; name: string; operation: string; valueEncrypted: string | null; iv: string | null; createdAt: number; environmentName: string; userName: string }[] = []
@@ -592,11 +607,17 @@ function GitHubIcon({ className }: { className?: string }) {
 
 function TabBar({ orgId, projectId, pathname }: { orgId: string; projectId: string; pathname: string }) {
   const base = `/orgs/${orgId}/projects/${projectId}`
+  const envMatch = pathname.match(new RegExp(`^${base}/envs/([^/]+)`))
+  const currentEnvBase = envMatch ? `${base}/envs/${envMatch[1]}` : null
   const tabs = [
     { label: 'Secrets', href: base, active: pathname.startsWith(`${base}/envs`) || pathname === base },
     { label: 'Tokens', href: `${base}/tokens`, active: pathname === `${base}/tokens` },
     { label: 'Access', href: `${base}/access`, active: pathname === `${base}/access` },
-    { label: 'Event Log', href: `${base}/event-log`, active: pathname === `${base}/event-log` },
+    {
+      label: 'Event Log',
+      href: currentEnvBase ? `${currentEnvBase}/event-log` : `${base}/event-log`,
+      active: pathname === `${base}/event-log` || pathname.endsWith('/event-log'),
+    },
   ] as const
 
   return (

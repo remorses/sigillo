@@ -37,12 +37,12 @@ type EventRow = {
   userName: string;
 };
 
-type Environment = {
-  id: string;
-  name: string;
-  slug: string;
-  createdAt: number;
-  updatedAt: number;
+const hiddenValueStyle: React.CSSProperties & {
+  WebkitTextSecurity: string;
+  textSecurity: string;
+} = {
+  WebkitTextSecurity: "disc",
+  textSecurity: "disc",
 };
 
 export function EventLogTable({
@@ -55,7 +55,13 @@ export function EventLogTable({
 }: {
   projectName: string;
   events: EventRow[];
-  environments: Environment[];
+  environments: {
+    id: string;
+    name: string;
+    slug: string;
+    createdAt: number;
+    updatedAt: number;
+  }[];
   selectedEnvId: string | null;
   orgId: string;
   projectId: string;
@@ -74,7 +80,7 @@ export function EventLogTable({
         <Select
           defaultValue={selectedEnvId || ""}
           onValueChange={(val) => {
-            router.push(`/orgs/${orgId}/projects/${projectId}/event-log?envId=${val}`);
+            router.push(`/orgs/${orgId}/projects/${projectId}/envs/${val}/event-log`);
           }}
         >
           <SelectTrigger size="sm" className="w-auto min-w-40">
@@ -149,7 +155,7 @@ export function EventLogTable({
                         <div className="flex items-center gap-1.5">
                           <span
                             className="text-sm font-mono truncate min-w-0 flex-1"
-                            style={!isVisible ? { WebkitTextSecurity: "disc", textSecurity: "disc" } as React.CSSProperties : undefined}
+                            style={!isVisible ? hiddenValueStyle : undefined}
                           >
                             {isVisible ? evt.value : "••••••••••••"}
                           </span>
