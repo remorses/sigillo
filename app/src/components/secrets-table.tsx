@@ -155,8 +155,11 @@ export function SecretsTable({
   }, []);
 
   // Keys that exist in other envs but not in this one
-  const existingNames = new Set(secrets.map((s) => s.name));
-  const missingKeys = allSecretNames.filter((name) => !existingNames.has(name));
+  // Use edited names so renaming a secret to a missing key hides the red row
+  const effectiveNames = new Set(
+    secrets.map((s) => edits[s.id]?.name ?? s.name).filter(Boolean)
+  );
+  const missingKeys = allSecretNames.filter((name) => !effectiveNames.has(name));
 
   const dirtySecrets = secrets.filter((s) => {
     const e = edits[s.id];
@@ -381,9 +384,11 @@ export function SecretsTable({
             if (dirtySecrets.length > 0) {
               await saveSecretsAction({ edits: buildPayload(), environmentIds: envIds });
             }
-            // Create missing keys that have values typed in
-            for (const name of dirtyMissingKeys) {
-              await createSecretAction({ name, value: missingEdits[name]!, environmentId });
+            // Create missing keys that have values typed in (honor selected envs)
+            for (const envId of envIds) {
+              for (const name of dirtyMissingKeys) {
+                await createSecretAction({ name, value: missingEdits[name]!, environmentId: envId });
+              }
             }
             setEdits({});
             setMissingEdits({});
