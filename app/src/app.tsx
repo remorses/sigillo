@@ -280,28 +280,15 @@ export const app = new Spiceflow({
   })
 
   // ── Device flow verification page (standalone, no sidebar) ─────
-  .page('/device', async () => {
-    return (
-      <div className="flex justify-center items-center min-h-[60vh]">
-        <div className="text-center max-w-sm">
-          <h1 className="text-2xl font-bold mb-2">Device Login</h1>
-          <p className="text-muted-foreground mb-6">Enter the code shown on your CLI or agent:</p>
-          <form method="POST" action="/api/auth/device/verify" className="flex flex-col gap-4">
-            <input
-              name="user_code"
-              placeholder="ABCD-EFGH"
-              className="h-12 rounded-lg border border-input bg-background px-4 text-center text-2xl font-mono tracking-[0.25em] uppercase focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-            <button
-              type="submit"
-              className="h-10 rounded-lg bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-colors cursor-pointer"
-            >
-              Verify Code
-            </button>
-          </form>
-        </div>
-      </div>
-    )
+  // Uses the proper BetterAuth device authorization client flow:
+  // 1. Validate code via authClient.device({ query: { user_code } })
+  // 2. Approve/deny via authClient.device.approve() / .deny()
+  .page('/device', async ({ request }) => {
+    // User must be logged in to approve device codes
+    const session = await getSession(request.headers)
+    if (!session) return redirect('/login')
+    const { DeviceFlow } = await import('sigillo-app/src/components/device-flow')
+    return <DeviceFlow />
   })
 
   // ── Login page (standalone, no sidebar) ─────────────────────────
