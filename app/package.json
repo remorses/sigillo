@@ -9,14 +9,12 @@
     "./src/*": "./src/*"
   },
   "scripts": {
-    "dev": "tsx scripts/register-client.ts && vite dev",
+    "dev": "vite dev",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "types": "wrangler types",
     "deploy": "CLOUDFLARE_ENV=preview vite build && wrangler deploy --env preview",
-    "deploy:prod": "vite build && wrangler deploy",
-    "register": "tsx scripts/register-client.ts",
-    "register:force": "sed -i '' '/^OAUTH_CLIENT_ID=/d' .dev.vars 2>/dev/null; tsx scripts/register-client.ts"
+    "deploy:prod": "vite build && wrangler deploy"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.0",

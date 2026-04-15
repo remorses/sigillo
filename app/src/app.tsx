@@ -39,7 +39,7 @@ export const app = new Spiceflow({
   .use(async ({ request }, next) => {
     const url = new URL(request.url)
     if (url.pathname.startsWith('/api/auth')) {
-      const auth = getAuth()
+      const auth = await getAuth()
       const res = await auth.handler(request)
       if (res.ok || res.status !== 404) return res
     }

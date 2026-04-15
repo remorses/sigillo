@@ -31,10 +31,49 @@ export function getDb() {
   }, { schema, relations: schema.relations })
 }
 
+// ── OAuth client registration ───────────────────────────────────────
+// Registers this instance with the provider via RFC 7591 dynamic client
+// registration on first request, then caches the client_id in the config table.
+
+export async function ensureOAuthClient(): Promise<string> {
+  const db = getDb()
+  const row = await db.query.config.findFirst({ where: { id: 'singleton' } })
+  if (row?.oauthClientId) return row.oauthClientId
+
+  const callbackUrl = `${env.APP_URL}/api/auth/oauth2/callback/sigillo`
+  const res = await fetch(`${env.PROVIDER_URL}/api/auth/oauth2/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      client_name: `Sigillo Self-Hosted (${env.APP_URL})`,
+      redirect_uris: [callbackUrl],
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
+      scope: 'openid email profile',
+      token_endpoint_auth_method: 'none',
+    }),
+  })
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`OAuth client registration failed: ${res.status} ${body}`)
+  }
+  const { client_id } = (await res.json()) as { client_id: string }
+
+  await db.insert(schema.config)
+    .values({ id: 'singleton', oauthClientId: client_id })
+    .onConflictDoUpdate({
+      target: schema.config.id,
+      set: { oauthClientId: client_id, updatedAt: Date.now() },
+    })
+
+  return client_id
+}
+
 // ── BetterAuth ──────────────────────────────────────────────────────
 
-export function getAuth() {
+export async function getAuth() {
   const db = getDb()
+  const clientId = await ensureOAuthClient()
   return betterAuth({
     baseURL: env.APP_URL,
     secret: env.BETTER_AUTH_SECRET,
@@ -44,7 +83,7 @@ export function getAuth() {
         config: [
           {
             providerId: 'sigillo',
-            clientId: env.OAUTH_CLIENT_ID,
+            clientId,
             clientSecret: '',
             // Auto-discover all endpoints from the provider's OIDC metadata
             discoveryUrl: `${env.PROVIDER_URL}/api/auth/.well-known/openid-configuration`,
@@ -63,7 +102,7 @@ export function getAuth() {
 type Session = { userId: string; user: { id: string; name: string; email: string } }
 
 export async function getSession(headers: Headers): Promise<Session | null> {
-  const auth = getAuth()
+  const auth = await getAuth()
   const session = await auth.api.getSession({ headers })
   if (!session) return null
   return { userId: session.user.id, user: { id: session.user.id, name: session.user.name, email: session.user.email } }

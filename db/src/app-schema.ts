@@ -125,6 +125,18 @@ export const DEFAULT_ENVIRONMENTS = [
   { name: 'Production', slug: 'production' },
 ] as const
 
+// ── Instance config ─────────────────────────────────────────────────
+// Single-row table for instance-level configuration.
+// The app auto-registers with the provider on first request and stores
+// the OAuth client_id here instead of requiring it as an env var.
+
+export const config = sqliteCore.sqliteTable('config', {
+  id: sqliteCore.text('id').primaryKey().notNull().default('singleton'),
+  oauthClientId: sqliteCore.text('oauth_client_id'),
+  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
+  updatedAt: sqliteCore.integer('updated_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
+})
+
 // ── deviceCode table (device authorization plugin, RFC 8628) ────────
 // Stores pending device codes for CLI/agent login flows.
 // Agents call /api/auth/device/code to get a code, user enters it at /device.
@@ -147,7 +159,7 @@ export const deviceCode = sqliteCore.sqliteTable('device_code', {
 // ── Relations (v2 API) ──────────────────────────────────────────────
 
 export const relations = defineRelations(
-  { user, session, account, verification, org, orgMember, project, environment, secret, deviceCode },
+  { user, session, account, verification, org, orgMember, project, environment, secret, deviceCode, config },
   (r) => ({
     user: {
       sessions: r.many.session(),
@@ -191,5 +203,6 @@ export const relations = defineRelations(
     deviceCode: {
       user: r.one.user({ from: r.deviceCode.userId, to: r.user.id }),
     },
+    config: {},
   }),
 )

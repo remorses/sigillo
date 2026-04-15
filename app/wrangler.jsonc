@@ -3,42 +3,44 @@
   "compatibility_date": "2025-06-01",
   "compatibility_flags": ["nodejs_compat"],
   "main": "spiceflow/cloudflare-entrypoint",
-  "rules": [
-    { "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }
-  ],
+  "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
   "durable_objects": {
-    "bindings": [
-      { "name": "SECRETS_STORE", "class_name": "SecretsStore" }
-    ]
+    "bindings": [{ "name": "SECRETS_STORE", "class_name": "SecretsStore" }],
   },
-  "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["SecretsStore"] }
-  ],
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SecretsStore"] }],
   "vars": {
     "PROVIDER_URL": "https://auth.sigillo.dev",
-
   },
   "secrets": {
-    "required": ["BETTER_AUTH_SECRET", "ENCRYPTION_KEY", "OAUTH_CLIENT_ID"]
+    "required": ["APP_URL", "BETTER_AUTH_SECRET", "ENCRYPTION_KEY"],
   },
+  "routes": [
+    {
+      "pattern": "sigillo.dev",
+      "custom_domain": true,
+    },
+  ],
   "env": {
     "preview": {
       "name": "sigillo-app-preview",
       "durable_objects": {
-        "bindings": [
-          { "name": "SECRETS_STORE", "class_name": "SecretsStore" }
-        ]
+        "bindings": [{ "name": "SECRETS_STORE", "class_name": "SecretsStore" }],
       },
-      "migrations": [
-        { "tag": "v1", "new_sqlite_classes": ["SecretsStore"] }
-      ],
+      "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SecretsStore"] }],
       "vars": {
         "PROVIDER_URL": "https://auth.preview.sigillo.dev",
-        "APP_URL": "https://app.preview.sigillo.dev"
+
       },
       "secrets": {
-        "required": ["BETTER_AUTH_SECRET", "ENCRYPTION_KEY", "OAUTH_CLIENT_ID"]
-      }
-    }
-  }
+        "required": ["APP_URL", "BETTER_AUTH_SECRET", "ENCRYPTION_KEY"],
+      },
+      "routes": [
+        {
+          "pattern": "preview.sigillo.dev",
+          "custom_domain": true,
+
+        },
+      ],
+    },
+  },
 }
