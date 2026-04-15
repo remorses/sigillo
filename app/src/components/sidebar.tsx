@@ -79,7 +79,7 @@ export function Sidebar({
             "flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors hover:bg-sidebar-accent data-[popup-open]:bg-sidebar-accent",
           )}
         >
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-foreground text-background">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <BuildingIcon className="size-4" />
           </div>
           <div className="grid flex-1 text-left leading-tight min-w-0">

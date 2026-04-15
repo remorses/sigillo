@@ -228,6 +228,31 @@ export async function deriveSecrets(environmentId: string): Promise<DerivedSecre
     }))
 }
 
+// ── Derive all secret names across environments ─────────────────────
+// Returns the sorted union of all active secret names across the given
+// environment IDs. No decryption needed — just replays event logs for names.
+
+export async function deriveAllSecretNames(environmentIds: string[]): Promise<string[]> {
+  const db = getDb()
+  const allNames = new Set<string>()
+
+  for (const envId of environmentIds) {
+    const events = await db.query.secretEvent.findMany({
+      where: { environmentId: envId },
+      columns: { name: true, operation: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    })
+    const active = new Set<string>()
+    for (const evt of events) {
+      if (evt.operation === 'delete') active.delete(evt.name)
+      else active.add(evt.name)
+    }
+    for (const name of active) allNames.add(name)
+  }
+
+  return [...allNames].sort()
+}
+
 // ── Encryption (AES-256-GCM) ────────────────────────────────────────
 
 async function getEncryptionKey(): Promise<CryptoKey> {
