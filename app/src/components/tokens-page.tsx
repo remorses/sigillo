@@ -6,7 +6,6 @@
 "use client"
 
 import { useState } from "react"
-import { getRouter, ErrorBoundary } from "spiceflow/react"
 import { KeyIcon, TrashIcon, PlusIcon, CopyIcon, CheckIcon } from "lucide-react"
 import { Button } from "sigillo-app/src/components/ui/button"
 import { Frame } from "sigillo-app/src/components/ui/frame"
@@ -20,7 +19,7 @@ import {
 } from "sigillo-app/src/components/ui/table"
 import { formatTime } from "sigillo-app/src/lib/utils"
 import { createTokenAction, deleteTokenAction } from "../actions.ts"
-import type { App } from "../app.tsx"
+
 
 type Token = {
   id: string
@@ -88,8 +87,6 @@ export function TokensPage({
 }
 
 function TokensTable({ tokens, projectId }: { tokens: Token[]; projectId: string }) {
-  const router = getRouter<App>()
-
   return (
     <Frame className="w-full">
       <Table className="table-fixed">
@@ -136,7 +133,6 @@ function TokensTable({ tokens, projectId }: { tokens: Token[]; projectId: string
                     if (confirm(`Delete token "${token.name}"? This cannot be undone.`)) {
                       try {
                         await deleteTokenAction({ tokenId: token.id })
-                        router.refresh()
                       } catch (e: any) {
                         alert(e?.message || "Failed to delete token")
                       }
@@ -167,7 +163,6 @@ function CreateTokenDialog({
   projectId: string
   environments: Environment[]
 }) {
-  const router = getRouter<App>()
   const [creating, setCreating] = useState(false)
   const [createdKey, setCreatedKey] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -258,7 +253,6 @@ function CreateTokenDialog({
                 environmentId: environmentId || null,
               })
               setCreatedKey(result.key)
-              router.refresh()
             } catch (e: any) {
               setError(e?.message || "Failed to create token")
             } finally {

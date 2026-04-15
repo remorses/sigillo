@@ -12,8 +12,7 @@ import {
 } from "@tanstack/react-table";
 import { PencilIcon, TrashIcon } from "lucide-react";
 import { useState, useRef } from "react";
-import { ErrorBoundary, getRouter } from "spiceflow/react";
-import type { App } from "../app.tsx";
+import { ErrorBoundary } from "spiceflow/react";
 import { Badge } from "sigillo-app/src/components/ui/badge";
 import { Button } from "sigillo-app/src/components/ui/button";
 import { Frame } from "sigillo-app/src/components/ui/frame";
@@ -45,7 +44,6 @@ const envColors: Record<string, string> = {
 
 // Inline editable name+slug cell for a single environment row.
 function EditableEnvCell({ env, field }: { env: Environment; field: "name" | "slug" }) {
-  const router = getRouter<App>();
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(env[field]);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -60,7 +58,6 @@ function EditableEnvCell({ env, field }: { env: Environment; field: "name" | "sl
     try {
       await renameEnvAction({ id: env.id, [field]: trimmed });
       setEditing(false);
-      router.refresh();
     } catch (e: any) {
       alert(e?.message || `Failed to rename ${field}`);
       setValue(env[field]);
@@ -118,7 +115,6 @@ export function EnvironmentsTable({
   environments: Environment[];
   projectId: string;
 }) {
-  const router = getRouter<App>();
   const [showNewRow, setShowNewRow] = useState(false);
 
   const columns: ColumnDef<Environment>[] = [
@@ -164,7 +160,6 @@ export function EnvironmentsTable({
             if (confirm(`Delete environment "${row.original.name}"? All secrets in this environment will be lost.`)) {
               try {
                 await deleteEnvAction({ id: row.original.id });
-                router.refresh();
               } catch (e: any) {
                 alert(e?.message || "Failed to delete environment");
               }
@@ -247,7 +242,6 @@ export function EnvironmentsTable({
                 const slug = formData.get("slug") as string;
                 await createEnvAction({ name, slug, projectId });
                 setShowNewRow(false);
-                router.refresh();
               }}
             >
               <Input

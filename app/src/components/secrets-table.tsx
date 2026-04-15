@@ -8,7 +8,7 @@
 
 import { EyeIcon, EyeOffIcon, TrashIcon, UploadIcon, PlusIcon, KeyIcon, CheckIcon } from "lucide-react";
 import { useState, useCallback } from "react";
-import { getRouter, ErrorBoundary } from "spiceflow/react";
+import { ErrorBoundary } from "spiceflow/react";
 import { Button } from "sigillo-app/src/components/ui/button";
 import { Frame } from "sigillo-app/src/components/ui/frame";
 import { Input, Textarea } from "sigillo-app/src/components/ui/input";
@@ -36,7 +36,7 @@ import {
   deleteSecretAction,
   saveSecretsAction,
 } from "../actions.ts";
-import { App } from "../app.tsx";
+
 
 type Secret = {
   id: string;
@@ -132,7 +132,6 @@ export function SecretsTable({
   allVisible: boolean;
   allSecretNames: string[];
 }) {
-  const router = getRouter<App>();
   const [showNewRow, setShowNewRow] = useState(false);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -196,13 +195,12 @@ export function SecretsTable({
         await createSecretAction({ name, value, environmentId });
       }
       setImportOpen(false);
-      router.refresh();
     } catch (e: any) {
       alert(e?.message || "Failed to import secrets");
     } finally {
       setImporting(false);
     }
-  }, [environmentId, router]);
+  }, [environmentId]);
 
   // Empty state (only show when no secrets AND no missing keys from other envs)
   if (secrets.length === 0 && missingKeys.length === 0 && !showNewRow) {
@@ -291,7 +289,6 @@ export function SecretsTable({
                         if (confirm(`Delete secret "${secret.name}"?`)) {
                           try {
                             await deleteSecretAction({ name: secret.name, environmentId });
-                            router.refresh();
                           } catch (e: any) {
                             alert(e?.message || "Failed to delete secret");
                           }
@@ -393,7 +390,6 @@ export function SecretsTable({
             setEdits({});
             setMissingEdits({});
             setSaveOpen(false);
-            router.refresh();
           } catch (e: any) {
             alert(e?.message || "Failed to save secrets");
           } finally {
@@ -547,7 +543,6 @@ function AddSecretRow({
   environmentId: string;
   onDone: () => void;
 }) {
-  const router = getRouter<App>();
   return (
     <ErrorBoundary
       fallback={
@@ -566,7 +561,6 @@ function AddSecretRow({
           const value = formData.get("value") as string;
           await createSecretAction({ name, value, environmentId });
           onDone();
-          router.refresh();
         }}
       >
         <Input
