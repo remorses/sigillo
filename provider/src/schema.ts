@@ -88,7 +88,7 @@ export const oauthClient = sqliteCore.sqliteTable('oauth_client', {
   type: sqliteCore.text('type'),
   public: sqliteCore.integer('public', { mode: 'boolean' }),
   disabled: sqliteCore.integer('disabled', { mode: 'boolean' }).default(false),
-  skipConsent: sqliteCore.integer('skip_consent', { mode: 'boolean' }).default(true),
+  skipConsent: sqliteCore.integer('skip_consent', { mode: 'boolean' }).default(false),
   enableEndSession: sqliteCore.integer('enable_end_session', { mode: 'boolean' }),
   subjectType: sqliteCore.text('subject_type'),
   requirePKCE: sqliteCore.integer('require_pkce', { mode: 'boolean' }),

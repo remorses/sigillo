@@ -7,8 +7,18 @@
 import { Spiceflow } from 'spiceflow'
 import { Head } from 'spiceflow/react'
 import { getAuth } from './db.ts'
+import { ConsentButtons } from './components/consent-buttons.tsx'
 
 export { AuthStore } from './auth-store.ts'
+
+function getRedirectDomain(redirectUri: string | null) {
+  if (!redirectUri) return null
+  try {
+    return new URL(redirectUri).hostname
+  } catch {
+    return null
+  }
+}
 
 export const app = new Spiceflow()
 
@@ -66,6 +76,59 @@ export const app = new Spiceflow()
       redirect.headers.append('Set-Cookie', cookie)
     }
     return redirect
+  })
+
+  .page('/consent', async ({ request }) => {
+    const url = new URL(request.url)
+    const redirectDomain = getRedirectDomain(url.searchParams.get('redirect_uri'))
+    const clientId = url.searchParams.get('client_id')
+
+    return (
+      <main
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 24,
+          background: '#f8fafc',
+        }}
+      >
+        <div
+          style={{
+            width: '100%',
+            maxWidth: 460,
+            background: 'white',
+            borderRadius: 16,
+            padding: 32,
+            boxShadow: '0 16px 40px rgba(15, 23, 42, 0.08)',
+          }}
+        >
+          <p style={{ margin: 0, fontSize: 13, color: '#64748b', fontWeight: 600 }}>OAuth consent</p>
+          <h1 style={{ margin: '12px 0 0', fontSize: 28, color: '#0f172a' }}>Allow access?</h1>
+          <p style={{ margin: '12px 0 0', color: '#334155', lineHeight: 1.6 }}>
+            {redirectDomain ? (
+              <>
+                <strong>{redirectDomain}</strong> wants to use Sigillo Auth to sign you in.
+              </>
+            ) : (
+              'This app wants to use Sigillo Auth to sign you in.'
+            )}
+          </p>
+          {clientId ? (
+            <p style={{ margin: '12px 0 0', color: '#64748b', fontSize: 14 }}>
+              Client ID: <code>{clientId}</code>
+            </p>
+          ) : null}
+          <p style={{ margin: '20px 0 0', color: '#64748b', fontSize: 14, lineHeight: 1.6 }}>
+            Only continue if you trust this domain and expected this sign-in request.
+          </p>
+          <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
+            <ConsentButtons />
+          </div>
+        </div>
+      </main>
+    )
   })
 
   // ── Well-known endpoints ─────────────────────────────────────

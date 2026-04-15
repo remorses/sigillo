@@ -29,7 +29,9 @@ function getStub() {
 export function getDb() {
   const stub = getStub()
   return drizzle(async (sql, params, method) => {
-    return stub.executeSql(sql, params, method)
+    // Cast needed: drizzle types expect { rows: any[] } but the get method
+    // must return { rows: null } when no row is found (see auth-store.ts).
+    return stub.executeSql(sql, params, method) as any
   }, { schema, relations: schema.relations })
 }
 
@@ -58,7 +60,9 @@ export function getAuth() {
       jwt(),
       oauthProvider({
         loginPage: '/sign-in',
-        consentPage: '/sign-in', // unused — skipConsent defaults to true for all clients
+        // Dynamic client registration stays open for self-hosted instances,
+        // but clients are no longer treated as trusted by default.
+        consentPage: '/consent',
         allowDynamicClientRegistration: true,
         allowUnauthenticatedClientRegistration: true,
         scopes: ['openid', 'email', 'profile', 'offline_access'],

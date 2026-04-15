@@ -526,7 +526,7 @@
       "type": "integer",
       "notNull": false,
       "autoincrement": false,
-      "default": "true",
+      "default": "false",
       "generated": null,
       "name": "skip_consent",
       "entityType": "columns",
