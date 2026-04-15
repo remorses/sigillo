@@ -78,6 +78,22 @@ export const orgMember = sqliteCore.sqliteTable('org_member', {
   sqliteCore.index('org_member_user_id_idx').on(table.userId),
 ])
 
+// ── Org invitation table ────────────────────────────────────────────
+// Secret invite links: anyone with the link can join the org after login.
+// No email column — not tied to a specific user. No status column — just
+// delete the row when accepted or expired.
+
+export const orgInvitation = sqliteCore.sqliteTable('org_invitation', {
+  id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
+  orgId: sqliteCore.text('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  role: sqliteCore.text('role', { enum: ['admin', 'member'] }).notNull().default('member'),
+  createdBy: sqliteCore.text('created_by').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  expiresAt: sqliteCore.integer('expires_at', { mode: 'number' }).notNull(),
+  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
+}, (table) => [
+  sqliteCore.index('org_invitation_org_id_idx').on(table.orgId),
+])
+
 // ── Secrets domain tables ───────────────────────────────────────────
 // Doppler-style hierarchy: org → project → environment → secret
 // Each project gets default environments: development, preview, production
@@ -159,7 +175,7 @@ export const deviceCode = sqliteCore.sqliteTable('device_code', {
 // ── Relations (v2 API) ──────────────────────────────────────────────
 
 export const relations = defineRelations(
-  { user, session, account, verification, org, orgMember, project, environment, secret, deviceCode, config },
+  { user, session, account, verification, org, orgMember, orgInvitation, project, environment, secret, deviceCode, config },
   (r) => ({
     user: {
       sessions: r.many.session(),
@@ -178,6 +194,7 @@ export const relations = defineRelations(
     verification: {},
     org: {
       members: r.many.orgMember(),
+      invitations: r.many.orgInvitation(),
       projects: r.many.project(),
       users: r.many.user({
         from: r.org.id.through(r.orgMember.orgId),
@@ -187,6 +204,10 @@ export const relations = defineRelations(
     orgMember: {
       org: r.one.org({ from: r.orgMember.orgId, to: r.org.id }),
       user: r.one.user({ from: r.orgMember.userId, to: r.user.id }),
+    },
+    orgInvitation: {
+      org: r.one.org({ from: r.orgInvitation.orgId, to: r.org.id }),
+      creator: r.one.user({ from: r.orgInvitation.createdBy, to: r.user.id }),
     },
     project: {
       org: r.one.org({ from: r.project.orgId, to: r.org.id }),

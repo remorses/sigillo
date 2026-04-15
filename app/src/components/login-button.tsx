@@ -6,14 +6,14 @@
 import { useState } from "react"
 import { authClient } from "../auth-client.ts"
 
-export function LoginButton() {
+export function LoginButton({ callbackURL = "/" }: { callbackURL?: string }) {
   const [loading, setLoading] = useState(false)
 
   async function handleSignIn() {
     setLoading(true)
     await authClient.signIn.oauth2({
       providerId: "sigillo",
-      callbackURL: "/",
+      callbackURL,
     })
   }
 

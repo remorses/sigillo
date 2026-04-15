@@ -145,6 +145,44 @@ export async function createEnvAction({ name, slug, projectId }: {
   return { name }
 }
 
+const INVITE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+
+export async function createInviteAction({ orgId }: { orgId: string }) {
+  if (!orgId) throw new Error('No org selected')
+  const session = await requireSession()
+  const { role } = await requireOrgMember(session.userId, orgId)
+  if (role !== 'admin') throw new Error('Only admins can create invites')
+  const db = getDb()
+  const [invite] = await db.insert(schema.orgInvitation).values({
+    orgId,
+    createdBy: session.userId,
+    expiresAt: Date.now() + INVITE_EXPIRY_MS,
+  }).returning({ id: schema.orgInvitation.id })
+  return { id: invite!.id }
+}
+
+export async function acceptInviteAction({ invitationId }: { invitationId: string }) {
+  if (!invitationId) throw new Error('Invitation ID is required')
+  const session = await requireSession()
+  const db = getDb()
+  const invite = await db.query.orgInvitation.findFirst({ where: { id: invitationId } })
+  if (!invite) throw new Error('Invitation not found')
+  if (invite.expiresAt < Date.now()) throw new Error('Invitation has expired')
+  // Check if already a member
+  const existing = await db.query.orgMember.findFirst({
+    where: { orgId: invite.orgId, userId: session.userId },
+  })
+  if (existing) return { orgId: invite.orgId, alreadyMember: true }
+  // Add as member and delete the invitation
+  await db.insert(schema.orgMember).values({
+    orgId: invite.orgId,
+    userId: session.userId,
+    role: invite.role,
+  })
+  await db.delete(schema.orgInvitation).where(orm.eq(schema.orgInvitation.id, invitationId))
+  return { orgId: invite.orgId, alreadyMember: false }
+}
+
 export async function createOrgAction({ name }: { name: string }) {
   if (!name) throw new Error('Name is required')
   const session = await requireSession()

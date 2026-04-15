@@ -309,10 +309,13 @@ export const app = new Spiceflow({
       orderBy: { createdAt: 'asc' },
     })
 
+    const { InviteButton } = await import('sigillo-app/src/components/invite-dialog')
+
     return (
       <div className="flex flex-col gap-3 w-full">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold tracking-tight">{project?.name ?? 'Project'}</h1>
+          <InviteButton orgId={orgId} />
         </div>
         <Frame className="w-full">
           <Table className="table-fixed">
@@ -409,14 +412,57 @@ export const app = new Spiceflow({
   // ── Login page (standalone, no sidebar) ─────────────────────────
   .page('/login', async ({ request }) => {
     const session = await getSession(request.headers)
-    if (session) return redirect('/')
+    const url = new URL(request.url)
+    const redirectTo = url.searchParams.get('redirect') || '/'
+    if (session) return redirect(redirectTo)
     const { LoginButton } = await import('sigillo-app/src/components/login-button')
     return (
       <div className="flex justify-center items-center min-h-[60vh]">
         <div className="text-center max-w-sm">
           <h1 className="text-2xl font-bold tracking-tight mb-2">Sigillo</h1>
           <p className="text-muted-foreground mb-6">Sign in to manage your secrets</p>
-          <LoginButton />
+          <LoginButton callbackURL={redirectTo} />
+        </div>
+      </div>
+    )
+  })
+
+  // ── Invite accept page (standalone, no sidebar) ────────────────
+  .page('/invite/:id', async ({ params, request }) => {
+    const db = getDb()
+    const invite = await db.query.orgInvitation.findFirst({
+      where: { id: params.id },
+      with: { org: { columns: { id: true, name: true } }, creator: { columns: { name: true } } },
+    })
+    if (!invite || invite.expiresAt < Date.now()) {
+      return (
+        <div className="flex justify-center items-center min-h-[60vh]">
+          <div className="text-center max-w-sm">
+            <h1 className="text-2xl font-bold tracking-tight mb-2">Invalid Invitation</h1>
+            <p className="text-muted-foreground">This invitation link is invalid or has expired.</p>
+          </div>
+        </div>
+      )
+    }
+    const session = await getSession(request.headers)
+    if (!session) return redirect(`/login?redirect=/invite/${params.id}`)
+    // Already a member? Skip straight to the org
+    const existing = await db.query.orgMember.findFirst({
+      where: { orgId: invite.orgId, userId: session.userId },
+    })
+    if (existing) return redirect(`/orgs/${invite.orgId}`)
+    const { AcceptInviteButton } = await import('sigillo-app/src/components/accept-invite-button')
+    return (
+      <div className="flex justify-center items-center min-h-[60vh]">
+        <div className="text-center max-w-sm space-y-4">
+          <h1 className="text-2xl font-bold tracking-tight">Join {invite.org!.name}</h1>
+          <p className="text-muted-foreground text-sm">
+            <span className="font-medium text-foreground">{invite.creator!.name}</span> invited you to join this organization.
+          </p>
+          <p className="text-muted-foreground text-xs">
+            This will give you access to <strong>all projects</strong> in this organization.
+          </p>
+          <AcceptInviteButton invitationId={params.id} />
         </div>
       </div>
     )
