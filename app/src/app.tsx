@@ -683,12 +683,20 @@ function Navbar() {
             <SigilloLogo className="h-[36px] w-auto shrink-0" />
           </Link>
           <a
+            href="https://github.com/remorses/sigillo/issues/new"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Feedback
+          </a>
+          <a
             href="https://github.com/remorses/sigillo"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-muted-foreground hover:text-foreground transition-colors"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            <GitHubIcon className="size-5" />
+            GitHub
           </a>
         </div>
       </div>
