@@ -418,22 +418,22 @@ fn runAction(args: Run.Args, opts: Run.Options) !void {
         },
     };
 
-    const final_command = if (use_shell)
-        try prependSecretsToShellCommand(allocator, opts.command.?, secrets)
+    var env_map = try std.process.getEnvMap(gpa.allocator());
+    defer env_map.deinit();
+    try mergeSecretsIntoEnvMap(&env_map, secrets);
+
+    const argv: []const []const u8 = if (use_shell)
+        try shellCommandArgv(allocator, opts.command.?)
     else blk: {
         const positional_command = try shellJoinArgs(allocator, args.cmd);
-        break :blk try prependSecretsToShellCommand(allocator, positional_command, secrets);
-    };
-
-    const argv: []const []const u8 = switch (builtin.os.tag) {
-        .windows => &.{ "cmd.exe", "/C", final_command },
-        else => &.{ "/bin/sh", "-c", final_command },
+        break :blk try shellCommandArgv(allocator, positional_command);
     };
 
     var child = std.process.Child.init(argv, gpa.allocator());
     child.stdin_behavior = .Inherit;
     child.stdout_behavior = .Inherit;
     child.stderr_behavior = .Inherit;
+    child.env_map = &env_map;
 
     try child.spawn();
     const term = try child.wait();
@@ -443,29 +443,39 @@ fn runAction(args: Run.Args, opts: Run.Options) !void {
     }
 }
 
-fn prependSecretsToShellCommand(allocator: std.mem.Allocator, command: []const u8, secrets: std.json.ObjectMap) ![]const u8 {
-    var out: std.io.Writer.Allocating = .init(allocator);
-    errdefer out.deinit();
-
-    if (builtin.os.tag == .windows) {
-        var iter = secrets.iterator();
-        while (iter.next()) |entry| {
-            if (entry.value_ptr.* != .string) continue;
-            try out.writer.print("set \"{s}={s}\" && ", .{ entry.key_ptr.*, entry.value_ptr.*.string });
-        }
-        try out.writer.writeAll(command);
-        return allocator.dupe(u8, out.written());
-    }
-
+fn mergeSecretsIntoEnvMap(env_map: *std.process.EnvMap, secrets: std.json.ObjectMap) !void {
     var iter = secrets.iterator();
     while (iter.next()) |entry| {
         if (entry.value_ptr.* != .string) continue;
-        try out.writer.print("export {s}=", .{entry.key_ptr.*});
-        try writePosixSingleQuoted(&out.writer, entry.value_ptr.*.string);
-        try out.writer.writeAll("; ");
+        try env_map.put(entry.key_ptr.*, entry.value_ptr.*.string);
     }
-    try out.writer.writeAll(command);
-    return allocator.dupe(u8, out.written());
+}
+
+fn shellCommandArgv(allocator: std.mem.Allocator, command: []const u8) ![]const []const u8 {
+    if (builtin.os.tag == .windows) {
+        const argv = try allocator.alloc([]const u8, 3);
+        argv[0] = "cmd.exe";
+        argv[1] = "/C";
+        argv[2] = command;
+        return argv;
+    }
+
+    var shell_path: []const u8 = "sh";
+    const env_shell = std.process.getEnvVarOwned(allocator, "SHELL") catch |err| switch (err) {
+        error.EnvironmentVariableNotFound => null,
+        else => return err,
+    };
+    if (env_shell) |value| {
+        if (isSupportedShell(value)) {
+            shell_path = value;
+        }
+    }
+
+    const argv = try allocator.alloc([]const u8, 3);
+    argv[0] = shell_path;
+    argv[1] = "-c";
+    argv[2] = command;
+    return argv;
 }
 
 fn shellJoinArgs(allocator: std.mem.Allocator, args: []const []const u8) ![]const u8 {
@@ -476,7 +486,13 @@ fn shellJoinArgs(allocator: std.mem.Allocator, args: []const []const u8) ![]cons
         for (args, 0..) |arg, index| {
             if (index > 0) try out.append(allocator, ' ');
             try out.append(allocator, '"');
-            try out.appendSlice(allocator, arg);
+            for (arg) |char| {
+                if (char == '"') {
+                    try out.appendSlice(allocator, "\\\"");
+                } else {
+                    try out.append(allocator, char);
+                }
+            }
             try out.append(allocator, '"');
         }
         return out.toOwnedSlice(allocator);
@@ -497,16 +513,12 @@ fn shellJoinArgs(allocator: std.mem.Allocator, args: []const []const u8) ![]cons
     return out.toOwnedSlice(allocator);
 }
 
-fn writePosixSingleQuoted(writer: *std.Io.Writer, value: []const u8) !void {
-    try writer.writeByte('\'');
-    for (value) |char| {
-        if (char == '\'') {
-            try writer.writeAll("'\"'\"'");
-        } else {
-            try writer.writeByte(char);
-        }
+fn isSupportedShell(shell_path: []const u8) bool {
+    const allowed = [_][]const u8{ "/bash", "/dash", "/fish", "/zsh", "/ksh", "/csh", "/tcsh" };
+    for (allowed) |suffix| {
+        if (std.mem.endsWith(u8, shell_path, suffix)) return true;
     }
-    try writer.writeByte('\'');
+    return false;
 }
 
 fn openBrowser(allocator: std.mem.Allocator, url: []const u8) void {
