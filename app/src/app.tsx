@@ -610,7 +610,7 @@ function TabBar({ orgId, projectId, pathname }: { orgId: string; projectId: stri
   const envMatch = pathname.match(new RegExp(`^${base}/envs/([^/]+)`))
   const currentEnvBase = envMatch ? `${base}/envs/${envMatch[1]}` : null
   const tabs = [
-    { label: 'Secrets', href: base, active: pathname.startsWith(`${base}/envs`) || pathname === base },
+    { label: 'Secrets', href: base, active: pathname === base || (pathname.startsWith(`${base}/envs`) && !pathname.endsWith('/event-log')) },
     { label: 'Tokens', href: `${base}/tokens`, active: pathname === `${base}/tokens` },
     { label: 'Access', href: `${base}/access`, active: pathname === `${base}/access` },
     {
