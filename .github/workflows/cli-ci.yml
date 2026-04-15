@@ -125,12 +125,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version-check.outputs.package_version }}"
-          TAG="v${VERSION}"
+          TAG="sigillo@${VERSION}"
 
-          # Check if this release tag exists, skip upload if not
+          # Create the release and tag if they don't exist yet
           if ! gh release view "$TAG" &>/dev/null; then
-            echo "No release found for ${TAG}, skipping upload"
-            exit 0
+            git tag "$TAG" || true
+            git push origin "$TAG" || true
+            gh release create "$TAG" --title "sigillo@${VERSION}" --notes "See [CHANGELOG](https://github.com/remorses/sigillo/blob/main/cli/CHANGELOG.md)" --latest
           fi
 
           # Create platform tarballs (unix)
