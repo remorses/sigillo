@@ -552,25 +552,6 @@ pub fn main() !void {
         try argv.append(allocator, arg);
     }
 
-    if (argv.items.len >= 2 and std.mem.eql(u8, argv.items[0], "run") and std.mem.eql(u8, argv.items[1], "--")) {
-        _ = argv.orderedRemove(1);
-    }
-
-    // Keep positional `sigillo run env` working by rewriting it to the
-    // already-working `--command` form before zeke parses it. This stays simple
-    // and avoids custom arg parsing inside the action.
-    if (
-        argv.items.len >= 2 and
-        std.mem.eql(u8, argv.items[0], "run") and
-        !std.mem.startsWith(u8, argv.items[1], "-")
-    ) {
-        const joined = try shellJoinArgs(allocator, argv.items[1..]);
-        argv.items.len = 0;
-        try argv.append(allocator, "run");
-        try argv.append(allocator, "--command");
-        try argv.append(allocator, joined);
-    }
-
     app.dispatch(argv.items) catch |err| {
         const stderr = getStderr();
         stderr.print("error: {s}\n", .{@errorName(err)}) catch {};
