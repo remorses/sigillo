@@ -17,3 +17,14 @@ CREATE UNIQUE INDEX `api_token_hashed_key_unique` ON `api_token` (`hashed_key`);
 CREATE INDEX `api_token_project_id_idx` ON `api_token` (`project_id`);
 --> statement-breakpoint
 CREATE INDEX `api_token_hashed_key_idx` ON `api_token` (`hashed_key`);
+--> statement-breakpoint
+CREATE TRIGGER `api_token_env_project_check`
+BEFORE INSERT ON `api_token`
+WHEN NEW.`environment_id` IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'environment_id does not belong to project_id')
+  WHERE NOT EXISTS (
+    SELECT 1 FROM `environment`
+    WHERE `id` = NEW.`environment_id` AND `project_id` = NEW.`project_id`
+  );
+END;

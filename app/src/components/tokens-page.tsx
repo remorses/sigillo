@@ -190,11 +190,13 @@ function CreateTokenDialog({
     setTimeout(() => setCopied(false), 2000)
   }
 
-  // After key is created, show the "copy key" step
+  // After key is created, show the "copy key" step.
+  // dismissible=false prevents backdrop click / Escape from closing the dialog
+  // and losing the only copy of the token. showCloseButton=false hides the X.
   if (createdKey) {
     return (
-      <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogPopup>
+      <Dialog open={open} dismissible={false}>
+        <DialogPopup showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>Token created</DialogTitle>
             <DialogDescription>
@@ -217,9 +219,9 @@ function CreateTokenDialog({
               Store this key securely. It grants access to secrets in this project.
             </p>
             <DialogFooter variant="bare" className="mt-4">
-              <DialogClose render={<Button variant="outline" />}>
+              <Button variant="outline" onClick={() => handleOpenChange(false)}>
                 Done
-              </DialogClose>
+              </Button>
             </DialogFooter>
           </div>
         </DialogPopup>

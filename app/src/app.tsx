@@ -91,6 +91,11 @@ export const app = new Spiceflow({
     const session = await requirePageSession(request)
     await requirePageOrgMember(session.userId, orgId)
 
+    // Verify projectId actually belongs to this org — prevents cross-org
+    // access via crafted URLs like /orgs/<org-a>/projects/<project-from-org-b>/*
+    const realOrgId = await getOrgIdForProject(projectId)
+    if (realOrgId !== orgId) throw redirect('/')
+
     const [members, allProjects] = await Promise.all([
       db.query.orgMember.findMany({
         where: { userId: session.userId },
