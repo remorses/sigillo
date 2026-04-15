@@ -109,12 +109,8 @@
     --muted-foreground: var(--color-neutral-400);
     --accent: --alpha(var(--color-white) / 8%);
     --accent-foreground: var(--color-neutral-100);
-    --destructive: color-mix(
-      in srgb,
-      var(--color-red-500) 90%,
-      var(--color-white)
-    );
-    --destructive-foreground: var(--color-red-400);
+    --destructive: var(--color-red-300);
+    --destructive-foreground: var(--color-red-200);
     --info: var(--color-blue-500);
     --info-foreground: var(--color-blue-400);
     --success: var(--color-emerald-500);
@@ -150,12 +146,8 @@
   --muted-foreground: var(--color-neutral-400);
   --accent: --alpha(var(--color-white) / 8%);
   --accent-foreground: var(--color-neutral-100);
-  --destructive: color-mix(
-    in srgb,
-    var(--color-red-500) 90%,
-    var(--color-white)
-  );
-  --destructive-foreground: var(--color-red-400);
+    --destructive: var(--color-red-300);
+    --destructive-foreground: var(--color-red-200);
   --info: var(--color-blue-500);
   --info-foreground: var(--color-blue-400);
   --success: var(--color-emerald-500);
