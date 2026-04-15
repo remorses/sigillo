@@ -109,20 +109,18 @@ export function EventLogTable({
         <Frame className="w-full">
           <Table className="table-fixed">
             <colgroup>
-              <col className="w-36" />
-              <col className="w-24" />
-              <col className="w-32" />
               <col className="w-40" />
+              <col className="w-24" />
               <col style={{ width: "300px" }} />
+              <col className="w-36" />
               <col className="w-24" />
             </colgroup>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead>Time</TableHead>
-                <TableHead>Action</TableHead>
-                <TableHead>Environment</TableHead>
                 <TableHead>Secret</TableHead>
+                <TableHead>Action</TableHead>
                 <TableHead>Value</TableHead>
+                <TableHead>Time</TableHead>
                 <TableHead>User</TableHead>
               </TableRow>
             </TableHeader>
@@ -133,9 +131,7 @@ export function EventLogTable({
                 return (
                   <TableRow key={evt.id}>
                     <TableCell>
-                      <span className="text-muted-foreground text-xs tabular-nums">
-                        {formatTime(evt.createdAt)}
-                      </span>
+                      <span className="text-sm font-mono font-medium">{evt.name}</span>
                     </TableCell>
                     <TableCell>
                       {evt.operation === "set" ? (
@@ -147,12 +143,6 @@ export function EventLogTable({
                           delete
                         </Badge>
                       )}
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm">{evt.environmentName}</span>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm font-mono font-medium">{evt.name}</span>
                     </TableCell>
                     <TableCell>
                       {hasValue ? (
@@ -178,6 +168,11 @@ export function EventLogTable({
                       ) : (
                         <span className="text-muted-foreground text-xs">—</span>
                       )}
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-muted-foreground text-xs tabular-nums">
+                        {formatTime(evt.createdAt)}
+                      </span>
                     </TableCell>
                     <TableCell>
                       <span className="text-sm text-muted-foreground truncate">{evt.userName}</span>

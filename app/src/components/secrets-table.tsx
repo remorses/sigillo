@@ -180,7 +180,7 @@ export function SecretsTable({
         await createSecretAction({ name, value, environmentId });
       }
       setImportOpen(false);
-      await router.refresh();
+      router.refresh();
     } catch (e: any) {
       alert(e?.message || "Failed to import secrets");
     } finally {
@@ -275,7 +275,7 @@ export function SecretsTable({
                         if (confirm(`Delete secret "${secret.name}"?`)) {
                           try {
                             await deleteSecretAction({ name: secret.name, environmentId });
-                            await router.refresh();
+                            router.refresh();
                           } catch (e: any) {
                             alert(e?.message || "Failed to delete secret");
                           }
@@ -336,7 +336,7 @@ export function SecretsTable({
             await saveSecretsAction({ edits: buildPayload(), environmentIds: envIds });
             setEdits({});
             setSaveOpen(false);
-            await router.refresh();
+            router.refresh();
           } catch (e: any) {
             alert(e?.message || "Failed to save secrets");
           } finally {
@@ -509,7 +509,7 @@ function AddSecretRow({
           const value = formData.get("value") as string;
           await createSecretAction({ name, value, environmentId });
           onDone();
-          await router.refresh();
+          router.refresh();
         }}
       >
         <Input

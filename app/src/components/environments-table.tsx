@@ -118,7 +118,7 @@ export function EnvironmentsTable({
               if (confirm(`Delete environment "${row.original.name}"?`)) {
                 try {
                   await deleteEnvAction({ id: row.original.id });
-                  await router.refresh();
+                   router.refresh();
                 } catch (e: any) {
                   alert(e?.message || "Failed to delete environment");
                 }
@@ -200,7 +200,7 @@ export function EnvironmentsTable({
                 await createEnvAction({ name, slug, projectId });
                 setShowNewRow(false);
                 setMessage("");
-                await router.refresh();
+                router.refresh();
               }}
             >
               <Input
