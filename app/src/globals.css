@@ -117,7 +117,7 @@
     --success-foreground: var(--color-emerald-400);
     --warning: var(--color-amber-500);
     --warning-foreground: var(--color-amber-400);
-    --border: --alpha(var(--color-white) / 7%);
+    --border: --alpha(var(--color-white) / 4%);
     --input: --alpha(var(--color-white) / 14%);
     --ring: color-mix(in srgb, var(--color-orange-300) 70%, var(--color-white));
     --sidebar: var(--color-neutral-950);
@@ -126,46 +126,11 @@
     --sidebar-primary-foreground: var(--color-neutral-950);
     --sidebar-accent: --alpha(var(--color-white) / 8%);
     --sidebar-accent-foreground: var(--color-neutral-100);
-    --sidebar-border: --alpha(var(--color-white) / 7%);
+    --sidebar-border: --alpha(var(--color-white) / 4%);
     --sidebar-ring: var(--color-neutral-400);
   }
 }
 
-.dark {
-  --background: var(--color-neutral-950);
-  --foreground: var(--color-neutral-100);
-  --card: var(--color-neutral-900);
-  --card-foreground: var(--color-neutral-100);
-  --popover: var(--color-neutral-900);
-  --popover-foreground: var(--color-neutral-100);
-  --primary: color-mix(in srgb, var(--color-orange-300) 70%, var(--color-white));
-  --primary-foreground: var(--color-neutral-950);
-  --secondary: --alpha(var(--color-white) / 6%);
-  --secondary-foreground: var(--color-neutral-100);
-  --muted: --alpha(var(--color-white) / 8%);
-  --muted-foreground: var(--color-neutral-400);
-  --accent: --alpha(var(--color-white) / 8%);
-  --accent-foreground: var(--color-neutral-100);
-    --destructive: var(--color-red-300);
-    --destructive-foreground: var(--color-red-200);
-  --info: var(--color-blue-500);
-  --info-foreground: var(--color-blue-400);
-  --success: var(--color-emerald-500);
-  --success-foreground: var(--color-emerald-400);
-  --warning: var(--color-amber-500);
-  --warning-foreground: var(--color-amber-400);
-  --border: --alpha(var(--color-white) / 7%);
-  --input: --alpha(var(--color-white) / 14%);
-  --ring: color-mix(in srgb, var(--color-orange-300) 70%, var(--color-white));
-  --sidebar: var(--color-neutral-950);
-  --sidebar-foreground: var(--color-neutral-400);
-  --sidebar-primary: color-mix(in srgb, var(--color-orange-300) 70%, var(--color-white));
-  --sidebar-primary-foreground: var(--color-neutral-950);
-  --sidebar-accent: --alpha(var(--color-white) / 8%);
-  --sidebar-accent-foreground: var(--color-neutral-100);
-  --sidebar-border: --alpha(var(--color-white) / 7%);
-  --sidebar-ring: var(--color-neutral-400);
-}
 
 @layer base {
   * {
