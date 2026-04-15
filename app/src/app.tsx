@@ -63,16 +63,14 @@ export const app = new Spiceflow({
           <Head.Meta name="viewport" content="width=device-width, initial-scale=1.0" />
           <Head.Title>Sigillo — Secret Manager</Head.Title>
         </Head>
-        <body className="relative flex flex-col min-h-screen bg-background font-sans antialiased">
+        <body className="relative flex flex-col  bg-background font-sans antialiased">
           <ProgressBar />
           <Navbar showBorder={!isProjectPage} />
-          <div className="flex-1">
-            {children ?? (
-              <div className="flex items-center justify-center h-full text-muted-foreground">
-                Page not found
-              </div>
-            )}
-          </div>
+          {children ?? (
+            <div className="flex items-center justify-center h-full text-muted-foreground">
+              Page not found
+            </div>
+          )}
           <Footer />
         </body>
       </html>
@@ -108,9 +106,9 @@ export const app = new Spiceflow({
     const user = { name: session.user.name || 'User', email: session.user.email || '' }
 
     return (
-      <>
+      <div className="flex flex-col flex-1">
         <TabBar orgId={orgId} projectId={projectId} pathname={url.pathname} />
-        <div className="isolate relative flex max-w-(--content-max-width) mx-auto min-h-[min(400px,100vh)]">
+        <div className="isolate relative flex flex-1 max-w-(--content-max-width) mx-auto w-full">
           <Sidebar
             orgs={orgs}
             projects={projects}
@@ -122,7 +120,7 @@ export const app = new Spiceflow({
             {children}
           </main>
         </div>
-      </>
+      </div>
     )
   })
 
