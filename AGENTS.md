@@ -73,3 +73,21 @@ Doppler API reference for design comparison: https://docs.doppler.com/reference
 if needed download source code from https://github.com/better-auth/better-auth to read how it works
 
 read docs at https://better-auth.com/llms.txt. that page is only an index, you must fetch related pages to read their content
+
+## Publishing
+
+**NEVER publish the CLI from a local machine.** Do not run local release or
+publish commands for the Sigillo CLI. Local builds are only for development and
+validation.
+
+CLI releases must be produced by CI so every platform build is created in a
+clean environment and attached to the GitHub release consistently.
+
+Rules:
+
+- Never do local binary publishing by hand.
+- Let GitHub Actions build release binaries for all supported targets.
+- Published binaries should be attached to the GitHub release, not just left as
+  local files or ad-hoc workflow artifacts.
+- When updating release automation, prefer CI-driven release creation/upload and
+  keep the local workflow limited to `zig build`, tests, and smoke checks.
