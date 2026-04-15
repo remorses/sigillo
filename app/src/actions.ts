@@ -16,7 +16,7 @@ import { getActionRequest } from 'spiceflow'
 import {
   getDb, getSession,
   requireOrgMember,
-  getOrgIdForProject, getOrgIdForEnvironment, getOrgIdForSecret,
+  getOrgIdForProject, getOrgIdForEnvironment,
   encrypt,
 } from './db.ts'
 
@@ -41,6 +41,8 @@ export async function createProjectAction({ name, orgId }: { name: string; orgId
   return { id: proj!.id, name: proj!.name }
 }
 
+// All secret mutations append to the secretEvent log. Never update or delete events.
+
 export async function createSecretAction({ name, value, environmentId }: {
   name: string
   value: string
@@ -53,70 +55,75 @@ export async function createSecretAction({ name, value, environmentId }: {
   await requireOrgMember(session.userId, orgId)
   const db = getDb()
   const { encrypted, iv } = await encrypt(value)
-  await db.insert(schema.secret).values({
-    environmentId, name, valueEncrypted: encrypted, iv, createdBy: session.userId,
+  await db.insert(schema.secretEvent).values({
+    environmentId, name, operation: 'set',
+    valueEncrypted: encrypted, iv, userId: session.userId,
   })
   return { name }
 }
 
-export async function deleteSecretAction({ id }: { id: string }) {
+export async function deleteSecretAction({ name, environmentId }: {
+  name: string
+  environmentId: string
+}) {
   const session = await requireSession()
-  const orgId = await getOrgIdForSecret(id)
-  if (!orgId) throw new Error('Secret not found')
+  const orgId = await getOrgIdForEnvironment(environmentId)
+  if (!orgId) throw new Error('Environment not found')
   await requireOrgMember(session.userId, orgId)
   const db = getDb()
-  await db.delete(schema.secret).where(orm.eq(schema.secret.id, id))
+  await db.insert(schema.secretEvent).values({
+    environmentId, name, operation: 'delete', userId: session.userId,
+  })
 }
 
 // Save edited secrets to the current environment and optionally apply
-// the same changes to additional environments (by name-based upsert).
-// environmentIds[0] is the current env (edits applied by secret ID),
-// the rest are cross-env targets (edits applied by secret name).
+// the same changes to additional environments. Each edit appends a "set"
+// event to the log. Renames are handled as delete old name + set new name.
 export async function saveSecretsAction({ edits, environmentIds }: {
-  edits: { id: string; name: string; value?: string }[]
+  edits: { name: string; originalName: string; value?: string }[]
   environmentIds: string[]
 }) {
   if (edits.length === 0 || environmentIds.length === 0) return
   const session = await requireSession()
-  const orgId = await getOrgIdForSecret(edits[0]!.id)
-  if (!orgId) throw new Error('Secret not found')
+  const currentEnvId = environmentIds[0]!
+  const orgId = await getOrgIdForEnvironment(currentEnvId)
+  if (!orgId) throw new Error('Environment not found')
   await requireOrgMember(session.userId, orgId)
 
   const db = getDb()
-  const otherEnvIds = environmentIds.slice(1)
 
-  // Apply edits to current environment by secret ID (supports rename + value change)
+  // Apply edits to current environment
   for (const edit of edits) {
-    if (edit.name !== undefined) {
-      await db.update(schema.secret).set({ name: edit.name, updatedAt: Date.now() })
-        .where(orm.eq(schema.secret.id, edit.id))
+    const isRename = edit.name !== edit.originalName
+    // If renamed, delete old name
+    if (isRename) {
+      await db.insert(schema.secretEvent).values({
+        environmentId: currentEnvId, name: edit.originalName,
+        operation: 'delete', userId: session.userId,
+      })
     }
+    // Set new/updated value (or re-set with same value under new name)
     if (edit.value !== undefined) {
       const { encrypted, iv } = await encrypt(edit.value)
-      await db.update(schema.secret).set({ valueEncrypted: encrypted, iv, updatedAt: Date.now() })
-        .where(orm.eq(schema.secret.id, edit.id))
+      await db.insert(schema.secretEvent).values({
+        environmentId: currentEnvId, name: edit.name,
+        operation: 'set', valueEncrypted: encrypted, iv, userId: session.userId,
+      })
     }
   }
 
-  // Apply value changes to other environments by name-based upsert
+  // Apply value changes to other environments
+  const otherEnvIds = environmentIds.slice(1)
   const valueEdits = edits.filter((e) => e.value !== undefined)
   for (const envId of otherEnvIds) {
     const targetOrgId = await getOrgIdForEnvironment(envId)
     if (targetOrgId !== orgId) continue
     for (const edit of valueEdits) {
-      const existing = await db.query.secret.findFirst({
-        where: { environmentId: envId, name: edit.name },
-      })
       const { encrypted, iv } = await encrypt(edit.value!)
-      if (existing) {
-        await db.update(schema.secret).set({ valueEncrypted: encrypted, iv, updatedAt: Date.now() })
-          .where(orm.eq(schema.secret.id, existing.id))
-      } else {
-        await db.insert(schema.secret).values({
-          environmentId: envId, name: edit.name,
-          valueEncrypted: encrypted, iv, createdBy: session.userId,
-        })
-      }
+      await db.insert(schema.secretEvent).values({
+        environmentId: envId, name: edit.name,
+        operation: 'set', valueEncrypted: encrypted, iv, userId: session.userId,
+      })
     }
   }
 }

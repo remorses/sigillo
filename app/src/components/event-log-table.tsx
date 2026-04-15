@@ -1,0 +1,194 @@
+// Event log table — shows the append-only secretEvent audit trail.
+// Env select filters events. Eye icon toggles value visibility (set events only).
+// Badges: green for "set", red for "delete".
+
+"use client";
+
+import { EyeIcon, EyeOffIcon } from "lucide-react";
+import { useState } from "react";
+import { getRouter } from "spiceflow/react";
+import { Badge } from "sigillo-app/src/components/ui/badge";
+import { Frame } from "sigillo-app/src/components/ui/frame";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectPopup,
+  SelectItem,
+} from "sigillo-app/src/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "sigillo-app/src/components/ui/table";
+import { formatTime } from "sigillo-app/src/lib/utils";
+import type { App } from "../app.tsx";
+
+type EventRow = {
+  id: string;
+  name: string;
+  operation: string;
+  value: string | null;
+  createdAt: number;
+  environmentName: string;
+  userName: string;
+};
+
+type Environment = {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export function EventLogTable({
+  projectName,
+  events,
+  environments,
+  selectedEnvId,
+  orgId,
+  projectId,
+}: {
+  projectName: string;
+  events: EventRow[];
+  environments: Environment[];
+  selectedEnvId: string | null;
+  orgId: string;
+  projectId: string;
+}) {
+  const router = getRouter<App>();
+  const [visibleValues, setVisibleValues] = useState<Record<string, boolean>>({});
+
+  const toggleValue = (id: string) => {
+    setVisibleValues((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  return (
+    <>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight">{projectName}</h1>
+        <Select
+          defaultValue={selectedEnvId || ""}
+          onValueChange={(val) => {
+            router.push(`/orgs/${orgId}/projects/${projectId}/event-log?envId=${val}`);
+          }}
+        >
+          <SelectTrigger size="sm" className="w-auto min-w-40">
+            <SelectValue placeholder="All environments">
+              {environments.find((e) => e.id === selectedEnvId)?.name || "All environments"}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectPopup>
+            {environments.map((env) => (
+              <SelectItem key={env.id} value={env.id}>
+                {env.name}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
+      </div>
+
+      {events.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="flex size-12 items-center justify-center rounded-xl bg-muted mb-4">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-6 text-muted-foreground">
+              <path d="M12 8v4l3 3" />
+              <circle cx="12" cy="12" r="10" />
+            </svg>
+          </div>
+          <h3 className="text-base font-semibold mb-1">No events yet</h3>
+          <p className="text-sm text-muted-foreground max-w-xs">
+            Secret changes will appear here as an audit trail.
+          </p>
+        </div>
+      ) : (
+        <Frame className="w-full">
+          <Table className="table-fixed">
+            <colgroup>
+              <col className="w-36" />
+              <col className="w-24" />
+              <col className="w-32" />
+              <col className="w-40" />
+              <col style={{ width: "300px" }} />
+              <col className="w-24" />
+            </colgroup>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Time</TableHead>
+                <TableHead>Action</TableHead>
+                <TableHead>Environment</TableHead>
+                <TableHead>Secret</TableHead>
+                <TableHead>Value</TableHead>
+                <TableHead>User</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {events.map((evt) => {
+                const isVisible = visibleValues[evt.id] ?? false;
+                const hasValue = evt.operation === "set" && evt.value != null;
+                return (
+                  <TableRow key={evt.id}>
+                    <TableCell>
+                      <span className="text-muted-foreground text-xs tabular-nums">
+                        {formatTime(evt.createdAt)}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      {evt.operation === "set" ? (
+                        <Badge variant="default" size="sm" className="bg-emerald-600 text-white">
+                          set
+                        </Badge>
+                      ) : (
+                        <Badge variant="destructive" size="sm">
+                          delete
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm">{evt.environmentName}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm font-mono font-medium">{evt.name}</span>
+                    </TableCell>
+                    <TableCell>
+                      {hasValue ? (
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className="text-sm font-mono truncate min-w-0 flex-1"
+                            style={!isVisible ? { WebkitTextSecurity: "disc", textSecurity: "disc" } as React.CSSProperties : undefined}
+                          >
+                            {isVisible ? evt.value : "••••••••••••"}
+                          </span>
+                          <button
+                            onClick={() => toggleValue(evt.id)}
+                            className="text-muted-foreground hover:text-foreground cursor-pointer shrink-0"
+                            title={isVisible ? "Hide value" : "Reveal value"}
+                          >
+                            {isVisible ? (
+                              <EyeOffIcon className="size-3.5" />
+                            ) : (
+                              <EyeIcon className="size-3.5" />
+                            )}
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm text-muted-foreground truncate">{evt.userName}</span>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </Frame>
+      )}
+    </>
+  );
+}

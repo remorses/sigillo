@@ -162,8 +162,8 @@ export function SecretsTable({
     return dirtySecrets.map((s) => {
       const e = edits[s.id]!;
       return {
-        id: s.id,
-        // Always include the current name so cross-env upsert knows the key
+        // originalName is the key before any rename — used for event sourcing
+        originalName: s.name,
         name: e.name !== undefined ? e.name : s.name,
         value: e.value,
       };
@@ -274,7 +274,7 @@ export function SecretsTable({
                       onClick={async () => {
                         if (confirm(`Delete secret "${secret.name}"?`)) {
                           try {
-                            await deleteSecretAction({ id: secret.id });
+                            await deleteSecretAction({ name: secret.name, environmentId });
                             await router.refresh();
                           } catch (e: any) {
                             alert(e?.message || "Failed to delete secret");

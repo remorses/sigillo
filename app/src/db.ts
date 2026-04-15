@@ -164,13 +164,68 @@ export async function getOrgIdForEnvironment(environmentId: string) {
   return row?.project?.orgId ?? null
 }
 
-export async function getOrgIdForSecret(secretId: string) {
+// ── Derive current secrets from event log ───────────────────────────
+// Replays the append-only secretEvent log for an environment and returns
+// the current state: last "set" event per name wins, "delete" removes it.
+
+export type DerivedSecret = {
+  id: string
+  name: string
+  valueEncrypted: string
+  iv: string
+  createdAt: number
+  updatedAt: number
+  userId: string
+}
+
+export async function deriveSecrets(environmentId: string): Promise<DerivedSecret[]> {
   const db = getDb()
-  const row = await db.query.secret.findFirst({
-    where: { id: secretId },
-    with: { environment: { with: { project: { columns: { orgId: true } } } } },
+  const events = await db.query.secretEvent.findMany({
+    where: { environmentId },
+    orderBy: { createdAt: 'asc' },
   })
-  return row?.environment?.project?.orgId ?? null
+
+  // Group by name, replay to get current state
+  const state = new Map<string, {
+    id: string
+    name: string
+    operation: string
+    valueEncrypted: string | null
+    iv: string | null
+    userId: string
+    createdAt: number
+    firstCreatedAt: number
+  }>()
+
+  for (const evt of events) {
+    const existing = state.get(evt.name)
+    if (evt.operation === 'delete') {
+      state.delete(evt.name)
+    } else {
+      state.set(evt.name, {
+        id: evt.id,
+        name: evt.name,
+        operation: evt.operation,
+        valueEncrypted: evt.valueEncrypted,
+        iv: evt.iv,
+        userId: evt.userId,
+        createdAt: evt.createdAt,
+        firstCreatedAt: existing?.firstCreatedAt ?? evt.createdAt,
+      })
+    }
+  }
+
+  return Array.from(state.values())
+    .filter((s) => s.valueEncrypted && s.iv)
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      valueEncrypted: s.valueEncrypted!,
+      iv: s.iv!,
+      createdAt: s.firstCreatedAt,
+      updatedAt: s.createdAt,
+      userId: s.userId,
+    }))
 }
 
 // ── Encryption (AES-256-GCM) ────────────────────────────────────────

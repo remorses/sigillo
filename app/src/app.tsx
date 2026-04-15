@@ -18,7 +18,8 @@ import {
   getDb, getAuth, getSession,
   requireApiSession, requirePageSession,
   requireApiOrgMember, requirePageOrgMember,
-  getOrgIdForProject, getOrgIdForEnvironment, getOrgIdForSecret,
+  getOrgIdForProject, getOrgIdForEnvironment,
+  deriveSecrets,
   encrypt, decrypt,
 } from './db.ts'
 import { createOrgAction, createProjectAction } from './actions.ts'
@@ -267,19 +268,25 @@ export const app = new Spiceflow({
       ? envId
       : environments[0]?.id || null
 
-    // Load secrets and decrypt values
+    // Derive current secrets from the event log and decrypt values
     let secrets: { id: string; name: string; value: string; createdAt: number; updatedAt: number; createdBy: { id: string; name: string } | null }[] = []
     if (selectedEnvId) {
-      const rows = await db.query.secret.findMany({
-        where: { environmentId: selectedEnvId },
-        with: { creator: { columns: { id: true, name: true } } },
-        orderBy: { createdAt: 'desc' },
-      })
-      secrets = await Promise.all(rows.map(async (r) => ({
-        id: r.id, name: r.name,
-        value: await decrypt(r.valueEncrypted, r.iv),
-        createdAt: r.createdAt, updatedAt: r.updatedAt,
-        createdBy: r.creator,
+      const derived = await deriveSecrets(selectedEnvId)
+      // Look up user info for each secret's latest event author
+      const userIds = [...new Set(derived.map((d) => d.userId))]
+      const userMap = new Map<string, { id: string; name: string }>()
+      for (const uid of userIds) {
+        const u = await db.query.user.findFirst({
+          where: { id: uid },
+          columns: { id: true, name: true },
+        })
+        if (u) userMap.set(uid, u)
+      }
+      secrets = await Promise.all(derived.map(async (d) => ({
+        id: d.id, name: d.name,
+        value: await decrypt(d.valueEncrypted, d.iv),
+        createdAt: d.createdAt, updatedAt: d.updatedAt,
+        createdBy: userMap.get(d.userId) ?? null,
       })))
     }
 
@@ -375,31 +382,61 @@ export const app = new Spiceflow({
     )
   })
 
-  // ── Event Log page (TODO) ─────────────────────────────────────
-  .page('/orgs/:orgId/projects/:projectId/event-log', async ({ params }) => {
+  // ── Event Log page ─────────────────────────────────────────────
+  .page('/orgs/:orgId/projects/:projectId/event-log', async ({ params, request }) => {
     const db = getDb()
-    const project = await db.query.project.findFirst({
-      where: { id: params.projectId },
-      columns: { name: true },
-    })
+    const { orgId, projectId } = params
+    const url = new URL(request.url)
+
+    const [project, environments] = await Promise.all([
+      db.query.project.findFirst({ where: { id: projectId }, columns: { name: true } }),
+      db.query.environment.findMany({ where: { projectId }, orderBy: { createdAt: 'asc' } }),
+    ])
+
+    const selectedEnvId = url.searchParams.get('envId') || environments[0]?.id || null
+
+    // Load events for selected env, sorted by createdAt DESC
+    let events: { id: string; name: string; operation: string; valueEncrypted: string | null; iv: string | null; createdAt: number; environmentName: string; userName: string }[] = []
+    if (selectedEnvId) {
+      const envMap = new Map(environments.map((e) => [e.id, e.name]))
+      const rows = await db.query.secretEvent.findMany({
+        where: { environmentId: selectedEnvId },
+        with: { user: { columns: { id: true, name: true } } },
+        orderBy: { createdAt: 'desc' },
+      })
+      events = rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        operation: r.operation,
+        valueEncrypted: r.valueEncrypted,
+        iv: r.iv,
+        createdAt: r.createdAt,
+        environmentName: envMap.get(r.environmentId) ?? '—',
+        userName: r.user?.name ?? '—',
+      }))
+    }
+
+    // Decrypt values for "set" events so the client can show/hide them
+    const eventsWithValues = await Promise.all(events.map(async (evt) => {
+      let value: string | null = null
+      if (evt.operation === 'set' && evt.valueEncrypted && evt.iv) {
+        value = await decrypt(evt.valueEncrypted, evt.iv)
+      }
+      return { ...evt, value, valueEncrypted: undefined, iv: undefined }
+    }))
+
+    const { EventLogTable } = await import('sigillo-app/src/components/event-log-table')
 
     return (
       <div className="flex flex-col gap-3 w-full">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold tracking-tight">{project?.name ?? 'Project'}</h1>
-        </div>
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="flex size-12 items-center justify-center rounded-xl bg-muted mb-4">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-6 text-muted-foreground">
-              <path d="M12 8v4l3 3" />
-              <circle cx="12" cy="12" r="10" />
-            </svg>
-          </div>
-          <h3 className="text-base font-semibold mb-1">Event log coming soon</h3>
-          <p className="text-sm text-muted-foreground max-w-xs">
-            A full audit trail of secret changes, access events, and team activity will appear here.
-          </p>
-        </div>
+        <EventLogTable
+          projectName={project?.name ?? 'Project'}
+          events={eventsWithValues}
+          environments={environments}
+          selectedEnvId={selectedEnvId}
+          orgId={orgId}
+          projectId={projectId}
+        />
       </div>
     )
   })
@@ -604,7 +641,7 @@ export const app = new Spiceflow({
     },
   })
 
-  // ── API: Secrets (scoped to environment) ──────────────────────
+  // ── API: Secrets (scoped to environment, event-sourced) ─────────
   .route({
     method: 'GET',
     path: '/api/environments/:environmentId/secrets',
@@ -613,13 +650,11 @@ export const app = new Spiceflow({
       const orgId = await getOrgIdForEnvironment(params.environmentId)
       if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
       await requireApiOrgMember(session.userId, orgId)
-      const db = getDb()
-      const rows = await db.query.secret.findMany({
-        where: { environmentId: params.environmentId },
-        with: { creator: { columns: { id: true, name: true } } },
-        orderBy: { createdAt: 'desc' },
-      })
-      const secrets = rows.map((r) => ({ id: r.id, name: r.name, createdAt: r.createdAt, updatedAt: r.updatedAt, createdBy: r.creator }))
+      const derived = await deriveSecrets(params.environmentId)
+      const secrets = derived.map((d) => ({
+        id: d.id, name: d.name,
+        createdAt: d.createdAt, updatedAt: d.updatedAt,
+      }))
       return { environmentId: params.environmentId, secrets }
     },
   })
@@ -636,42 +671,44 @@ export const app = new Spiceflow({
       await requireApiOrgMember(session.userId, orgId)
       const db = getDb()
       const { encrypted, iv } = await encrypt(body.value)
-      const [row] = await db.insert(schema.secret).values({
+      const [row] = await db.insert(schema.secretEvent).values({
         environmentId: params.environmentId, name: body.name,
-        valueEncrypted: encrypted, iv, createdBy: session.userId,
-      }).returning({ id: schema.secret.id, name: schema.secret.name })
+        operation: 'set', valueEncrypted: encrypted, iv, userId: session.userId,
+      }).returning({ id: schema.secretEvent.id, name: schema.secretEvent.name })
       return { ok: true, environmentId: params.environmentId, id: row!.id, name: row!.name }
     },
   })
 
   .route({
     method: 'GET',
-    path: '/api/secrets/:id',
+    path: '/api/environments/:environmentId/secrets/:name',
     async handler({ params, request }) {
       const session = await requireApiSession(request)
-      const orgId = await getOrgIdForSecret(params.id)
+      const orgId = await getOrgIdForEnvironment(params.environmentId)
       if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
       await requireApiOrgMember(session.userId, orgId)
-      const db = getDb()
-      const row = await db.query.secret.findFirst({ where: { id: params.id } })
-      if (!row) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      const value = await decrypt(row.valueEncrypted, row.iv)
-      return { id: row.id, name: row.name, value, environmentId: row.environmentId, createdAt: row.createdAt, updatedAt: row.updatedAt }
+      const derived = await deriveSecrets(params.environmentId)
+      const secret = derived.find((d) => d.name === params.name)
+      if (!secret) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
+      const value = await decrypt(secret.valueEncrypted, secret.iv)
+      return { id: secret.id, name: secret.name, value, environmentId: params.environmentId, createdAt: secret.createdAt, updatedAt: secret.updatedAt }
     },
   })
 
   .route({
     method: 'DELETE',
-    path: '/api/secrets/:id',
+    path: '/api/environments/:environmentId/secrets/:name',
     async handler({ params, request }) {
       const session = await requireApiSession(request)
-      const orgId = await getOrgIdForSecret(params.id)
+      const orgId = await getOrgIdForEnvironment(params.environmentId)
       if (!orgId) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
       await requireApiOrgMember(session.userId, orgId)
       const db = getDb()
-      const [deleted] = await db.delete(schema.secret).where(orm.eq(schema.secret.id, params.id)).returning({ id: schema.secret.id })
-      if (!deleted) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
-      return { ok: true, id: deleted.id }
+      await db.insert(schema.secretEvent).values({
+        environmentId: params.environmentId, name: params.name,
+        operation: 'delete', userId: session.userId,
+      })
+      return { ok: true, name: params.name }
     },
   })
 
@@ -703,9 +740,9 @@ function GitHubIcon({ className }: { className?: string }) {
 function TabBar({ orgId, projectId, pathname }: { orgId: string; projectId: string; pathname: string }) {
   const base = `/orgs/${orgId}/projects/${projectId}`
   const tabs = [
-    { label: 'secrets', href: base, active: pathname.startsWith(`${base}/envs`) || pathname === base },
-    { label: 'access', href: `${base}/access`, active: pathname === `${base}/access` },
-    { label: 'event log', href: `${base}/event-log`, active: pathname === `${base}/event-log` },
+    { label: 'Secrets', href: base, active: pathname.startsWith(`${base}/envs`) || pathname === base },
+    { label: 'Access', href: `${base}/access`, active: pathname === `${base}/access` },
+    { label: 'Event Log', href: `${base}/event-log`, active: pathname === `${base}/event-log` },
   ] as const
 
   return (

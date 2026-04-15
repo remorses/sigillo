@@ -96,8 +96,12 @@ export const orgInvitation = sqliteCore.sqliteTable('org_invitation', {
 ])
 
 // ── Secrets domain tables ───────────────────────────────────────────
-// Doppler-style hierarchy: org → project → environment → secret
+// Doppler-style hierarchy: org → project → environment → secretEvent
 // Each project gets default environments: development, preview, production
+//
+// Secrets use event sourcing: the secretEvent table is an append-only log.
+// Current secret values are derived by replaying events per (environmentId, name).
+// Events are immutable — never update or delete rows in this table.
 
 export const project = sqliteCore.sqliteTable('project', {
   id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
@@ -120,19 +124,24 @@ export const environment = sqliteCore.sqliteTable('environment', {
   sqliteCore.index('environment_project_id_idx').on(table.projectId),
 ])
 
-export const secret = sqliteCore.sqliteTable('secret', {
+// Append-only event log for secrets. Each row is an immutable event.
+// "set" = create or update a secret value. "delete" = remove the secret.
+// Current state is derived by taking the last event per (environmentId, name).
+// NEVER update or delete rows in this table — it is the audit trail.
+export const secretEvent = sqliteCore.sqliteTable('secret_event', {
   id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
   environmentId: sqliteCore.text('environment_id').notNull().references(() => environment.id, { onDelete: 'cascade' }),
   name: sqliteCore.text('name').notNull(),
-  // Encrypted with Web Crypto AES-GCM, stored as base64
-  valueEncrypted: sqliteCore.text('value_encrypted').notNull(),
-  // AES-GCM initialization vector, stored as base64
-  iv: sqliteCore.text('iv').notNull(),
-  createdBy: sqliteCore.text('created_by').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  // "set" = create or update, "delete" = remove
+  operation: sqliteCore.text('operation', { enum: ['set', 'delete'] }).notNull(),
+  // Encrypted with Web Crypto AES-GCM, stored as base64. Null for delete events.
+  valueEncrypted: sqliteCore.text('value_encrypted'),
+  // AES-GCM initialization vector, stored as base64. Null for delete events.
+  iv: sqliteCore.text('iv'),
+  userId: sqliteCore.text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
   createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
-  updatedAt: sqliteCore.integer('updated_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
 }, (table) => [
-  sqliteCore.index('secret_environment_id_idx').on(table.environmentId),
+  sqliteCore.index('secret_event_env_name_idx').on(table.environmentId, table.name, table.createdAt),
 ])
 
 // Default environments created for every new project
@@ -176,7 +185,7 @@ export const deviceCode = sqliteCore.sqliteTable('device_code', {
 // ── Relations (v2 API) ──────────────────────────────────────────────
 
 export const relations = defineRelations(
-  { user, session, account, verification, org, orgMember, orgInvitation, project, environment, secret, deviceCode, config },
+  { user, session, account, verification, org, orgMember, orgInvitation, project, environment, secretEvent, deviceCode, config },
   (r) => ({
     user: {
       sessions: r.many.session(),
@@ -216,11 +225,11 @@ export const relations = defineRelations(
     },
     environment: {
       project: r.one.project({ from: r.environment.projectId, to: r.project.id }),
-      secrets: r.many.secret(),
+      secretEvents: r.many.secretEvent(),
     },
-    secret: {
-      environment: r.one.environment({ from: r.secret.environmentId, to: r.environment.id }),
-      creator: r.one.user({ from: r.secret.createdBy, to: r.user.id }),
+    secretEvent: {
+      environment: r.one.environment({ from: r.secretEvent.environmentId, to: r.environment.id }),
+      user: r.one.user({ from: r.secretEvent.userId, to: r.user.id }),
     },
     deviceCode: {
       user: r.one.user({ from: r.deviceCode.userId, to: r.user.id }),
