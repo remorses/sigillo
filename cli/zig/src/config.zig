@@ -19,18 +19,6 @@ pub const ScopeRecord = struct {
 
 pub const ConfigFile = struct {
     scopes: std.ArrayListUnmanaged(ScopeRecord) = .empty,
-
-    pub fn deinit(self: *ConfigFile, allocator: std.mem.Allocator) void {
-        for (self.scopes.items) |record| {
-            allocator.free(record.scope);
-            freeOptional(allocator, record.entry.token);
-            freeOptional(allocator, record.entry.api_url);
-            freeOptional(allocator, record.entry.project);
-            freeOptional(allocator, record.entry.environment);
-        }
-        self.scopes.deinit(allocator);
-        self.* = .{};
-    }
 };
 
 const config_dir_name = ".sigillo";
@@ -48,7 +36,6 @@ pub fn configDirPath(allocator: std.mem.Allocator) ![]const u8 {
 
 pub fn readConfig(allocator: std.mem.Allocator) !ConfigFile {
     const path = try configFilePath(allocator);
-    defer allocator.free(path);
 
     const file = std.fs.openFileAbsolute(path, .{}) catch |err| switch (err) {
         error.FileNotFound => return .{},
@@ -57,13 +44,11 @@ pub fn readConfig(allocator: std.mem.Allocator) !ConfigFile {
     defer file.close();
 
     const bytes = try file.readToEndAlloc(allocator, 1024 * 1024);
-    defer allocator.free(bytes);
 
-    const parsed = std.json.parseFromSlice(std.json.Value, allocator, bytes, .{}) catch return .{};
-    defer parsed.deinit();
+    const parsed = std.json.parseFromSliceLeaky(std.json.Value, allocator, bytes, .{}) catch return .{};
 
     var config: ConfigFile = .{};
-    const root = switch (parsed.value) {
+    const root = switch (parsed) {
         .object => |obj| obj,
         else => return config,
     };
@@ -82,23 +67,22 @@ pub fn readConfig(allocator: std.mem.Allocator) !ConfigFile {
             else => continue,
         };
 
-        const scope = try allocator.dupe(u8, entry.key_ptr.*);
         var record: ScopeRecord = .{
-            .scope = scope,
+            .scope = entry.key_ptr.*, 
             .entry = .{},
         };
 
         if (scope_object.get("token")) |value| {
-            if (value == .string) record.entry.token = try allocator.dupe(u8, value.string);
+            if (value == .string) record.entry.token = value.string;
         }
         if (scope_object.get("api-url")) |value| {
-            if (value == .string) record.entry.api_url = try allocator.dupe(u8, value.string);
+            if (value == .string) record.entry.api_url = value.string;
         }
         if (scope_object.get("project")) |value| {
-            if (value == .string) record.entry.project = try allocator.dupe(u8, value.string);
+            if (value == .string) record.entry.project = value.string;
         }
         if (scope_object.get("environment")) |value| {
-            if (value == .string) record.entry.environment = try allocator.dupe(u8, value.string);
+            if (value == .string) record.entry.environment = value.string;
         }
 
         try config.scopes.append(allocator, record);
@@ -164,10 +148,8 @@ pub fn writeConfig(allocator: std.mem.Allocator, config: *const ConfigFile) !voi
 
 pub fn setScope(allocator: std.mem.Allocator, scope_input: []const u8, updates: ScopedEntry) !void {
     var config = try readConfig(allocator);
-    defer config.deinit(allocator);
 
     const normalized_scope = try normalizeScope(allocator, scope_input);
-    defer allocator.free(normalized_scope);
 
     for (config.scopes.items) |*record| {
         if (!std.mem.eql(u8, record.scope, normalized_scope)) continue;
@@ -179,7 +161,7 @@ pub fn setScope(allocator: std.mem.Allocator, scope_input: []const u8, updates: 
     var entry: ScopedEntry = .{};
     try mergeEntry(allocator, &entry, updates);
     try config.scopes.append(allocator, .{
-        .scope = try allocator.dupe(u8, normalized_scope),
+        .scope = normalized_scope,
         .entry = entry,
     });
     try writeConfig(allocator, &config);
@@ -187,21 +169,14 @@ pub fn setScope(allocator: std.mem.Allocator, scope_input: []const u8, updates: 
 
 pub fn clearScope(allocator: std.mem.Allocator, scope_input: []const u8) !void {
     var config = try readConfig(allocator);
-    defer config.deinit(allocator);
 
     const normalized_scope = try normalizeScope(allocator, scope_input);
-    defer allocator.free(normalized_scope);
 
     var index: usize = 0;
     while (index < config.scopes.items.len) : (index += 1) {
         if (!std.mem.eql(u8, config.scopes.items[index].scope, normalized_scope)) continue;
 
-        const removed = config.scopes.swapRemove(index);
-        allocator.free(removed.scope);
-        freeOptional(allocator, removed.entry.token);
-        freeOptional(allocator, removed.entry.api_url);
-        freeOptional(allocator, removed.entry.project);
-        freeOptional(allocator, removed.entry.environment);
+        _ = config.scopes.swapRemove(index);
         break;
     }
 
@@ -209,11 +184,9 @@ pub fn clearScope(allocator: std.mem.Allocator, scope_input: []const u8) !void {
 }
 
 pub fn resolve(allocator: std.mem.Allocator, cwd_input: []const u8, flags: ResolvedConfig) !ResolvedConfig {
-    var config = try readConfig(allocator);
-    defer config.deinit(allocator);
+    const config = try readConfig(allocator);
 
     const cwd = try normalizeScope(allocator, cwd_input);
-    defer allocator.free(cwd);
 
     var result: ResolvedConfig = .{};
     var best_token_len: usize = 0;
@@ -252,12 +225,7 @@ pub fn resolve(allocator: std.mem.Allocator, cwd_input: []const u8, flags: Resol
     if (flags.project) |value| result.project = value;
     if (flags.environment) |value| result.environment = value;
 
-    return .{
-        .token = if (result.token) |value| try allocator.dupe(u8, value) else null,
-        .api_url = if (result.api_url) |value| try allocator.dupe(u8, value) else null,
-        .project = if (result.project) |value| try allocator.dupe(u8, value) else null,
-        .environment = if (result.environment) |value| try allocator.dupe(u8, value) else null,
-    };
+    return result;
 }
 
 fn getHomeDir(allocator: std.mem.Allocator) ![]const u8 {
@@ -288,10 +256,8 @@ fn normalizeScope(allocator: std.mem.Allocator, scope_input: []const u8) ![]cons
         try allocator.dupe(u8, scope_input)
     else blk: {
         const cwd = try getCwd(allocator);
-        defer allocator.free(cwd);
         break :blk try std.fs.path.join(allocator, &.{ cwd, scope_input });
     };
-    defer allocator.free(absolute);
 
     return std.fs.path.resolve(allocator, &.{absolute});
 }
@@ -305,38 +271,33 @@ fn scopeMatches(cwd: []const u8, scope: []const u8) bool {
 
 fn mergeEntry(allocator: std.mem.Allocator, destination: *ScopedEntry, updates: ScopedEntry) !void {
     if (updates.token) |value| {
-        freeOptional(allocator, destination.token);
         destination.token = try allocator.dupe(u8, value);
     }
     if (updates.api_url) |value| {
-        freeOptional(allocator, destination.api_url);
         destination.api_url = try allocator.dupe(u8, value);
     }
     if (updates.project) |value| {
-        freeOptional(allocator, destination.project);
         destination.project = try allocator.dupe(u8, value);
     }
     if (updates.environment) |value| {
-        freeOptional(allocator, destination.environment);
         destination.environment = try allocator.dupe(u8, value);
     }
 }
 
-fn freeOptional(allocator: std.mem.Allocator, value: ?[]const u8) void {
-    if (value) |slice| allocator.free(slice);
-}
-
 test "resolve prefers the longest matching scope" {
-    var config_file: ConfigFile = .{};
-    defer config_file.deinit(std.testing.allocator);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
 
-    try config_file.scopes.append(std.testing.allocator, .{
-        .scope = try std.testing.allocator.dupe(u8, "/"),
-        .entry = .{ .token = try std.testing.allocator.dupe(u8, "global") },
+    var config_file: ConfigFile = .{};
+
+    try config_file.scopes.append(allocator, .{
+        .scope = try allocator.dupe(u8, "/"),
+        .entry = .{ .token = try allocator.dupe(u8, "global") },
     });
-    try config_file.scopes.append(std.testing.allocator, .{
-        .scope = try std.testing.allocator.dupe(u8, "/tmp/project"),
-        .entry = .{ .project = try std.testing.allocator.dupe(u8, "project") },
+    try config_file.scopes.append(allocator, .{
+        .scope = try allocator.dupe(u8, "/tmp/project"),
+        .entry = .{ .project = try allocator.dupe(u8, "project") },
     });
 
     const cwd = "/tmp/project/subdir";

@@ -61,7 +61,6 @@ fn loginAction(_: Login.Args, opts: Login.Options) !void {
     const scope = opts.scope orelse "/";
 
     const cwd = config.getCwd(allocator) catch try allocator.dupe(u8, "/");
-    defer allocator.free(cwd);
 
     const resolved = try config.resolve(allocator, cwd, .{
         .api_url = opts.api_url,
@@ -84,11 +83,8 @@ fn loginAction(_: Login.Args, opts: Login.Options) !void {
         try stderr.print("error: failed to request device code: {s}\n", .{@errorName(err)});
         std.process.exit(1);
     };
-    defer allocator.free(code_res.body);
-
     if (code_res.status != 200) {
         const message = client.parseError(allocator, code_res.body) orelse try allocator.dupe(u8, "unknown error");
-        defer allocator.free(message);
         try stderr.print("error: device code request failed ({d}): {s}\n", .{ code_res.status, message });
         std.process.exit(1);
     }
@@ -97,14 +93,10 @@ fn loginAction(_: Login.Args, opts: Login.Options) !void {
         try stderr.print("error: device code response missing device_code\n", .{});
         std.process.exit(1);
     };
-    defer allocator.free(device_code);
-
     const user_code = client.jsonString(allocator, code_res.body, "user_code") orelse {
         try stderr.print("error: device code response missing user_code\n", .{});
         std.process.exit(1);
     };
-    defer allocator.free(user_code);
-
     const verification_uri = client.jsonString(allocator, code_res.body, "verification_uri_complete") orelse blk: {
         const fallback = client.jsonString(allocator, code_res.body, "verification_uri") orelse {
             try stderr.print("error: device code response missing verification URI\n", .{});
@@ -112,8 +104,6 @@ fn loginAction(_: Login.Args, opts: Login.Options) !void {
         };
         break :blk fallback;
     };
-    defer allocator.free(verification_uri);
-
     const interval_seconds = client.jsonInt(allocator, code_res.body, "interval") orelse 5;
 
     try stdout.print("Open this URL in your browser:\n  {s}\n\n", .{verification_uri});
@@ -127,8 +117,6 @@ fn loginAction(_: Login.Args, opts: Login.Options) !void {
         "{{\"grant_type\":\"urn:ietf:params:oauth:grant-type:device_code\",\"device_code\":\"{s}\",\"client_id\":\"sigillo-cli\"}}",
         .{device_code},
     );
-    defer allocator.free(poll_body);
-
     var sleep_seconds: u64 = @intCast(interval_seconds);
     var attempts: usize = 0;
     while (attempts < 120) : (attempts += 1) {
@@ -142,15 +130,11 @@ fn loginAction(_: Login.Args, opts: Login.Options) !void {
             null,
             poll_body,
         ) catch continue;
-        defer allocator.free(token_res.body);
-
         if (token_res.status == 200) {
             const access_token = client.jsonString(allocator, token_res.body, "access_token") orelse {
                 try stderr.print("error: token response missing access_token\n", .{});
                 std.process.exit(1);
             };
-            defer allocator.free(access_token);
-
             try config.setScope(allocator, scope, .{
                 .token = access_token,
                 .api_url = api_url,
@@ -163,8 +147,6 @@ fn loginAction(_: Login.Args, opts: Login.Options) !void {
         const error_code = client.jsonString(allocator, token_res.body, "error") orelse {
             continue;
         };
-        defer allocator.free(error_code);
-
         if (std.mem.eql(u8, error_code, "authorization_pending")) continue;
         if (std.mem.eql(u8, error_code, "slow_down")) {
             sleep_seconds += 5;
@@ -180,7 +162,6 @@ fn loginAction(_: Login.Args, opts: Login.Options) !void {
         }
 
         const message = client.parseError(allocator, token_res.body) orelse error_code;
-        defer if (message.ptr != error_code.ptr) allocator.free(message);
         try stderr.print("error: {s}\n", .{message});
         std.process.exit(1);
     }
@@ -219,7 +200,6 @@ fn meAction(_: Me.Args, opts: Me.Options) !void {
     const allocator = arena.allocator();
 
     const cwd = try config.getCwd(allocator);
-    defer allocator.free(cwd);
 
     const resolved = try config.resolve(allocator, cwd, .{
         .token = opts.token,
@@ -241,11 +221,8 @@ fn meAction(_: Me.Args, opts: Me.Options) !void {
         try stderr.print("error: failed to fetch /api/me: {s}\n", .{@errorName(err)});
         std.process.exit(1);
     };
-    defer allocator.free(res.body);
-
     if (res.status != 200) {
         const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
-        defer allocator.free(message);
         try stderr.print("error: /api/me failed ({d}): {s}\n", .{ res.status, message });
         std.process.exit(1);
     }
@@ -255,10 +232,9 @@ fn meAction(_: Me.Args, opts: Me.Options) !void {
         return;
     }
 
-    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, res.body, .{});
-    defer parsed.deinit();
+    const parsed = try std.json.parseFromSliceLeaky(std.json.Value, allocator, res.body, .{});
 
-    const root = switch (parsed.value) {
+    const root = switch (parsed) {
         .object => |value| value,
         else => {
             try stdout.print("{s}\n", .{res.body});
@@ -303,7 +279,6 @@ fn setupAction(_: Setup.Args, opts: Setup.Options) !void {
     const allocator = arena.allocator();
 
     const cwd = try config.getCwd(allocator);
-    defer allocator.free(cwd);
 
     const resolved = try config.resolve(allocator, cwd, .{
         .token = opts.token,
@@ -333,26 +308,21 @@ fn setupAction(_: Setup.Args, opts: Setup.Options) !void {
     };
 
     const path = try std.fmt.allocPrint(allocator, "/api/projects/{s}/environments", .{project});
-    defer allocator.free(path);
-
     const res = client.request(allocator, .GET, api_url, path, token, null) catch |err| {
         try stderr.print("error: failed to validate project: {s}\n", .{@errorName(err)});
         std.process.exit(1);
     };
-    defer allocator.free(res.body);
 
     if (res.status != 200) {
         const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
-        defer allocator.free(message);
         try stderr.print("error: failed to validate project ({d}): {s}\n", .{ res.status, message });
         std.process.exit(1);
     }
 
     var found_environment = false;
-    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, res.body, .{});
-    defer parsed.deinit();
-    if (parsed.value == .object) {
-        if (parsed.value.object.get("environments")) |environments_value| {
+    const parsed = try std.json.parseFromSliceLeaky(std.json.Value, allocator, res.body, .{});
+    if (parsed == .object) {
+        if (parsed.object.get("environments")) |environments_value| {
             if (environments_value == .array) {
                 for (environments_value.array.items) |item| {
                     if (item != .object) continue;
@@ -403,7 +373,6 @@ fn runAction(args: Run.Args, opts: Run.Options) !void {
     }
 
     const cwd = try config.getCwd(allocator);
-    defer allocator.free(cwd);
 
     const resolved = try config.resolve(allocator, cwd, .{
         .token = opts.token,
@@ -429,24 +398,19 @@ fn runAction(args: Run.Args, opts: Run.Options) !void {
     };
 
     const path = try std.fmt.allocPrint(allocator, "/api/environments/{s}/secrets/download?format=json", .{environment});
-    defer allocator.free(path);
-
     const res = client.request(allocator, .GET, api_url, path, token, null) catch |err| {
         try stderr.print("error: failed to fetch secrets: {s}\n", .{@errorName(err)});
         std.process.exit(1);
     };
-    defer allocator.free(res.body);
 
     if (res.status != 200) {
         const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
-        defer allocator.free(message);
         try stderr.print("error: failed to fetch secrets ({d}): {s}\n", .{ res.status, message });
         std.process.exit(1);
     }
 
-    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, res.body, .{});
-    defer parsed.deinit();
-    const secrets = switch (parsed.value) {
+    const parsed = try std.json.parseFromSliceLeaky(std.json.Value, allocator, res.body, .{});
+    const secrets = switch (parsed) {
         .object => |value| value,
         else => {
             try stderr.print("error: invalid secrets response\n", .{});

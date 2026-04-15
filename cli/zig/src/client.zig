@@ -58,44 +58,41 @@ pub fn request(
 }
 
 pub fn parseError(allocator: std.mem.Allocator, body: []const u8) ?[]const u8 {
-    const parsed = std.json.parseFromSlice(std.json.Value, allocator, body, .{}) catch return null;
-    defer parsed.deinit();
+    const parsed = std.json.parseFromSliceLeaky(std.json.Value, allocator, body, .{}) catch return null;
 
-    const object = switch (parsed.value) {
+    const object = switch (parsed) {
         .object => |value| value,
         else => return null,
     };
 
     if (object.get("error_description")) |value| {
-        if (value == .string) return allocator.dupe(u8, value.string) catch null;
+        if (value == .string) return value.string;
     }
     if (object.get("error")) |value| {
-        if (value == .string) return allocator.dupe(u8, value.string) catch null;
+        if (value == .string) return value.string;
     }
     return null;
 }
 
 pub fn jsonString(allocator: std.mem.Allocator, body: []const u8, field: []const u8) ?[]const u8 {
-    const parsed = std.json.parseFromSlice(std.json.Value, allocator, body, .{}) catch return null;
-    defer parsed.deinit();
+    const parsed = std.json.parseFromSliceLeaky(std.json.Value, allocator, body, .{}) catch return null;
 
-    const object = switch (parsed.value) {
+    const object = switch (parsed) {
         .object => |value| value,
         else => return null,
     };
 
     const value = object.get(field) orelse return null;
     return switch (value) {
-        .string => |string| allocator.dupe(u8, string) catch null,
+        .string => |string| string,
         else => null,
     };
 }
 
 pub fn jsonInt(allocator: std.mem.Allocator, body: []const u8, field: []const u8) ?i64 {
-    const parsed = std.json.parseFromSlice(std.json.Value, allocator, body, .{}) catch return null;
-    defer parsed.deinit();
+    const parsed = std.json.parseFromSliceLeaky(std.json.Value, allocator, body, .{}) catch return null;
 
-    const object = switch (parsed.value) {
+    const object = switch (parsed) {
         .object => |value| value,
         else => return null,
     };
