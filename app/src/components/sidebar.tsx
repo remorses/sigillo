@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { cn } from "sigillo-app/src/lib/utils";
 import { Button } from "sigillo-app/src/components/ui/button";
+import { Input } from "sigillo-app/src/components/ui/input";
 import {
   Dialog,
   DialogPopup,
@@ -282,12 +283,12 @@ export function NewProjectDialog({
               router.push(`/orgs/${orgId}/projects/${result.id}`);
             }}
           >
-            <input
+            <Input
               name="name"
               placeholder="Project name"
               required
               autoFocus
-              className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              className="w-full"
             />
             <DialogFooter variant="bare" className="mt-4">
               <DialogClose render={<Button variant="outline" />}>

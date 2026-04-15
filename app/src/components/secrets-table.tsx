@@ -11,6 +11,7 @@ import { useState, useCallback } from "react";
 import { getRouter, ErrorBoundary } from "spiceflow/react";
 import { Button } from "sigillo-app/src/components/ui/button";
 import { Frame } from "sigillo-app/src/components/ui/frame";
+import { Input, Textarea } from "sigillo-app/src/components/ui/input";
 import {
   Dialog,
   DialogPopup,
@@ -29,6 +30,7 @@ import {
   TableRow,
 } from "sigillo-app/src/components/ui/table";
 import { parseEnv } from "sigillo-app/src/lib/parse-env";
+import { formatTime } from "sigillo-app/src/lib/utils";
 import {
   createSecretAction,
   deleteSecretAction,
@@ -61,15 +63,6 @@ const maskedInputStyle: React.CSSProperties & {
   textSecurity: "disc",
 };
 
-function formatTime(ts: number) {
-  const now = Date.now();
-  const diff = now - ts;
-  if (diff < 60_000) return "just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
 function SecretValueCell({
   value,
   editedValue,
@@ -87,8 +80,9 @@ function SecretValueCell({
 
   return (
     <div className="flex items-center gap-1.5">
-      <input
+      <Input
         type="text"
+        inputSize="sm"
         autoComplete="off"
         data-1p-ignore
         data-lpignore="true"
@@ -106,7 +100,7 @@ function SecretValueCell({
           }
         }}
         style={!visible ? hiddenValueStyle : undefined}
-        className={`h-7 min-w-0 flex-1 rounded-md border px-2 text-sm font-mono ${visible ? 'border-input bg-muted/50 focus:outline-none focus:ring-1 focus:ring-ring' : 'border-transparent bg-muted/50 cursor-pointer select-none'}`}
+        className={`min-w-0 flex-1 font-mono ${visible ? 'bg-muted/50' : 'border-transparent bg-muted/50 cursor-pointer select-none'}`}
       />
       <button
         onClick={onToggle}
@@ -253,11 +247,12 @@ export function SecretsTable({
               return (
                 <TableRow key={secret.id} className={isDirty ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}>
                   <TableCell>
-                    <input
+                    <Input
                       type="text"
+                      inputSize="sm"
                       value={edits[secret.id]?.name ?? secret.name}
                       onChange={(e) => setEdit(secret.id, "name", e.target.value)}
-                      className="h-7 w-full rounded-md border border-transparent bg-transparent px-1.5 text-sm font-mono font-medium focus:border-input focus:outline-none focus:ring-1 focus:ring-ring hover:border-input"
+                      className="w-full border-transparent bg-transparent px-1.5 font-mono font-medium focus:border-input hover:border-input"
                     />
                   </TableCell>
                   <TableCell>
@@ -390,13 +385,13 @@ function ImportEnvDialog({
             if (text.trim()) await onImport(text);
           }}
         >
-          <textarea
+          <Textarea
             name="envText"
             required
             autoFocus
             placeholder={"DATABASE_URL=postgres://...\nAPI_KEY=sk-...\nSECRET_TOKEN=abc123"}
             rows={8}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring resize-y"
+            className="font-mono"
           />
           <DialogFooter variant="bare" className="mt-4">
             <DialogClose render={<Button variant="outline" />}>
@@ -517,14 +512,14 @@ function AddSecretRow({
           await router.refresh();
         }}
       >
-        <input
+        <Input
           name="name"
           placeholder="SECRET_KEY"
           required
           autoFocus
-          className="h-9 flex-1 rounded-lg border border-input bg-background px-2.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+          className="flex-1 font-mono"
         />
-        <input
+        <Input
           name="value"
           type="text"
           autoComplete="off"
@@ -533,7 +528,7 @@ function AddSecretRow({
           style={maskedInputStyle}
           placeholder="secret value"
           required
-          className="h-9 flex-1 rounded-lg border border-input bg-background px-2.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+          className="flex-1 font-mono"
         />
         <div className="flex-1" />
         <Button size="sm" type="submit">

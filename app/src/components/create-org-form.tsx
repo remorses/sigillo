@@ -6,6 +6,7 @@
 import { getRouter } from "spiceflow/react";
 import { ErrorBoundary } from "spiceflow/react";
 import { Button } from "sigillo-app/src/components/ui/button";
+import { Input } from "sigillo-app/src/components/ui/input";
 import { createOrgAction } from "../actions.ts";
 import type { App } from "../app.tsx";
 
@@ -33,13 +34,13 @@ export function CreateOrgForm() {
       >
         <div>
           <label htmlFor="org-name" className="text-sm font-medium mb-1.5 block">Name</label>
-          <input
+          <Input
             id="org-name"
             name="name"
             placeholder="My Organization"
             required
             autoFocus
-            className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            className="w-full"
           />
         </div>
         <Button type="submit">Create Organization</Button>

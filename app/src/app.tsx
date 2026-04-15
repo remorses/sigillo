@@ -22,9 +22,14 @@ import {
   encrypt, decrypt,
 } from './db.ts'
 import { createOrgAction, createProjectAction } from './actions.ts'
+import { formatTime } from 'sigillo-app/src/lib/utils'
 import { Sidebar, NewProjectButton } from 'sigillo-app/src/components/sidebar'
 import { ProjectPage } from 'sigillo-app/src/components/project-page'
 import { CreateOrgForm } from 'sigillo-app/src/components/create-org-form'
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from 'sigillo-app/src/components/ui/table'
+import { Frame } from 'sigillo-app/src/components/ui/frame'
 
 export { SecretsStore } from './secrets-store.ts'
 
@@ -47,7 +52,10 @@ export const app = new Spiceflow({
   })
 
   // ── Layout 1: HTML shell ──────────────────────────────────────
-  .layout('/*', async ({ children }) => {
+  .layout('/*', async ({ children, request }) => {
+    const url = new URL(request.url)
+    // Project pages render their own TabBar with border — skip the plain border
+    const isProjectPage = /^\/orgs\/[^/]+\/projects\/[^/]+/.test(url.pathname)
     return (
       <html lang="en">
         <Head>
@@ -55,14 +63,17 @@ export const app = new Spiceflow({
           <Head.Meta name="viewport" content="width=device-width, initial-scale=1.0" />
           <Head.Title>Sigillo — Secret Manager</Head.Title>
         </Head>
-        <body className="relative min-h-screen bg-background font-sans antialiased">
+        <body className="relative flex flex-col min-h-screen bg-background font-sans antialiased">
           <ProgressBar />
-          <Navbar />
-          {children ?? (
-            <div className="flex items-center justify-center h-full text-muted-foreground">
-              Page not found
-            </div>
-          )}
+          <Navbar showBorder={!isProjectPage} />
+          <div className="flex-1">
+            {children ?? (
+              <div className="flex items-center justify-center h-full text-muted-foreground">
+                Page not found
+              </div>
+            )}
+          </div>
+          <Footer />
         </body>
       </html>
     )
@@ -72,6 +83,7 @@ export const app = new Spiceflow({
   .layout('/orgs/:orgId/projects/:projectId/*', async ({ children, params, request }) => {
     const { orgId, projectId } = params
     const db = getDb()
+    const url = new URL(request.url)
 
     const session = await requirePageSession(request)
     await requirePageOrgMember(session.userId, orgId)
@@ -96,18 +108,21 @@ export const app = new Spiceflow({
     const user = { name: session.user.name || 'User', email: session.user.email || '' }
 
     return (
-      <div className="isolate relative flex max-w-[1200px] mx-auto min-h-[min(400px,100vh)]">
-        <Sidebar
-          orgs={orgs}
-          projects={projects}
-          currentOrgId={orgId}
-          currentProjectId={projectId}
-          user={user}
-        />
-        <main className="flex-1 p-6 overflow-auto">
-          {children}
-        </main>
-      </div>
+      <>
+        <TabBar orgId={orgId} projectId={projectId} pathname={url.pathname} />
+        <div className="isolate relative flex max-w-(--content-max-width) mx-auto min-h-[min(400px,100vh)]">
+          <Sidebar
+            orgs={orgs}
+            projects={projects}
+            currentOrgId={orgId}
+            currentProjectId={projectId}
+            user={user}
+          />
+          <main className="flex-1 p-6 overflow-auto">
+            {children}
+          </main>
+        </div>
+      </>
     )
   })
 
@@ -178,7 +193,7 @@ export const app = new Spiceflow({
     const user = { name: session.user.name || 'User', email: session.user.email || '' }
 
     return (
-      <div className="isolate relative flex max-w-[1200px] mx-auto min-h-[min(400px,100vh)]">
+      <div className="isolate relative flex max-w-(--content-max-width) mx-auto min-h-[min(400px,100vh)]">
         <Sidebar orgs={orgs} projects={[]} currentOrgId={params.orgId} currentProjectId={null} user={user} />
         <main className="flex-1 p-6 overflow-auto">
           <div className="max-w-3xl">
@@ -276,6 +291,107 @@ export const app = new Spiceflow({
           selectedEnvId={selectedEnvId}
           secrets={secrets}
         />
+      </div>
+    )
+  })
+
+  // ── Access page (read-only org members table) ─────────────────
+  .page('/orgs/:orgId/projects/:projectId/access', async ({ params }) => {
+    const db = getDb()
+    const { orgId, projectId } = params
+
+    const project = await db.query.project.findFirst({
+      where: { id: projectId },
+      columns: { name: true },
+    })
+
+    const members = await db.query.orgMember.findMany({
+      where: { orgId },
+      with: { user: { columns: { id: true, name: true, email: true, image: true } } },
+      orderBy: { createdAt: 'asc' },
+    })
+
+    return (
+      <div className="flex flex-col gap-3 w-full">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold tracking-tight">{project?.name ?? 'Project'}</h1>
+        </div>
+        <Frame className="w-full">
+          <Table className="table-fixed">
+            <colgroup>
+              <col className="w-1/4" />
+              <col className="w-1/3" />
+              <col className="w-28" />
+              <col className="w-32" />
+            </colgroup>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Name</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Joined</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {members.map((m) => (
+                <TableRow key={m.id}>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      {m.user?.image ? (
+                        <img src={m.user.image} alt="" className="size-6 rounded-full object-cover" />
+                      ) : (
+                        <div className="size-6 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground">
+                          {(m.user?.name || '?').charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <span className="text-sm font-medium">{m.user?.name || '—'}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-sm text-muted-foreground">{m.user?.email || '—'}</span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-xs font-medium capitalize">{m.role}</span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-muted-foreground text-xs tabular-nums">
+                      {formatTime(m.createdAt)}
+                    </span>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Frame>
+      </div>
+    )
+  })
+
+  // ── Event Log page (TODO) ─────────────────────────────────────
+  .page('/orgs/:orgId/projects/:projectId/event-log', async ({ params }) => {
+    const db = getDb()
+    const project = await db.query.project.findFirst({
+      where: { id: params.projectId },
+      columns: { name: true },
+    })
+
+    return (
+      <div className="flex flex-col gap-3 w-full">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold tracking-tight">{project?.name ?? 'Project'}</h1>
+        </div>
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="flex size-12 items-center justify-center rounded-xl bg-muted mb-4">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-6 text-muted-foreground">
+              <path d="M12 8v4l3 3" />
+              <circle cx="12" cy="12" r="10" />
+            </svg>
+          </div>
+          <h3 className="text-base font-semibold mb-1">Event log coming soon</h3>
+          <p className="text-sm text-muted-foreground max-w-xs">
+            A full audit trail of secret changes, access events, and team activity will appear here.
+          </p>
+        </div>
       </div>
     )
   })
@@ -533,10 +649,42 @@ function GitHubIcon({ className }: { className?: string }) {
   )
 }
 
-function Navbar() {
+function TabBar({ orgId, projectId, pathname }: { orgId: string; projectId: string; pathname: string }) {
+  const base = `/orgs/${orgId}/projects/${projectId}`
+  const tabs = [
+    { label: 'secrets', href: base, active: pathname.startsWith(`${base}/envs`) || pathname === base },
+    { label: 'access', href: `${base}/access`, active: pathname === `${base}/access` },
+    { label: 'event log', href: `${base}/event-log`, active: pathname === `${base}/event-log` },
+  ] as const
+
   return (
-    <nav className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="flex h-14 items-center justify-between px-6 max-w-[1200px] mx-auto">
+    <div className="w-full border-b border-border">
+      <div className="flex h-10 items-stretch gap-6 px-6 max-w-(--content-max-width) mx-auto">
+        {tabs.map((tab) => (
+          <Link
+            key={tab.href}
+            href={tab.href}
+            className={`relative flex items-center text-sm no-underline transition-colors duration-150 ${
+              tab.active
+                ? 'font-medium text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {tab.label}
+            {tab.active && (
+              <div className="absolute bottom-0 left-0 w-full h-[1.5px] bg-foreground rounded-sm" />
+            )}
+          </Link>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function Navbar({ showBorder = true }: { showBorder?: boolean }) {
+  return (
+    <nav className={`sticky top-0 z-50 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 ${showBorder ? 'border-b border-border' : ''}`}>
+      <div className="flex h-14 items-center justify-between px-6 max-w-(--content-max-width) mx-auto">
         <Link href="/" className="text-foreground hover:opacity-80 transition-opacity">
           <SigilloLogo className="h-[36px] w-auto shrink-0" />
         </Link>
@@ -550,6 +698,44 @@ function Navbar() {
         </a>
       </div>
     </nav>
+  )
+}
+
+function XIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} xmlns="http://www.w3.org/2000/svg">
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+    </svg>
+  )
+}
+
+function Footer() {
+  return (
+    <footer className="border-t border-border">
+      <div className="flex items-center justify-between px-6 py-4 max-w-(--content-max-width) mx-auto">
+        <div className="flex items-center gap-4">
+          <a
+            href="https://github.com/remorses/sigillo"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <GitHubIcon className="size-4" />
+          </a>
+          <a
+            href="https://x.com/__morse"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <XIcon className="size-3.5" />
+          </a>
+        </div>
+        <span className="text-xs text-muted-foreground">
+          © {new Date().getFullYear()} Sigillo
+        </span>
+      </div>
+    </footer>
   )
 }
 

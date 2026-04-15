@@ -16,6 +16,8 @@ import type { App } from "../app.tsx";
 import { Badge } from "sigillo-app/src/components/ui/badge";
 import { Button } from "sigillo-app/src/components/ui/button";
 import { Frame } from "sigillo-app/src/components/ui/frame";
+import { Input } from "sigillo-app/src/components/ui/input";
+import { formatTime } from "sigillo-app/src/lib/utils";
 import { createEnvAction, deleteEnvAction } from "../actions.ts";
 import {
   Table,
@@ -33,16 +35,6 @@ type Environment = {
   createdAt: number;
   updatedAt: number;
 };
-
-function formatTime(ts: number) {
-  const d = new Date(ts);
-  const now = Date.now();
-  const diff = now - ts;
-  if (diff < 60_000) return "just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
 
 const envColors: Record<string, string> = {
   development: "bg-blue-500",
@@ -211,17 +203,19 @@ export function EnvironmentsTable({
                 await router.refresh();
               }}
             >
-              <input
+              <Input
                 name="name"
+                inputSize="sm"
                 placeholder="Environment name"
                 required
-                className="h-7 flex-1 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                className="flex-1"
               />
-              <input
+              <Input
                 name="slug"
+                inputSize="sm"
                 placeholder="slug"
                 required
-                className="h-7 flex-1 rounded-md border border-input bg-background px-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+                className="flex-1 font-mono"
               />
               <Button size="xs" type="submit">
                 Add
