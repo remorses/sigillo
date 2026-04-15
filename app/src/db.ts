@@ -46,9 +46,8 @@ export function getAuth() {
             providerId: 'sigillo',
             clientId: env.OAUTH_CLIENT_ID,
             clientSecret: '',
-            authorizationUrl: `${env.PROVIDER_URL}/api/auth/oauth2/authorize`,
-            tokenUrl: `${env.PROVIDER_URL}/api/auth/oauth2/token`,
-            userInfoUrl: `${env.PROVIDER_URL}/api/auth/oauth2/userinfo`,
+            // Auto-discover all endpoints from the provider's OIDC metadata
+            discoveryUrl: `${env.PROVIDER_URL}/api/auth/.well-known/openid-configuration`,
             scopes: ['openid', 'email', 'profile'],
             pkce: true,
           },
