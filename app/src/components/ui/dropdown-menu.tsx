@@ -18,6 +18,7 @@ export function DropdownMenuTrigger({
     <MenuPrimitive.Trigger
       data-slot="dropdown-menu-trigger"
       className={cn("cursor-pointer outline-none", className)}
+      suppressHydrationWarning
       {...props}
     />
   );

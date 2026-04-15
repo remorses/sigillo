@@ -43,6 +43,7 @@ export function SelectTrigger({
     <SelectPrimitive.Trigger
       className={cn(selectTriggerVariants({ size }), className)}
       data-slot="select-trigger"
+      suppressHydrationWarning
       {...props}
     >
       {children}
