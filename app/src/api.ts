@@ -5,6 +5,7 @@
 // Doppler API reference for comparison:
 // https://docs.doppler.com/reference
 
+import { ulid } from 'ulid'
 import { Spiceflow } from 'spiceflow'
 import { openapi } from 'spiceflow/openapi'
 import * as orm from 'drizzle-orm'
@@ -35,9 +36,11 @@ export const apiApp = new Spiceflow()
       const body = await request.json()
       const session = await requireApiSession(request)
       const db = getDb()
-      const [org] = await db.insert(schema.org).values({ name: body.name }).returning({ id: schema.org.id, name: schema.org.name })
-      await db.insert(schema.orgMember).values({ orgId: org!.id, userId: session.userId, role: 'admin' })
-      return { ok: true, ...org! }
+      const orgId = ulid()
+      const [[org]] = await db.batch([
+        db.insert(schema.org).values({ id: orgId, name: body.name }).returning({ id: schema.org.id, name: schema.org.name }),
+        db.insert(schema.orgMember).values({ orgId, userId: session.userId, role: 'admin' }),
+      ] as const)
     },
   })
 
@@ -69,11 +72,14 @@ export const apiApp = new Spiceflow()
       const session = await requireApiSession(request)
       await requireApiOrgMember(session.userId, body.orgId)
       const db = getDb()
-      const [proj] = await db.insert(schema.project).values({ name: body.name, orgId: body.orgId })
-        .returning({ id: schema.project.id, name: schema.project.name })
-      for (const e of schema.DEFAULT_ENVIRONMENTS) {
-        await db.insert(schema.environment).values({ projectId: proj!.id, name: e.name, slug: e.slug })
-      }
+      const projectId = ulid()
+      const [[proj]] = await db.batch([
+        db.insert(schema.project).values({ id: projectId, name: body.name, orgId: body.orgId })
+          .returning({ id: schema.project.id, name: schema.project.name }),
+        ...schema.DEFAULT_ENVIRONMENTS.map((e) =>
+          db.insert(schema.environment).values({ projectId, name: e.name, slug: e.slug }),
+        ),
+      ] as const)
       return { ok: true, ...proj! }
     },
   })
@@ -285,17 +291,18 @@ export const apiApp = new Spiceflow()
       const auth = await requireSecretsApiAuth(request, params.environmentId)
       const db = getDb()
 
-      const names: string[] = []
-      for (const [name, value] of Object.entries(body.secrets)) {
-        const { encrypted, iv } = await encrypt(value)
-        await db.insert(schema.secretEvent).values({
-          environmentId: params.environmentId, name,
-          operation: 'set', valueEncrypted: encrypted, iv,
-          userId: auth.userId, apiTokenId: auth.apiTokenId,
-        })
-        names.push(name)
-      }
-      return { ok: true, environmentId: params.environmentId, secrets: names }
+      const entries = Object.entries(body.secrets)
+      const encrypted = await Promise.all(entries.map(([, value]) => encrypt(value)))
+      await db.batch(
+        entries.map(([name], i) =>
+          db.insert(schema.secretEvent).values({
+            environmentId: params.environmentId, name,
+            operation: 'set', valueEncrypted: encrypted[i]!.encrypted, iv: encrypted[i]!.iv,
+            userId: auth.userId, apiTokenId: auth.apiTokenId,
+          }),
+        ) as [any, ...any[]],
+      )
+      return { ok: true, environmentId: params.environmentId, secrets: entries.map(([name]) => name) }
     },
   })
 

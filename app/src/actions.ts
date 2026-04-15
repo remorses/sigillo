@@ -10,7 +10,9 @@
 
 'use server'
 
+import { ulid } from 'ulid'
 import * as orm from 'drizzle-orm'
+import type { BatchItem } from 'drizzle-orm/batch'
 import * as schema from 'db/src/app-schema.ts'
 import { getActionRequest } from 'spiceflow'
 import {
@@ -34,11 +36,14 @@ export async function createProjectAction({ name, orgId }: { name: string; orgId
   const session = await requireSession()
   await requireOrgMember(session.userId, orgId)
   const db = getDb()
-  const [proj] = await db.insert(schema.project).values({ name, orgId })
-    .returning({ id: schema.project.id, name: schema.project.name })
-  for (const e of schema.DEFAULT_ENVIRONMENTS) {
-    await db.insert(schema.environment).values({ projectId: proj!.id, name: e.name, slug: e.slug })
-  }
+  const projectId = ulid()
+  const [[proj]] = await db.batch([
+    db.insert(schema.project).values({ id: projectId, name, orgId })
+      .returning({ id: schema.project.id, name: schema.project.name }),
+    ...schema.DEFAULT_ENVIRONMENTS.map((e) =>
+      db.insert(schema.environment).values({ projectId, name: e.name, slug: e.slug }),
+    ),
+  ] as const)
   return { id: proj!.id, name: proj!.name }
 }
 
@@ -93,39 +98,51 @@ export async function saveSecretsAction({ edits, environmentIds }: {
 
   const db = getDb()
 
-  // Apply edits to current environment
-  for (const edit of edits) {
+  // Encrypt all values upfront so we can batch all inserts in one RPC
+  const editsWithEncrypted = await Promise.all(
+    edits.map(async (edit) => ({
+      ...edit,
+      enc: edit.value !== undefined ? await encrypt(edit.value) : null,
+    })),
+  )
+
+  // Build all insert statements for the current environment
+  const queries: BatchItem<'sqlite'>[] = []
+
+  for (const edit of editsWithEncrypted) {
     const isRename = edit.name !== edit.originalName
-    // If renamed, delete old name
     if (isRename) {
-      await db.insert(schema.secretEvent).values({
+      queries.push(db.insert(schema.secretEvent).values({
         environmentId: currentEnvId, name: edit.originalName,
         operation: 'delete', userId: session.userId,
-      })
+      }))
     }
-    // Set new/updated value (or re-set with same value under new name)
-    if (edit.value !== undefined) {
-      const { encrypted, iv } = await encrypt(edit.value)
-      await db.insert(schema.secretEvent).values({
+    if (edit.enc) {
+      queries.push(db.insert(schema.secretEvent).values({
         environmentId: currentEnvId, name: edit.name,
-        operation: 'set', valueEncrypted: encrypted, iv, userId: session.userId,
-      })
+        operation: 'set', valueEncrypted: edit.enc.encrypted, iv: edit.enc.iv,
+        userId: session.userId,
+      }))
     }
   }
 
   // Apply value changes to other environments
   const otherEnvIds = environmentIds.slice(1)
-  const valueEdits = edits.filter((e) => e.value !== undefined)
+  const valueEdits = editsWithEncrypted.filter((e) => e.enc)
   for (const envId of otherEnvIds) {
     const targetOrgId = await getOrgIdForEnvironment(envId)
     if (targetOrgId !== orgId) continue
     for (const edit of valueEdits) {
-      const { encrypted, iv } = await encrypt(edit.value!)
-      await db.insert(schema.secretEvent).values({
+      queries.push(db.insert(schema.secretEvent).values({
         environmentId: envId, name: edit.name,
-        operation: 'set', valueEncrypted: encrypted, iv, userId: session.userId,
-      })
+        operation: 'set', valueEncrypted: edit.enc!.encrypted, iv: edit.enc!.iv,
+        userId: session.userId,
+      }))
     }
+  }
+
+  if (queries.length > 0) {
+    await db.batch(queries as [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]])
   }
 }
 
@@ -270,7 +287,10 @@ export async function createOrgAction({ name }: { name: string }) {
   if (!name) throw new Error('Name is required')
   const session = await requireSession()
   const db = getDb()
-  const [org] = await db.insert(schema.org).values({ name }).returning({ id: schema.org.id, name: schema.org.name })
-  await db.insert(schema.orgMember).values({ orgId: org!.id, userId: session.userId, role: 'admin' })
+  const orgId = ulid()
+  const [[org]] = await db.batch([
+    db.insert(schema.org).values({ id: orgId, name }).returning({ id: schema.org.id, name: schema.org.name }),
+    db.insert(schema.orgMember).values({ orgId, userId: session.userId, role: 'admin' }),
+  ] as const)
   return { id: org!.id, name: org!.name }
 }
