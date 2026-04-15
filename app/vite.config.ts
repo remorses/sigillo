@@ -4,8 +4,10 @@ import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
 import { spiceflowPlugin } from 'spiceflow/vite'
 
+const port = parseInt(process.env.PORT || '5188', 10)
+
 export default defineConfig({
-  server: { port: 5188, strictPort: true },
+  server: { port, strictPort: true },
   plugins: [
     react(),
     spiceflowPlugin({ entry: './src/app.tsx' }),
