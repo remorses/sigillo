@@ -1,7 +1,5 @@
 // Client component for the device authorization flow (RFC 8628).
-// Two steps:
-// 1. Enter user code → validate via authClient.device()
-// 2. Approve or deny → authClient.device.approve() / .deny()
+// User enters code → validate via authClient.device() → auto-approve.
 // User must be authenticated before they can approve.
 
 "use client"
@@ -10,11 +8,10 @@ import { useState } from "react"
 import { authClient } from "../auth-client.ts"
 
 export function DeviceFlow() {
-  const [step, setStep] = useState<'enter' | 'approve'>('enter')
   const [userCode, setUserCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [done, setDone] = useState<'approved' | 'denied' | null>(null)
+  const [done, setDone] = useState(false)
 
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault()
@@ -32,34 +29,11 @@ export function DeviceFlow() {
         setLoading(false)
         return
       }
-      setUserCode(formatted)
-      setStep('approve')
+      // Auto-approve after successful validation
+      await authClient.device.approve({ userCode: formatted })
+      setDone(true)
     } catch {
       setError('Invalid or expired code. Please try again.')
-    }
-    setLoading(false)
-  }
-
-  async function handleApprove() {
-    setLoading(true)
-    setError(null)
-    try {
-      await authClient.device.approve({ userCode })
-      setDone('approved')
-    } catch {
-      setError('Failed to approve. Make sure you are signed in.')
-    }
-    setLoading(false)
-  }
-
-  async function handleDeny() {
-    setLoading(true)
-    setError(null)
-    try {
-      await authClient.device.deny({ userCode })
-      setDone('denied')
-    } catch {
-      setError('Failed to deny device.')
     }
     setLoading(false)
   }
@@ -68,45 +42,10 @@ export function DeviceFlow() {
     return (
       <div className="flex justify-center items-center min-h-[60vh]">
         <div className="text-center max-w-sm">
-          <h1 className="text-2xl font-bold mb-2">
-            {done === 'approved' ? 'Device Approved' : 'Device Denied'}
-          </h1>
+          <h1 className="text-2xl font-bold mb-2">Device Approved</h1>
           <p className="text-muted-foreground">
-            {done === 'approved'
-              ? 'You can close this page. Your CLI or agent is now authenticated.'
-              : 'The device authorization request was denied.'}
+            You can close this page. Your CLI or agent is now authenticated.
           </p>
-        </div>
-      </div>
-    )
-  }
-
-  if (step === 'approve') {
-    return (
-      <div className="flex justify-center items-center min-h-[60vh]">
-        <div className="text-center max-w-sm">
-          <h1 className="text-2xl font-bold mb-2">Authorize Device</h1>
-          <p className="text-muted-foreground mb-2">
-            A device is requesting access to your account.
-          </p>
-          <p className="font-mono text-lg mb-6 tracking-[0.15em]">{userCode}</p>
-          {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
-          <div className="flex gap-3 justify-center">
-            <button
-              onClick={handleApprove}
-              disabled={loading}
-              className="h-10 px-6 rounded-lg bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-50"
-            >
-              {loading ? 'Processing…' : 'Approve'}
-            </button>
-            <button
-              onClick={handleDeny}
-              disabled={loading}
-              className="h-10 px-6 rounded-lg bg-destructive text-destructive-foreground font-semibold hover:bg-destructive/90 transition-colors cursor-pointer disabled:opacity-50"
-            >
-              Deny
-            </button>
-          </div>
         </div>
       </div>
     )
@@ -131,7 +70,7 @@ export function DeviceFlow() {
             disabled={loading || !userCode.trim()}
             className="h-10 rounded-lg bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-50"
           >
-            {loading ? 'Verifying…' : 'Verify Code'}
+            {loading ? 'Approving…' : 'Verify Code'}
           </button>
         </form>
       </div>
