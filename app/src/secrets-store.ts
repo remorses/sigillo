@@ -31,7 +31,7 @@ export class SecretsStore extends DurableObject<Env> {
 
     if (method === 'get') {
       const row = rawRows[0]
-      if (!row) return { rows: [] }
+      if (!row) return { rows: null }
       // Return as array of values in column order
       return { rows: columnNames.map((col) => (row as Record<string, unknown>)[col]) }
     }

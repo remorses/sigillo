@@ -32,7 +32,7 @@ export class AuthStore extends DurableObject<Env> {
 
     if (method === 'get') {
       const row = rawRows[0]
-      if (!row) return { rows: [] }
+      if (!row) return { rows: null }
       const record: Record<string, SqlStorageValue> = row
       return { rows: columnNames.map((col) => record[col]) }
     }
