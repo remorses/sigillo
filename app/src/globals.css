@@ -121,7 +121,7 @@
     --success-foreground: var(--color-emerald-400);
     --warning: var(--color-amber-500);
     --warning-foreground: var(--color-amber-400);
-    --border: --alpha(var(--color-white) / 10%);
+    --border: --alpha(var(--color-white) / 7%);
     --input: --alpha(var(--color-white) / 14%);
     --ring: color-mix(in srgb, var(--color-orange-300) 70%, var(--color-white));
     --sidebar: var(--color-neutral-950);
@@ -130,7 +130,7 @@
     --sidebar-primary-foreground: var(--color-neutral-950);
     --sidebar-accent: --alpha(var(--color-white) / 8%);
     --sidebar-accent-foreground: var(--color-neutral-100);
-    --sidebar-border: --alpha(var(--color-white) / 10%);
+    --sidebar-border: --alpha(var(--color-white) / 7%);
     --sidebar-ring: var(--color-neutral-400);
   }
 }
@@ -162,7 +162,7 @@
   --success-foreground: var(--color-emerald-400);
   --warning: var(--color-amber-500);
   --warning-foreground: var(--color-amber-400);
-  --border: --alpha(var(--color-white) / 10%);
+  --border: --alpha(var(--color-white) / 7%);
   --input: --alpha(var(--color-white) / 14%);
   --ring: color-mix(in srgb, var(--color-orange-300) 70%, var(--color-white));
   --sidebar: var(--color-neutral-950);
@@ -171,7 +171,7 @@
   --sidebar-primary-foreground: var(--color-neutral-950);
   --sidebar-accent: --alpha(var(--color-white) / 8%);
   --sidebar-accent-foreground: var(--color-neutral-100);
-  --sidebar-border: --alpha(var(--color-white) / 10%);
+  --sidebar-border: --alpha(var(--color-white) / 7%);
   --sidebar-ring: var(--color-neutral-400);
 }
 
