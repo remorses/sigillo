@@ -763,7 +763,7 @@ function TabBar({ orgId, projectId, pathname }: { orgId: string; projectId: stri
           >
             {tab.label}
             {tab.active && (
-              <div className="absolute bottom-0 left-0 w-full h-[1.5px] bg-foreground rounded-sm" />
+              <div className="absolute bottom-0 left-0 w-full h-[1.5px] bg-primary rounded-sm" />
             )}
           </Link>
         ))}
@@ -785,7 +785,7 @@ function Navbar() {
     <nav className="sticky top-0 z-50 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="max-w-(--content-max-width) mx-auto border-x border-border">
         <div className="flex h-14 items-center justify-between px-6">
-          <Link href="/" className="text-foreground hover:opacity-80 transition-opacity">
+          <Link href="/" className="text-primary hover:opacity-80 transition-opacity">
             <SigilloLogo className="h-[36px] w-auto shrink-0" />
           </Link>
           <a

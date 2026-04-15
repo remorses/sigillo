@@ -138,7 +138,7 @@ export function Sidebar({
                 href={`/orgs/${currentOrgId}/projects/${project.id}`}
                 className={cn(
                   "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-sidebar-accent",
-                  isActive && "bg-sidebar-accent text-foreground font-medium",
+                  isActive && "bg-sidebar-accent text-primary font-medium",
                 )}
               >
                 {isActive ? (
