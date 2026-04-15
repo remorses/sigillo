@@ -72,13 +72,11 @@ export const app = new Spiceflow({
           <ProgressBar />
           <Navbar />
           <div className="border-t border-border" />
-          <div className="flex flex-col max-w-(--content-max-width) mx-auto w-full border-x border-border">
-            {children ?? (
-              <div className="flex items-center justify-center h-full text-muted-foreground">
-                Page not found
-              </div>
-            )}
-          </div>
+          {children ?? (
+            <div className="flex-1 max-w-(--content-max-width) mx-auto w-full border-x border-border flex items-center justify-center text-muted-foreground">
+              Page not found
+            </div>
+          )}
           <div className="border-t border-border" />
           <Footer />
         </body>
@@ -117,7 +115,8 @@ export const app = new Spiceflow({
     return (
       <div className="flex flex-col flex-1">
         <TabBar orgId={orgId} projectId={projectId} pathname={url.pathname} />
-        <div className="isolate relative flex flex-1 max-w-(--content-max-width) mx-auto w-full">
+        <div className="border-t border-border" />
+        <div className="isolate relative flex flex-1 max-w-(--content-max-width) mx-auto w-full border-x border-border">
           <Sidebar
             orgs={orgs}
             projects={projects}
@@ -200,16 +199,18 @@ export const app = new Spiceflow({
     const user = { name: session.user.name || 'User', email: session.user.email || '' }
 
     return (
-      <div className="isolate relative flex max-w-(--content-max-width) mx-auto min-h-[min(400px,100vh)]">
-        <Sidebar orgs={orgs} projects={[]} currentOrgId={params.orgId} currentProjectId={null} user={user} />
-        <main className="flex-1 p-6 overflow-auto">
-          <div className="max-w-3xl">
-            <h1 className="text-2xl font-bold tracking-tight mb-2">No projects yet</h1>
-            <p className="text-muted-foreground mb-6">Create your first project to start managing secrets.</p>
-            <NewProjectButton orgId={params.orgId} />
-          </div>
-        </main>
-      </div>
+      <ContentFrame>
+        <div className="isolate relative flex min-h-[min(400px,100vh)]">
+          <Sidebar orgs={orgs} projects={[]} currentOrgId={params.orgId} currentProjectId={null} user={user} />
+          <main className="flex-1 p-6 overflow-auto">
+            <div className="max-w-3xl">
+              <h1 className="text-2xl font-bold tracking-tight mb-2">No projects yet</h1>
+              <p className="text-muted-foreground mb-6">Create your first project to start managing secrets.</p>
+              <NewProjectButton orgId={params.orgId} />
+            </div>
+          </main>
+        </div>
+      </ContentFrame>
     )
   })
 
@@ -217,13 +218,15 @@ export const app = new Spiceflow({
   .page('/new-org', async ({ request }) => {
     await requirePageSession(request)
     return (
-      <div className="max-w-md mx-auto py-12">
-        <h1 className="text-2xl font-bold tracking-tight mb-2">New Organization</h1>
-        <p className="text-muted-foreground mb-6">
-          Organizations group your projects and team members.
-        </p>
-        <CreateOrgForm />
-      </div>
+      <ContentFrame>
+        <div className="max-w-md mx-auto py-12">
+          <h1 className="text-2xl font-bold tracking-tight mb-2">New Organization</h1>
+          <p className="text-muted-foreground mb-6">
+            Organizations group your projects and team members.
+          </p>
+          <CreateOrgForm />
+        </div>
+      </ContentFrame>
     )
   })
 
@@ -451,7 +454,7 @@ export const app = new Spiceflow({
     const session = await getSession(request.headers)
     if (!session) return redirect('/login')
     const { DeviceFlow } = await import('sigillo-app/src/components/device-flow')
-    return <DeviceFlow />
+    return <ContentFrame><DeviceFlow /></ContentFrame>
   })
 
   // ── Login page (standalone, no sidebar) ─────────────────────────
@@ -462,13 +465,13 @@ export const app = new Spiceflow({
     if (session) return redirect(redirectTo)
     const { LoginButton } = await import('sigillo-app/src/components/login-button')
     return (
-      <div className="flex justify-center items-center min-h-[60vh]">
+      <ContentFrame className="flex justify-center items-center min-h-[60vh]">
         <div className="text-center max-w-sm">
           <h1 className="text-2xl font-bold tracking-tight mb-2">Sigillo</h1>
           <p className="text-muted-foreground mb-6">Sign in to manage your secrets</p>
           <LoginButton callbackURL={redirectTo} />
         </div>
-      </div>
+      </ContentFrame>
     )
   })
 
@@ -481,12 +484,12 @@ export const app = new Spiceflow({
     })
     if (!invite || invite.expiresAt < Date.now()) {
       return (
-        <div className="flex justify-center items-center min-h-[60vh]">
+        <ContentFrame className="flex justify-center items-center min-h-[60vh]">
           <div className="text-center max-w-sm">
             <h1 className="text-2xl font-bold tracking-tight mb-2">Invalid Invitation</h1>
             <p className="text-muted-foreground">This invitation link is invalid or has expired.</p>
           </div>
-        </div>
+        </ContentFrame>
       )
     }
     const session = await getSession(request.headers)
@@ -498,7 +501,7 @@ export const app = new Spiceflow({
     if (existing) return redirect(`/orgs/${invite.orgId}`)
     const { AcceptInviteButton } = await import('sigillo-app/src/components/accept-invite-button')
     return (
-      <div className="flex justify-center items-center min-h-[60vh]">
+      <ContentFrame className="flex justify-center items-center min-h-[60vh]">
         <div className="text-center max-w-sm space-y-4">
           <h1 className="text-2xl font-bold tracking-tight">Join {invite.org!.name}</h1>
           <p className="text-muted-foreground text-sm">
@@ -509,7 +512,7 @@ export const app = new Spiceflow({
           </p>
           <AcceptInviteButton invitationId={params.id} />
         </div>
-      </div>
+      </ContentFrame>
     )
   })
 
@@ -747,8 +750,8 @@ function TabBar({ orgId, projectId, pathname }: { orgId: string; projectId: stri
   ] as const
 
   return (
-    <div className="w-full border-b border-border">
-      <div className="flex h-10 items-stretch gap-6 px-6 max-w-(--content-max-width) mx-auto">
+    <div className="max-w-(--content-max-width) mx-auto w-full border-x border-border">
+      <div className="flex h-10 items-stretch gap-6 px-6">
         {tabs.map((tab) => (
           <Link
             key={tab.href}
@@ -766,6 +769,14 @@ function TabBar({ orgId, projectId, pathname }: { orgId: string; projectId: stri
           </Link>
         ))}
       </div>
+    </div>
+  )
+}
+
+function ContentFrame({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`flex-1 max-w-(--content-max-width) mx-auto w-full border-x border-border ${className ?? ''}`}>
+      {children}
     </div>
   )
 }
