@@ -73,11 +73,10 @@ export const app = new Spiceflow({
           <Navbar />
           <div className="border-t border-border" />
           {children ?? (
-            <div className="flex-1 max-w-(--content-max-width) mx-auto w-full border-x border-border flex items-center justify-center text-muted-foreground">
+            <div className="max-w-(--content-max-width) mx-auto w-full border-x border-border flex items-center justify-center text-muted-foreground py-12">
               Page not found
             </div>
           )}
-          <div className="border-t border-border" />
           <Footer />
         </body>
       </html>
@@ -113,10 +112,10 @@ export const app = new Spiceflow({
     const user = { name: session.user.name || 'User', email: session.user.email || '' }
 
     return (
-      <div className="flex flex-col flex-1">
+      <>
         <TabBar orgId={orgId} projectId={projectId} pathname={url.pathname} />
         <div className="border-t border-border" />
-        <div className="isolate relative flex flex-1 max-w-(--content-max-width) mx-auto w-full border-x border-border">
+        <div className="isolate relative flex max-w-(--content-max-width) mx-auto w-full border-x border-border">
           <Sidebar
             orgs={orgs}
             projects={projects}
@@ -128,7 +127,7 @@ export const app = new Spiceflow({
             {children}
           </main>
         </div>
-      </div>
+      </>
     )
   })
 
@@ -775,7 +774,7 @@ function TabBar({ orgId, projectId, pathname }: { orgId: string; projectId: stri
 
 function ContentFrame({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`flex-1 max-w-(--content-max-width) mx-auto w-full border-x border-border ${className ?? ''}`}>
+    <div className={`max-w-(--content-max-width) mx-auto w-full border-x border-border ${className ?? ''}`}>
       {children}
     </div>
   )
@@ -813,9 +812,9 @@ function XIcon({ className }: { className?: string }) {
 
 function Footer() {
   return (
-    <footer className="flex-1 flex flex-col justify-end">
-      <div className="max-w-(--content-max-width) mx-auto w-full border-x border-border flex-1" />
-      <div className="max-w-(--content-max-width) mx-auto w-full border-x border-border">
+    <footer className="flex-1 flex flex-col justify-stretch">
+      <div className="border-t border-border" />
+      <div className="max-w-(--content-max-width) grow mx-auto w-full border-x border-border">
         <div className="flex items-center justify-end gap-4 px-6 py-4">
           <span className="text-xs text-muted-foreground">
             © {new Date().getFullYear()} Sigillo
