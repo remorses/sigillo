@@ -106,7 +106,7 @@ function SecretValueCell({
           }
         }}
         style={!visible ? hiddenValueStyle : undefined}
-        className={`h-7 min-w-0 flex-1 rounded-md border px-2 text-sm font-mono ${visible ? 'border-input bg-muted/50 focus:outline-none focus:ring-2 focus:ring-ring' : 'border-transparent bg-muted/50 cursor-pointer select-none'}`}
+        className={`h-7 min-w-0 flex-1 rounded-md border px-2 text-sm font-mono ${visible ? 'border-input bg-muted/50 focus:outline-none focus:ring-1 focus:ring-ring' : 'border-transparent bg-muted/50 cursor-pointer select-none'}`}
       />
       <button
         onClick={onToggle}
@@ -259,7 +259,7 @@ export function SecretsTable({
                       type="text"
                       value={edits[secret.id]?.name ?? secret.name}
                       onChange={(e) => setEdit(secret.id, "name", e.target.value)}
-                      className="h-7 w-full rounded-md border border-transparent bg-transparent px-1.5 text-sm font-mono font-medium focus:border-input focus:outline-none focus:ring-2 focus:ring-ring hover:border-input"
+                      className="h-7 w-full rounded-md border border-transparent bg-transparent px-1.5 text-sm font-mono font-medium focus:border-input focus:outline-none focus:ring-1 focus:ring-ring hover:border-input"
                     />
                   </TableCell>
                   <TableCell>
@@ -391,7 +391,7 @@ function ImportEnvDialog({
             autoFocus
             placeholder={"DATABASE_URL=postgres://...\nAPI_KEY=sk-...\nSECRET_TOKEN=abc123"}
             rows={8}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring resize-y"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring resize-y"
           />
           <DialogFooter variant="bare" className="mt-4">
             <DialogClose render={<Button variant="outline" />}>
@@ -503,7 +503,8 @@ function AddSecretRow({
         name="name"
         placeholder="SECRET_KEY"
         required
-        className="h-7 flex-1 rounded-lg border border-input bg-background px-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+        autoFocus
+        className="h-9 flex-1 rounded-lg border border-input bg-background px-2.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
       />
       <input
         name="value"
@@ -514,13 +515,13 @@ function AddSecretRow({
         style={maskedInputStyle}
         placeholder="secret value"
         required
-        className="h-7 flex-1 rounded-lg border border-input bg-background px-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+        className="h-9 flex-1 rounded-lg border border-input bg-background px-2.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
       />
       <div className="flex-1" />
-      <Button size="xs" type="submit">
+      <Button size="sm" type="submit">
         Add
       </Button>
-      <Button size="xs" variant="ghost" onClick={onDone}>
+      <Button size="sm" variant="ghost" onClick={onDone}>
         Cancel
       </Button>
     </form>
