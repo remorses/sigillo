@@ -370,21 +370,7 @@ export function SecretsTable({
         {/*<div className="border-t border-border"></div>*/}
         {/* Bottom bar: add secret + import */}
         <div className="flex items-center justify-between gap-2 px-1 pb-2">
-          <div className="flex grow items-center gap-2">
-            {showNewRow ? (
-              <AddSecretRow environmentId={environmentId} onDone={() => setShowNewRow(false)} />
-            ) : (
-              <Button
-                onClick={() => setShowNewRow(true)}
-                size="xs"
-                variant="ghost"
-              >
-                <PlusIcon className="size-3" />
-                Add Secret
-              </Button>
-            )}
-          </div>
-          {!showNewRow && (
+          {!showNewRow ? (
             <div className="flex items-center gap-1">
               <Button
                 onClick={() => setImportOpen(true)}
@@ -411,7 +397,23 @@ export function SecretsTable({
                 Copy as .env
               </Button>
             </div>
+          ) : (
+            <div />
           )}
+
+          <div className="flex grow justify-end items-center gap-2">
+            {showNewRow ? (
+              <AddSecretRow environmentId={environmentId} onDone={() => setShowNewRow(false)} />
+            ) : (
+              <Button
+                onClick={() => setShowNewRow(true)}
+                size="xs"
+              >
+                <PlusIcon className="size-3" />
+                Add Secret
+              </Button>
+            )}
+          </div>
         </div>
       </Frame>
 

@@ -62,7 +62,7 @@ function CliBanner() {
         <XIcon className="size-4" />
       </button>
 
-      <div className="grid gap-0 md:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.9fr)]">
+      <div className="grid gap-0 md:grid-cols-2">
         <div className="flex flex-col gap-4 p-6 md:p-8">
 
 
