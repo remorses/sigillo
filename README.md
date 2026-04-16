@@ -16,7 +16,7 @@ Sigillo will remove secrets from the process output so that they don't end up in
 If you are hosting the app yourself, it serves a curl installer at `/install.sh`.
 
 ```bash
-curl -fsSL https://your-sigillo-host.example/install.sh | bash
+curl -fsSL https://sigillo.dev/install.sh | bash
 ```
 
 The installer downloads the latest GitHub release binary for your platform and installs it into `~/.sigillo/bin`.
