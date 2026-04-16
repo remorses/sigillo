@@ -24,7 +24,7 @@ Each worker has a single Durable Object (`AuthStore` / `SecretsStore`) that hold
 
 ## Secrets encryption
 
-Secrets are AES-256-GCM encrypted in the `SecretsStore` DO. The encryption key is a Cloudflare secret (`ENCRYPTION_KEY`), never stored in the DB. Each secret gets a random 12-byte IV.
+Secrets are AES-256-GCM encrypted in the `SecretsStore` DO. If `ENCRYPTION_KEY` is set, the app uses it directly. Otherwise it derives a stable 32-byte AES key from `BETTER_AUTH_SECRET`. Each secret gets a random 12-byte IV.
 
 Generate a valid `ENCRYPTION_KEY` (32 random bytes, base64-encoded):
 
@@ -32,19 +32,19 @@ Generate a valid `ENCRYPTION_KEY` (32 random bytes, base64-encoded):
 openssl rand -base64 32
 ```
 
-Set it as a Cloudflare secret for production:
+Set it as a Cloudflare secret for production if you want a separate encryption key:
 
 ```bash
 echo "$(openssl rand -base64 32)" | wrangler secret put ENCRYPTION_KEY
 ```
 
-For local dev, add it to `app/.dev.vars`:
+For local dev, add it to `app/.dev.vars` only if you want to override the default derived key:
 
 ```
 ENCRYPTION_KEY=<output of openssl rand -base64 32>
 ```
 
-The value must be valid base64 — `atob()` is used to decode it at runtime. If it's malformed or missing, all encrypt/decrypt operations fail silently (the server action throws but the error was not visible until we added ErrorBoundary).
+The value must be valid base64 — `atob()` is used to decode it at runtime. If `ENCRYPTION_KEY` is omitted, the app hashes `BETTER_AUTH_SECRET` with SHA-256 and uses that 32-byte digest as the AES key.
 
 ## Auth flow
 

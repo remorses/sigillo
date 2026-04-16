@@ -178,20 +178,8 @@ export const DEFAULT_ENVIRONMENTS = [
   { name: 'Production', slug: 'production' },
 ] as const
 
-// ── Instance config ─────────────────────────────────────────────────
-// Single-row table for instance-level configuration.
-
-export const config = sqliteCore.sqliteTable('config', {
-  id: sqliteCore.text('id').primaryKey().notNull().default('singleton'),
-  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
-  updatedAt: sqliteCore.integer('updated_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
-})
-
 // ── oauthDomain table ────────────────────────────────────────────────
-// One row per hostname that has been used to sign into this app.
-// Each hostname gets its own provider registration because the callback URL
-// is host-specific.
-
+// Stores the provider client registration for each app hostname.
 export const oauthDomain = sqliteCore.sqliteTable('oauth_domain', {
   id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
   host: sqliteCore.text('host').notNull().unique(),
@@ -222,7 +210,7 @@ export const deviceCode = sqliteCore.sqliteTable('device_code', {
 // ── Relations (v2 API) ──────────────────────────────────────────────
 
 export const relations = defineRelations(
-  { user, session, account, verification, org, orgMember, orgInvitation, project, environment, secretEvent, apiToken, deviceCode, config, oauthDomain },
+  { user, session, account, verification, org, orgMember, orgInvitation, project, environment, secretEvent, apiToken, deviceCode, oauthDomain },
   (r) => ({
     user: {
       sessions: r.many.session(),
@@ -278,7 +266,6 @@ export const relations = defineRelations(
     deviceCode: {
       user: r.one.user({ from: r.deviceCode.userId, to: r.user.id }),
     },
-    config: {},
     oauthDomain: {},
   }),
 )

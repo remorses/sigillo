@@ -13,7 +13,7 @@
     "PROVIDER_URL": "https://auth.sigillo.dev",
   },
   "secrets": {
-    "required": ["BETTER_AUTH_SECRET", "ENCRYPTION_KEY"],
+    "required": ["BETTER_AUTH_SECRET"],
   },
   "routes": [
     {
@@ -33,7 +33,7 @@
 
       },
       "secrets": {
-        "required": ["BETTER_AUTH_SECRET", "ENCRYPTION_KEY"],
+        "required": ["BETTER_AUTH_SECRET"],
       },
       "routes": [
         {

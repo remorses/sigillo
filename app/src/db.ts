@@ -4,7 +4,8 @@
 // getDb() creates a drizzle-orm/sqlite-proxy client that routes SQL to the
 // DO's executeSql() RPC. getAuth(request) creates a BetterAuth instance backed
 // by the same drizzle client for the current request host. encrypt()/decrypt()
-// use env.ENCRYPTION_KEY.
+// use ENCRYPTION_KEY when set, otherwise derive a stable AES-256 key from
+// BETTER_AUTH_SECRET.
 
 import { env } from 'cloudflare:workers'
 import { drizzle } from 'drizzle-orm/sqlite-proxy'
@@ -40,12 +41,24 @@ export function getDb() {
   )
 }
 
+// ── OAuth client registration ───────────────────────────────────────
+// Registers this instance with the provider via RFC 7591 dynamic client
+// registration on first request for a hostname, then caches the client_id by
+// hostname.
+
 function getRequestOrigin(request: Request): string {
   return new URL(request.url).origin
 }
 
 function getRequestHost(request: Request): string {
   return new URL(request.url).host.toLowerCase()
+}
+
+function originForHost(host: string): string {
+  const protocol = host.startsWith('localhost:') || host.startsWith('127.0.0.1:')
+    ? 'http'
+    : 'https'
+  return `${protocol}://${host}`
 }
 
 async function listOAuthHosts(): Promise<string[]> {
@@ -57,22 +70,11 @@ async function listOAuthHosts(): Promise<string[]> {
   return rows.map((row) => row.host)
 }
 
-function originForHost(host: string): string {
-  const protocol = host.startsWith('localhost:') || host.startsWith('127.0.0.1:')
-    ? 'http'
-    : 'https'
-  return `${protocol}://${host}`
-}
-
-// ── OAuth client registration ───────────────────────────────────────
-// Registers each hostname with the provider via RFC 7591 dynamic client
-// registration on first login from that host.
-
 export async function ensureOAuthClient(request: Request): Promise<string> {
   const db = getDb()
   const host = getRequestHost(request)
-  const existing = await db.query.oauthDomain.findFirst({ where: { host } })
-  if (existing) return existing.oauthClientId
+  const row = await db.query.oauthDomain.findFirst({ where: { host } })
+  if (row) return row.oauthClientId
 
   if (host.endsWith('.workers.dev')) {
     throw new Error(`Refusing OAuth registration for temporary host: ${host}`)
@@ -428,8 +430,17 @@ export async function verifyApiToken(key: string): Promise<{
 // ── Encryption (AES-256-GCM) ────────────────────────────────────────
 
 async function getEncryptionKey(): Promise<CryptoKey> {
-  const raw = Uint8Array.from(atob(env.ENCRYPTION_KEY), (c) => c.charCodeAt(0))
-  return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt'])
+  const configuredKey = process.env.ENCRYPTION_KEY?.trim()
+  if (configuredKey) {
+    const raw = Uint8Array.from(atob(configuredKey), (c) => c.charCodeAt(0))
+    return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt'])
+  }
+
+  // AES-256 needs exactly 32 bytes. Hashing the Better Auth secret gives a
+  // stable 32-byte fallback key. Plain base64-encoding the secret text would
+  // produce variable-length bytes and break encryption.
+  const derived = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(env.BETTER_AUTH_SECRET))
+  return crypto.subtle.importKey('raw', derived, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt'])
 }
 
 export async function encrypt(plaintext: string): Promise<{ encrypted: string; iv: string }> {
