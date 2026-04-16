@@ -47,11 +47,58 @@ export function getDb() {
 // hostname.
 
 function getRequestOrigin(request: Request): string {
+  const publicOrigin = getPublicOriginOverride(request)
+  if (publicOrigin) {
+    return publicOrigin
+  }
+
   return new URL(request.url).origin
 }
 
 function getRequestHost(request: Request): string {
+  const publicOrigin = getPublicOriginOverride(request)
+  if (publicOrigin) {
+    return new URL(publicOrigin).host.toLowerCase()
+  }
+
   return new URL(request.url).host.toLowerCase()
+}
+
+function getPublicOriginOverride(request: Request): string | null {
+  const requestUrl = new URL(request.url)
+  const isLocalHost = requestUrl.hostname === 'localhost' || requestUrl.hostname === '127.0.0.1'
+  if (!isLocalHost) {
+    return null
+  }
+
+  const forwardedHost = request.headers.get('x-forwarded-host')
+  const forwardedProto = request.headers.get('x-forwarded-proto')
+  if (forwardedHost && forwardedProto) {
+    return `${forwardedProto}://${forwardedHost}`
+  }
+
+  const origin = request.headers.get('origin')
+  if (origin) {
+    const originUrl = new URL(origin)
+    if (originUrl.hostname !== 'localhost' && originUrl.hostname !== '127.0.0.1') {
+      return originUrl.origin
+    }
+  }
+
+  const referer = request.headers.get('referer')
+  if (referer) {
+    const refererUrl = new URL(referer)
+    if (refererUrl.hostname !== 'localhost' && refererUrl.hostname !== '127.0.0.1') {
+      return refererUrl.origin
+    }
+  }
+
+  const traforoUrl = process.env.TRAFORO_URL
+  if (!traforoUrl) {
+    return null
+  }
+
+  return traforoUrl
 }
 
 function originForHost(host: string): string {
@@ -63,10 +110,9 @@ function originForHost(host: string): string {
 
 async function listOAuthHosts(): Promise<string[]> {
   const db = getDb()
-  const rows = await db.query.oauthDomain.findMany({
-    columns: { host: true },
-    orderBy: { createdAt: 'asc' },
-  })
+  const rows = await db.select({ host: schema.oauthDomain.host })
+    .from(schema.oauthDomain)
+    .orderBy(schema.oauthDomain.createdAt)
   return rows.map((row) => row.host)
 }
 
@@ -86,7 +132,10 @@ async function listOAuthHosts(): Promise<string[]> {
 export async function ensureOAuthClient(request: Request): Promise<string> {
   const db = getDb()
   const host = getRequestHost(request)
-  const row = await db.query.oauthDomain.findFirst({ where: { host } })
+  const [row] = await db.select({ oauthClientId: schema.oauthDomain.oauthClientId })
+    .from(schema.oauthDomain)
+    .where(orm.eq(schema.oauthDomain.host, host))
+    .limit(1)
   if (row) return row.oauthClientId
 
   if (host.endsWith('.workers.dev')) {
@@ -173,6 +222,12 @@ export function getDataCenter(): Promise<string> {
 type Session = { userId: string; user: { id: string; name: string; email: string } }
 
 export async function getSession(request: Request): Promise<Session | null> {
+  const hasCookie = request.headers.has('cookie')
+  const hasAuthorization = request.headers.has('authorization')
+  if (!hasCookie && !hasAuthorization) {
+    return null
+  }
+
   const auth = await getAuth(request)
   const session = await auth.api.getSession({ headers: request.headers })
   if (!session) return null

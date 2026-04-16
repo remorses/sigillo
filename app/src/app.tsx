@@ -33,11 +33,19 @@ import { Frame } from 'sigillo-app/src/components/ui/frame'
 
 export { SecretsStore } from './secrets-store.ts'
 
+const cliBannerCookieName = 'sigillo-cli-banner-dismissed'
+
 // Only allow local paths for redirects — prevents open redirect attacks
 // on /login?redirect=https://evil.example
 function safeRedirectPath(value: string | null): string {
   if (!value || !value.startsWith('/') || value.startsWith('//')) return '/'
   return value
+}
+
+function hasCookie(args: { cookieHeader: string; name: string }) {
+  return args.cookieHeader
+    .split(';')
+    .some((part) => part.trim().startsWith(`${args.name}=`))
 }
 
 export const app = new Spiceflow({
@@ -307,9 +315,11 @@ export const app = new Spiceflow({
 
     const dataKey = `${selectedEnvId}-${Date.now()}`
 
-    // Skip rendering CLI banner if cookie says it was dismissed
-    const cookieHeader = request.headers.get("cookie") ?? ""
-    const showBanner = !cookieHeader.includes("sigillo-cli-banner-dismissed")
+    const cookieHeader = request.headers.get('cookie') ?? ''
+    const showBanner = !hasCookie({
+      cookieHeader,
+      name: cliBannerCookieName,
+    })
 
     return (
       <div>
