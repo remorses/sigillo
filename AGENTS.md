@@ -132,6 +132,13 @@ cross-compilation. On version bump the publish job:
 2. Creates the GitHub release at tag `sigillo@x.y.z`
 3. Uploads platform tarballs/zips to the release
 
+Never rely on CI to write the final GitHub release notes. CI can create the
+release and upload assets, but after CI is green the agent handling the
+release must update the release body manually with the actual user-facing
+changelog for that version as a polished markdown list, with real CLI
+examples, code blocks, and nicely formatted highlights so users can understand
+the release without leaving the release page.
+
 The CI publish job checks whether the version is already on npm and skips if
 so. This means you can push multiple commits to `main` and only the version
 bump commit triggers an actual publish.

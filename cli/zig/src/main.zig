@@ -24,7 +24,7 @@ fn getStderr() Writer {
 const Login = zeke.cmd("login", "Authenticate to Sigillo with device flow")
     .option("--token [token]", "Save an existing bearer token instead of starting device flow")
     .option("--api-url [url]", "Base URL of the Sigillo API (default: https://sigillo.dev)")
-    .option("--scope [scope]", "Directory scope for saved auth (default: /)")
+    .option("--scope [scope]", "Scope for saved auth (default: /)")
     .example("sigillo login")
     .example("SIGILLO_TOKEN=sig_xxx sigillo login --scope /")
     .example("sigillo login --token sig_xxx --scope /")
@@ -140,41 +140,7 @@ fn loginAction(_: Login.Args, opts: Login.Options) !void {
 
     const cwd = config.getCwd(allocator) catch try allocator.dupe(u8, "/");
 
-    // Determine scope: explicit flag wins; otherwise prompt in TTY or error in non-TTY.
-    const scope: []const u8 = if (opts.scope) |s| s else blk: {
-        const is_tty = std.posix.isatty(File.stdin().handle) and
-            std.posix.isatty(File.stdout().handle);
-
-        if (is_tty) {
-            // Show interactive scope selector.
-            const cwd_option = try std.fmt.allocPrint(allocator, "Current directory ({s})", .{cwd});
-            const options = [_][]const u8{ "Global (/)", cwd_option };
-            const choice = try prompt.select("Where should auth be saved?", &options, 0) orelse {
-                try color.err(stderr, "error");
-                try stderr.print(": login cancelled\n", .{});
-                std.process.exit(1);
-            };
-            break :blk if (choice == 0) "/" else cwd;
-        } else {
-            // Non-TTY: only error if overriding existing global auth would be ambiguous.
-            const existing = try config.readConfig(allocator);
-            var has_global_auth = false;
-            for (existing.scopes.items) |record| {
-                if (std.mem.eql(u8, record.scope, "/") and record.entry.token != null) {
-                    has_global_auth = true;
-                    break;
-                }
-            }
-            if (has_global_auth) {
-                try color.err(stderr, "error");
-                try stderr.print(": --scope is required in non-interactive mode (existing global auth would be overridden)\n", .{});
-                try stderr.print("  pass --scope / to override global auth\n", .{});
-                try stderr.print("  pass --scope {s} for directory scope\n", .{cwd});
-                std.process.exit(1);
-            }
-            break :blk "/";
-        }
-    };
+    const scope: []const u8 = opts.scope orelse "/";
 
     const resolved = try config.resolve(allocator, cwd, .{
         .token = opts.token,
@@ -1629,6 +1595,25 @@ test "login parses token option" {
 
     try std.testing.expectEqualStrings("sig_test_123", State.token.?);
     try std.testing.expectEqualStrings("/", State.scope.?);
+}
+
+test "login leaves scope unset when flag is omitted" {
+    const State = struct {
+        var token: ?[]const u8 = null;
+        var scope: ?[]const u8 = null;
+
+        fn action(_: Login.Args, opts: Login.Options) !void {
+            token = opts.token;
+            scope = opts.scope;
+        }
+    };
+
+    const TestLogin = Login.bind(State.action);
+    var app = zeke.App(.{TestLogin}).init(std.testing.allocator, "sigillo");
+    try app.dispatch(&.{ "login", "--token", "sig_test_123" });
+
+    try std.testing.expectEqualStrings("sig_test_123", State.token.?);
+    try std.testing.expect(State.scope == null);
 }
 
 fn openBrowser(allocator: std.mem.Allocator, url: []const u8) void {

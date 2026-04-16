@@ -131,7 +131,7 @@ jobs:
           if ! gh release view "$TAG" &>/dev/null; then
             git tag "$TAG" || true
             git push origin "$TAG" || true
-            gh release create "$TAG" --title "sigillo@${VERSION}" --notes "See [CHANGELOG](https://github.com/remorses/sigillo/blob/main/cli/CHANGELOG.md)" --latest
+            gh release create "$TAG" --title "sigillo@${VERSION}" --notes "Release published by CI. Update these notes after CI completes." --latest
           fi
 
           # Create platform tarballs (unix)
