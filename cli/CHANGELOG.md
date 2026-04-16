@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.3.0
+
+1. **New CRUD commands for projects, environments, and secrets** — manage Sigillo resources from the terminal instead of jumping back to the web UI:
+
+   ```bash
+   sigillo projects
+   sigillo projects create --org org_123 --name backend
+   sigillo environments create --project proj_123 --name Production --slug production
+   sigillo secrets set DATABASE_URL postgres://localhost:5432/app
+   sigillo secrets download > secrets.yaml
+   ```
+
+   Adds `projects get|create|update|delete`, `environments get|create|rename|delete`, and `secrets get|set|delete|download`, with script-friendly plain-text output.
+
+2. **Token-based login for CI and agent sessions** — save an existing bearer token without starting the device flow:
+
+   ```bash
+   SIGILLO_TOKEN=sig_xxx sigillo login --scope /
+   sigillo login --token sig_xxx --scope /Users/me/project
+   ```
+
+   This makes it easier to reuse API tokens in automation while still letting `sigillo` resolve them through the normal scoped config.
+
+3. **Interactive scope and setup prompts** — `sigillo login` can now ask whether auth should be saved globally or for the current directory, and `sigillo setup` can guide project/environment selection when you do not want to paste raw IDs.
+
+4. **Safer `sigillo run` logs by default** — likely secret values are redacted from child stdout/stderr unless you explicitly opt out:
+
+   ```bash
+   sigillo run -- next dev
+   sigillo run --disable-redaction -- next dev
+   ```
+
+5. **More reliable Windows behavior** — config now lives under `%APPDATA%\sigillo\config.json`, shell commands use the Windows command shell correctly, and browser launch/process execution are more reliable on Windows.
+
 ## 0.2.0
 
 1. **`--api-url` now defaults to `https://sigillo.dev`** — no need to pass it when using the hosted version:
