@@ -2,11 +2,12 @@
 // Values hidden by default (password inputs). Eye icon to reveal.
 // Editing a key or value marks the row dirty. A "Save N secrets"
 // button appears when there are unsaved changes.
-// Import from .env via a dialog with a textarea.
+// Import from .env via a dialog with a textarea, and export current secrets
+// back to .env via download or copy.
 
 "use client";
 
-import { EyeIcon, EyeOffIcon, TrashIcon, UploadIcon, PlusIcon, KeyIcon, CheckIcon } from "lucide-react";
+import { EyeIcon, EyeOffIcon, TrashIcon, UploadIcon, PlusIcon, KeyIcon, CheckIcon, DownloadIcon, CopyIcon } from "lucide-react";
 import { useState, useCallback } from "react";
 import { ErrorBoundary } from "spiceflow/react";
 import { Button } from "sigillo-app/src/components/ui/button";
@@ -79,7 +80,7 @@ function SecretValueCell({
   const displayValue = editedValue ?? value;
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex w-full min-w-0 items-center gap-1.5">
       <Input
         type="text"
         inputSize="sm"
@@ -100,11 +101,11 @@ function SecretValueCell({
           }
         }}
         style={!visible ? hiddenValueStyle : undefined}
-        className={`min-w-0 flex-1 font-mono ${visible ? 'bg-muted/50' : 'border-transparent bg-muted/50 cursor-pointer select-none'}`}
+        className={`min-w-0 max-w-full flex-1 font-mono ${visible ? 'bg-muted/50' : 'border-transparent bg-muted/50 cursor-pointer select-none'}`}
       />
       <button
         onClick={onToggle}
-        className="text-muted-foreground hover:text-foreground cursor-pointer"
+        className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
         title={visible ? "Hide value" : "Reveal value"}
       >
         {visible ? (
@@ -173,6 +174,17 @@ export function SecretsTable({
 
   const totalDirtyCount = dirtySecrets.length + dirtyMissingKeys.length;
 
+  const currentEnvEntries: Array<[string, string]> = [
+    ...secrets.map<[string, string]>((secret) => [
+      edits[secret.id]?.name ?? secret.name,
+      edits[secret.id]?.value ?? secret.value,
+    ]),
+    ...dirtyMissingKeys.map<[string, string]>((name) => [name, missingEdits[name]!]),
+  ];
+  const envFileText = currentEnvEntries
+    .map(([name, value]) => `${name}=${JSON.stringify(value)}`)
+    .join("\n") + "\n";
+
   const buildPayload = useCallback(() => {
     return dirtySecrets.map((s) => {
       const e = edits[s.id]!;
@@ -201,6 +213,24 @@ export function SecretsTable({
       setImporting(false);
     }
   }, [environmentId]);
+
+  const handleDownloadEnv = useCallback(() => {
+    const blob = new Blob([envFileText], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `.env.${environments.find((env) => env.id === environmentId)?.slug ?? "env"}`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [envFileText, environmentId, environments]);
+
+  const handleCopyEnv = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(envFileText);
+    } catch (error: any) {
+      alert(error?.message || "Failed to copy .env contents");
+    }
+  }, [envFileText]);
 
   // Empty state (only show when no secrets AND no missing keys from other envs)
   if (secrets.length === 0 && missingKeys.length === 0 && !showNewRow) {
@@ -239,17 +269,17 @@ export function SecretsTable({
   return (
     <>
       <Frame className="w-full gap-3">
-        <Table className="table-fixed">
+        <Table>
           <colgroup>
-            <col className="w-1/4" />
-            <col style={{ width: "500px" }} />
+            <col />
+            <col />
             <col className="w-32" />
             <col className="w-16" />
           </colgroup>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead>Key</TableHead>
-              <TableHead>Value</TableHead>
+              <TableHead className="whitespace-normal">Key</TableHead>
+              <TableHead className="whitespace-normal">Value</TableHead>
               <TableHead>Last Updated</TableHead>
               <TableHead />
             </TableRow>
@@ -260,16 +290,16 @@ export function SecretsTable({
               const isVisible = allVisible || (rowVisible[secret.id] ?? false);
               return (
                 <TableRow key={secret.id} className={isDirty ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}>
-                  <TableCell>
+                  <TableCell className="min-w-0 overflow-hidden">
                     <Input
                       type="text"
                       inputSize="sm"
                       value={edits[secret.id]?.name ?? secret.name}
                       onChange={(e) => setEdit(secret.id, "name", e.target.value)}
-                      className="w-full border-transparent bg-transparent px-1.5 font-mono font-medium focus:border-input hover:border-input"
+                      className="w-full min-w-0 border-transparent bg-transparent px-1.5 font-mono font-medium focus:border-input hover:border-input"
                     />
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="min-w-0 overflow-hidden">
                     <SecretValueCell
                       value={secret.value}
                       editedValue={edits[secret.id]?.value}
@@ -278,7 +308,7 @@ export function SecretsTable({
                       onToggle={() => setRowVisible((prev) => ({ ...prev, [secret.id]: !isVisible }))}
                     />
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="whitespace-nowrap">
                     <span className="text-muted-foreground text-xs tabular-nums">
                       {formatTime(secret.updatedAt)}
                     </span>
@@ -308,12 +338,12 @@ export function SecretsTable({
               const hasValue = missingEdits[name]?.trim();
               return (
                 <TableRow key={`missing-${name}`} className="bg-destructive/5 dark:bg-destructive/10">
-                  <TableCell>
-                    <span className="px-1.5 font-mono font-medium text-destructive text-sm">
+                  <TableCell className="min-w-0 whitespace-normal">
+                    <span className="block break-all px-1.5 font-mono text-sm font-medium text-destructive">
                       {name}
                     </span>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="min-w-0 overflow-hidden">
                     <Input
                       type="text"
                       inputSize="sm"
@@ -324,10 +354,10 @@ export function SecretsTable({
                       value={missingEdits[name] ?? ""}
                       onChange={(e) => setMissingEdits((prev) => ({ ...prev, [name]: e.target.value }))}
                       style={!hasValue ? maskedInputStyle : undefined}
-                      className={`min-w-0 flex-1 font-mono border-destructive/40 ${hasValue ? "bg-amber-50/50 dark:bg-amber-950/20" : "bg-transparent"}`}
-                    />
-                  </TableCell>
-                  <TableCell>
+                       className={`w-full min-w-0 font-mono border-destructive/40 ${hasValue ? "bg-amber-50/50 dark:bg-amber-950/20" : "bg-transparent"}`}
+                     />
+                   </TableCell>
+                  <TableCell className="whitespace-nowrap">
                     <span className="text-destructive text-xs">missing</span>
                   </TableCell>
                   <TableCell />
@@ -339,28 +369,48 @@ export function SecretsTable({
 
         {/*<div className="border-t border-border"></div>*/}
         {/* Bottom bar: add secret + import */}
-        <div className="flex items-center justify-between px-1 pb-2">
-          <div className="flex items-center gap-2 grow">
+        <div className="flex items-center justify-between gap-2 px-1 pb-2">
+          <div className="flex grow items-center gap-2">
             {showNewRow ? (
               <AddSecretRow environmentId={environmentId} onDone={() => setShowNewRow(false)} />
             ) : (
-              <button
+              <Button
                 onClick={() => setShowNewRow(true)}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer px-2 py-1"
+                size="xs"
+                variant="ghost"
               >
                 <PlusIcon className="size-3" />
                 Add Secret
-              </button>
+              </Button>
             )}
           </div>
           {!showNewRow && (
-            <button
-              onClick={() => setImportOpen(true)}
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer px-2 py-1"
-            >
-              <UploadIcon className="size-3" />
-              Import .env
-            </button>
+            <div className="flex items-center gap-1">
+              <Button
+                onClick={() => setImportOpen(true)}
+                size="xs"
+                variant="ghost"
+              >
+                <UploadIcon className="size-3" />
+                Import .env
+              </Button>
+              <Button
+                onClick={handleDownloadEnv}
+                size="xs"
+                variant="ghost"
+              >
+                <DownloadIcon className="size-3" />
+                Download .env
+              </Button>
+              <Button
+                onClick={() => void handleCopyEnv()}
+                size="xs"
+                variant="ghost"
+              >
+                <CopyIcon className="size-3" />
+                Copy as .env
+              </Button>
+            </div>
           )}
         </div>
       </Frame>
