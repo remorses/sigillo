@@ -10,6 +10,12 @@ importers:
 
   app:
     dependencies:
+      '@ascii-kit/font':
+        specifier: ^0.0.6
+        version: 0.0.6
+      '@ascii-kit/fonts-flf':
+        specifier: ^0.0.6
+        version: 0.0.6
       '@base-ui/react':
         specifier: ^1.4.0
         version: 1.4.0(@date-fns/tz@1.4.1)(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -732,6 +738,12 @@ packages:
     peerDependencies:
       react: '>=18.0.0'
       react-dom: '>=18.0.0'
+
+  '@ascii-kit/font@0.0.6':
+    resolution: {integrity: sha512-K4VqlXwn42XDjt5DgA7DIwKGRnyKfcj1Zeslg1WSsrQi3ay+qLO/EMQHjU/nR+XWO2im0CYUPnAOQ7loy+5sJw==}
+
+  '@ascii-kit/fonts-flf@0.0.6':
+    resolution: {integrity: sha512-HugByvxX7vJrxZdiT9ojnqw79tmnVNgcUZ0S1VJZwBkqNKBSXhdkHVYeUp1oXZ6SfSY77uHpQSQZ7yTxgAUdAg==}
 
   '@azure-rest/core-client@2.6.0':
     resolution: {integrity: sha512-iuFKDm8XPzNxPfRjhyU5/xKZmcRDzSuEghXDHHk4MjBV/wFL34GmYVBZnn9wmuoLBeS1qAw9ceMdaeJBPcB1QQ==}
@@ -6417,6 +6429,10 @@ snapshots:
       '@zag-js/utils': 1.39.1
       react: 19.2.4
       react-dom: 19.2.4(react@19.2.4)
+
+  '@ascii-kit/font@0.0.6': {}
+
+  '@ascii-kit/fonts-flf@0.0.6': {}
 
   '@azure-rest/core-client@2.6.0':
     dependencies:

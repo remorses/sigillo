@@ -20,6 +20,8 @@
     "generate:install": "tsx src/generate-install-script.ts"
   },
   "dependencies": {
+    "@ascii-kit/font": "^0.0.6",
+    "@ascii-kit/fonts-flf": "^0.0.6",
     "@base-ui/react": "^1.4.0",
     "@better-auth/drizzle-adapter": "https://pkg.pr.new/better-auth/better-auth/@better-auth/drizzle-adapter@6913",
     "@radix-ui/react-slot": "^1.2.4",
