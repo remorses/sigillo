@@ -72,7 +72,7 @@ export function Sidebar({
     : "?";
 
   return (
-    <aside className="flex flex-col w-72 self-stretch h-[700px] min-h-0 border-r border-sidebar-border bg-background text-foreground p-6">
+    <aside className="flex flex-col w-72 self-stretch min-h-0 border-r border-sidebar-border bg-background text-foreground p-6">
       {/* ── Org switcher ─────────────────────────────────────── */}
       <DropdownMenu>
         <DropdownMenuTrigger

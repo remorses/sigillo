@@ -122,7 +122,7 @@ export const app = new Spiceflow({
       <>
         <TabBar orgId={orgId} projectId={projectId} pathname={url.pathname} />
         <div className="border-t border-border" />
-        <div className="isolate relative flex max-w-(--content-max-width) mx-auto w-full border-x border-border">
+        <div className="isolate grow relative flex max-w-(--content-max-width) mx-auto w-full border-x border-border">
           <Sidebar
             orgs={orgs}
             projects={projects}
@@ -721,9 +721,9 @@ function XIcon({ className }: { className?: string }) {
 
 function Footer() {
   return (
-    <footer className="flex-1 flex flex-col justify-stretch">
+    <footer className="flex flex-col ">
       <div className="border-t border-border" />
-      <div className="max-w-(--content-max-width) grow mx-auto w-full border-x border-border">
+      <div className="py-4 max-w-(--content-max-width) grow mx-auto w-full border-x border-border">
         <div className="flex items-center justify-end gap-4 px-6 py-4">
           <FooterColo />
           <span className="text-xs text-muted-foreground">
