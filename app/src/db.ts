@@ -70,6 +70,19 @@ async function listOAuthHosts(): Promise<string[]> {
   return rows.map((row) => row.host)
 }
 
+// Better Auth trusts the current request host plus previously registered hosts.
+// This is safe in the current Cloudflare Workers setup because the host is tied
+// to Cloudflare routing, not an arbitrary forged incoming Host header:
+// - Custom Domains require an exact hostname match to invoke the worker:
+//   https://developers.cloudflare.com/workers/configuration/routing/custom-domains/
+// - Workers/resolveOverride keep Host aligned with the URL for security reasons:
+//   https://developers.cloudflare.com/workers/runtime-apis/request/
+// - Cloudflare explicitly says forged Host headers are blocked to prevent
+//   bypassing other customers' security settings:
+//   https://news.ycombinator.com/item?id=25058579
+// If ingress ever moves outside that model (extra proxies, wildcard SaaS
+// routing, etc.), revisit this and add an explicit app-level allowlist instead
+// of trusting DB entries.
 export async function ensureOAuthClient(request: Request): Promise<string> {
   const db = getDb()
   const host = getRequestHost(request)
