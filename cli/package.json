@@ -18,6 +18,8 @@
     "build:native": "tsx scripts/build.ts",
     "build:native:macos": "tsx scripts/build.ts darwin-arm64 darwin-x64",
     "generate:client": "tsx scripts/generate-client.ts",
+    "test": "pnpm exec vitest run",
+    "test:e2e": "pnpm exec vitest run test/e2e.test.ts",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "[ -n \"$CI\" ] || (pnpm build && pnpm build:native:macos)"
   },

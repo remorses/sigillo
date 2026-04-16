@@ -724,8 +724,8 @@ fn runChildProcess(
         env_map,
         redact_values,
         argv,
-        File.stdout().writer(),
-        File.stderr().writer(),
+        File.stdout(),
+        File.stderr(),
     );
 }
 
@@ -788,7 +788,6 @@ const PipeStreamResult = struct {
 
 const RedactionPlan = struct {
     sorted_values: []const []const u8,
-    keep_tail_len: usize,
 };
 
 fn createRedactionPlan(
@@ -804,7 +803,6 @@ fn createRedactionPlan(
 
     return .{
         .sorted_values = sorted_values,
-        .keep_tail_len = if (maxSecretLen(sorted_values) > 0) maxSecretLen(sorted_values) - 1 else 0,
     };
 }
 
@@ -853,10 +851,10 @@ fn flushRedactedPending(
 
     const write_len = if (flush_all)
         pending.items.len
-    else if (pending.items.len > redaction_plan.keep_tail_len)
-        pending.items.len - redaction_plan.keep_tail_len
-    else
-        0;
+    else blk: {
+        const overlap_len = overlapTailLen(pending.items, redaction_plan.sorted_values);
+        break :blk pending.items.len - overlap_len;
+    };
 
     if (write_len == 0) return;
 
@@ -868,12 +866,21 @@ fn flushRedactedPending(
     pending.items.len = tail_len;
 }
 
-fn maxSecretLen(redact_values: []const []const u8) usize {
-    var max_len: usize = 0;
+fn overlapTailLen(output: []const u8, redact_values: []const []const u8) usize {
+    var best: usize = 0;
     for (redact_values) |value| {
-        max_len = @max(max_len, value.len);
+        if (value.len <= 1) continue;
+
+        const max_overlap = @min(output.len, value.len - 1);
+        var overlap = max_overlap;
+        while (overlap > best) : (overlap -= 1) {
+            if (std.mem.eql(u8, output[output.len - overlap ..], value[0..overlap])) {
+                best = overlap;
+                break;
+            }
+        }
     }
-    return max_len;
+    return best;
 }
 
 fn redactInPlace(output: []u8, redact_values: []const []const u8) void {
@@ -1776,6 +1783,25 @@ test "streaming redaction handles overlapping secrets" {
     try flushRedactedPending(&pending, redaction_plan, true, output.writer(allocator));
 
     try std.testing.expectEqualStrings("value=****************", output.items);
+}
+
+test "streaming redaction flushes short safe output immediately" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var pending = std.ArrayListUnmanaged(u8).empty;
+    defer pending.deinit(allocator);
+    var output = std.ArrayListUnmanaged(u8).empty;
+    defer output.deinit(allocator);
+
+    const redaction_plan = try createRedactionPlan(allocator, &.{"sk_live_51QwertyUIOPasdfGHJKLzxcvbnm1234567890"});
+
+    try pending.appendSlice(allocator, "chunk-1\n");
+    try flushRedactedPending(&pending, redaction_plan, false, output.writer(allocator));
+
+    try std.testing.expectEqualStrings("chunk-1\n", output.items);
+    try std.testing.expectEqual(@as(usize, 0), pending.items.len);
 }
 
 test "runChildProcessWithWriters streams large stdout without buffering it all" {
