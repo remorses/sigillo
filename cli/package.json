@@ -17,6 +17,7 @@
     "build:zig": "zig build",
     "build:native": "tsx scripts/build.ts",
     "build:native:macos": "tsx scripts/build.ts darwin-arm64 darwin-x64",
+    "generate:client": "tsx scripts/generate-client.ts",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "[ -n \"$CI\" ] || (pnpm build && pnpm build:native:macos)"
   },

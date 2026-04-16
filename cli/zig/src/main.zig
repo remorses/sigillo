@@ -52,6 +52,80 @@ const Run = zeke.cmd("run <...cmd>", "Run a command with secrets injected")
     .example("sigillo run -- env")
     .example("sigillo run --command 'echo $MY_SECRET'");
 
+const Secrets = zeke.cmd("secrets", "List secrets for the configured environment")
+    .option("--environment [id]", "Environment ID override")
+    .option("--token [token]", "Auth token override")
+    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+
+const SecretsGet = zeke.cmd("secrets get <name>", "Get a secret value")
+    .option("--environment [id]", "Environment ID override")
+    .option("--token [token]", "Auth token override")
+    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+
+const SecretsSet = zeke.cmd("secrets set <name> <value>", "Set a secret value")
+    .option("--environment [id]", "Environment ID override")
+    .option("--token [token]", "Auth token override")
+    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+
+const SecretsDelete = zeke.cmd("secrets delete <name>", "Delete a secret")
+    .option("--environment [id]", "Environment ID override")
+    .option("--token [token]", "Auth token override")
+    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+
+const SecretsDownload = zeke.cmd("secrets download", "Download all secrets as YAML")
+    .option("--environment [id]", "Environment ID override")
+    .option("--token [token]", "Auth token override")
+    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+
+const Projects = zeke.cmd("projects", "List projects across organizations")
+    .option("--token [token]", "Auth token override")
+    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+
+const ProjectsCreate = zeke.cmd("projects create", "Create a project")
+    .option("--org <id>", "Organization ID")
+    .option("--name <name>", "Project name")
+    .option("--token [token]", "Auth token override")
+    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+
+const ProjectsGet = zeke.cmd("projects get <id>", "Get project details")
+    .option("--token [token]", "Auth token override")
+    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+
+const ProjectsUpdate = zeke.cmd("projects update <id>", "Update a project")
+    .option("--name <name>", "Project name")
+    .option("--token [token]", "Auth token override")
+    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+
+const ProjectsDelete = zeke.cmd("projects delete <id>", "Delete a project")
+    .option("--token [token]", "Auth token override")
+    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+
+const Environments = zeke.cmd("environments", "List environments for the configured project")
+    .option("--project [id]", "Project ID override")
+    .option("--token [token]", "Auth token override")
+    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+
+const EnvironmentsCreate = zeke.cmd("environments create", "Create an environment")
+    .option("--project <id>", "Project ID")
+    .option("--name <name>", "Environment name")
+    .option("--slug <slug>", "Environment slug")
+    .option("--token [token]", "Auth token override")
+    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+
+const EnvironmentsGet = zeke.cmd("environments get <id>", "Get environment details")
+    .option("--token [token]", "Auth token override")
+    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+
+const EnvironmentsRename = zeke.cmd("environments rename <id>", "Rename an environment")
+    .option("--name [name]", "Updated environment name")
+    .option("--slug [slug]", "Updated environment slug")
+    .option("--token [token]", "Auth token override")
+    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+
+const EnvironmentsDelete = zeke.cmd("environments delete <id>", "Delete an environment")
+    .option("--token [token]", "Auth token override")
+    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+
 fn loginAction(_: Login.Args, opts: Login.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
@@ -261,7 +335,11 @@ fn meAction(_: Me.Args, opts: Me.Options) !void {
     };
     const api_url = resolved.api_url.?; // always set — defaults to https://sigillo.dev
 
-    const res = client.request(allocator, .GET, api_url, "/api/me", token, null) catch |err| {
+    const res = client.getMe(.{
+        .allocator = allocator,
+        .api_url = api_url,
+        .token = token,
+    }) catch |err| {
         try color.err(stderr, "error");
         try stderr.print(": failed to fetch /api/me: {s}\n", .{@errorName(err)});
         std.process.exit(1);
@@ -278,47 +356,25 @@ fn meAction(_: Me.Args, opts: Me.Options) !void {
         return;
     }
 
-    const parsed = try std.json.parseFromSliceLeaky(std.json.Value, allocator, res.body, .{});
-
-    const root = switch (parsed) {
-        .object => |value| value,
-        else => {
-            try stdout.print("{s}\n", .{res.body});
-            return;
-        },
-    };
-
-    const user = root.get("user") orelse {
+    const me = res.value orelse {
         try stdout.print("{s}\n", .{res.body});
         return;
     };
-    if (user == .object) {
-        const user_obj = user.object;
-        const name = if (user_obj.get("name")) |value| switch (value) { .string => |s| s, else => "—" } else "—";
-        const email = if (user_obj.get("email")) |value| switch (value) { .string => |s| s, else => "—" } else "—";
-        try color.blue(stdout, "User:  ");
-        try color.bold(stdout, name);
-        try stdout.writeAll("\n");
-        try color.blue(stdout, "Email: ");
-        try stdout.print("{s}\n", .{email});
-    }
+    try color.blue(stdout, "User:  ");
+    try color.bold(stdout, if (me.user.name.len > 0) me.user.name else "—");
+    try stdout.writeAll("\n");
+    try color.blue(stdout, "Email: ");
+    try stdout.print("{s}\n", .{if (me.user.email.len > 0) me.user.email else "—"});
 
-    if (root.get("orgs")) |orgs| {
-        if (orgs == .array and orgs.array.items.len > 0) {
+    if (me.orgs.len > 0) {
+        try stdout.writeAll("\n");
+        try color.blue(stdout, "Organizations:\n");
+        for (me.orgs) |org| {
+            try stdout.writeAll("  ");
+            try color.bold(stdout, org.name);
+            try stdout.print("  {s}  ", .{org.id});
+            try color.dim(stdout, org.role);
             try stdout.writeAll("\n");
-            try color.blue(stdout, "Organizations:\n");
-            for (orgs.array.items) |org| {
-                if (org != .object) continue;
-                const org_obj = org.object;
-                const id = if (org_obj.get("id")) |value| switch (value) { .string => |s| s, else => "—" } else "—";
-                const name = if (org_obj.get("name")) |value| switch (value) { .string => |s| s, else => "—" } else "—";
-                const role = if (org_obj.get("role")) |value| switch (value) { .string => |s| s, else => "—" } else "—";
-                try stdout.writeAll("  ");
-                try color.bold(stdout, name);
-                try stdout.print("  {s}  ", .{id});
-                try color.dim(stdout, role);
-                try stdout.writeAll("\n");
-            }
         }
     }
 }
@@ -353,7 +409,11 @@ fn setupAction(_: Setup.Args, opts: Setup.Options) !void {
     // ── Resolve project ────────────────────────────────────────────
     const project: []const u8 = if (opts.project) |p| p else if (is_tty) proj: {
         // Fetch orgs → projects and present an interactive select.
-        const me_res = client.request(allocator, .GET, api_url, "/api/me", token, null) catch |err| {
+        const me_res = client.getMe(.{
+            .allocator = allocator,
+            .api_url = api_url,
+            .token = token,
+        }) catch |err| {
             try color.err(stderr, "error");
             try stderr.print(": failed to fetch user info: {s}\n", .{@errorName(err)});
             std.process.exit(1);
@@ -364,7 +424,12 @@ fn setupAction(_: Setup.Args, opts: Setup.Options) !void {
             try stderr.print(": failed to fetch user info ({d}): {s}\n", .{ me_res.status, message });
             std.process.exit(1);
         }
-        const orgs = try client.jsonNamedArray(allocator, me_res.body, "orgs");
+        const me = me_res.value orelse {
+            try color.err(stderr, "error");
+            try stderr.print(": invalid user info response\n", .{});
+            std.process.exit(1);
+        };
+        const orgs = me.orgs;
         if (orgs.len == 0) {
             try color.err(stderr, "error");
             try stderr.print(": no organizations found — create one first\n", .{});
@@ -375,11 +440,15 @@ fn setupAction(_: Setup.Args, opts: Setup.Options) !void {
         const OrgProject = struct { id: []const u8, name: []const u8, org_name: []const u8 };
         var all_projects = std.ArrayListUnmanaged(OrgProject).empty;
         for (orgs) |org| {
-            const proj_path = try std.fmt.allocPrint(allocator, "/api/projects?orgId={s}", .{org.id});
-            const proj_res = client.request(allocator, .GET, api_url, proj_path, token, null) catch continue;
+            const proj_res = client.listProjects(.{
+                .allocator = allocator,
+                .api_url = api_url,
+                .token = token,
+                .org_id = org.id,
+            }) catch continue;
             if (proj_res.status != 200) continue;
-            const items = try client.jsonNamedArray(allocator, proj_res.body, "projects");
-            for (items) |item| try all_projects.append(allocator, .{ .id = item.id, .name = item.name, .org_name = org.name });
+            const projects = proj_res.value orelse continue;
+            for (projects.projects) |item| try all_projects.append(allocator, .{ .id = item.id, .name = item.name, .org_name = org.name });
         }
 
         if (all_projects.items.len == 0) {
@@ -411,8 +480,12 @@ fn setupAction(_: Setup.Args, opts: Setup.Options) !void {
     };
 
     // ── Fetch environments for the chosen project ──────────────────
-    const env_path = try std.fmt.allocPrint(allocator, "/api/projects/{s}/environments", .{project});
-    const env_res = client.request(allocator, .GET, api_url, env_path, token, null) catch |err| {
+    const env_res = client.listEnvironments(.{
+        .allocator = allocator,
+        .api_url = api_url,
+        .token = token,
+        .project_id = project,
+    }) catch |err| {
         try color.err(stderr, "error");
         try stderr.print(": failed to fetch environments: {s}\n", .{@errorName(err)});
         std.process.exit(1);
@@ -423,7 +496,12 @@ fn setupAction(_: Setup.Args, opts: Setup.Options) !void {
         try stderr.print(": failed to fetch environments ({d}): {s}\n", .{ env_res.status, message });
         std.process.exit(1);
     }
-    const all_envs = try client.jsonNamedArray(allocator, env_res.body, "environments");
+    const envs = env_res.value orelse {
+        try color.err(stderr, "error");
+        try stderr.print(": invalid environments response\n", .{});
+        std.process.exit(1);
+    };
+    const all_envs = envs.environments;
 
     // ── Resolve environment ────────────────────────────────────────
     const environment: []const u8 = if (opts.environment) |e| env_val: {
@@ -523,7 +601,13 @@ fn runAction(args: Run.Args, opts: Run.Options) !void {
     };
 
     const path = try std.fmt.allocPrint(allocator, "/api/environments/{s}/secrets/download?format=json", .{environment});
-    const res = client.request(allocator, .GET, api_url, path, token, null) catch |err| {
+    const res = client.request(.{
+        .allocator = allocator,
+        .method = .GET,
+        .base_url = api_url,
+        .path = path,
+        .token = token,
+    }) catch |err| {
         try color.err(stderr, "error");
         try stderr.print(": failed to fetch secrets: {s}\n", .{@errorName(err)});
         std.process.exit(1);
@@ -587,6 +671,582 @@ fn runAction(args: Run.Args, opts: Run.Options) !void {
         .Exited => |code| std.process.exit(code),
         else => std.process.exit(1),
     }
+}
+
+const ApiContext = struct {
+    api_url: []const u8,
+    token: []const u8,
+};
+
+const ProjectContext = struct {
+    api: ApiContext,
+    project_id: []const u8,
+};
+
+const EnvironmentContext = struct {
+    api: ApiContext,
+    environment_id: []const u8,
+};
+
+fn resolveApiContext(allocator: std.mem.Allocator, cwd: []const u8, flags: config.ResolvedConfig) !ApiContext {
+    const resolved = try config.resolve(allocator, cwd, flags);
+    return .{
+        .api_url = resolved.api_url orelse "https://sigillo.dev",
+        .token = resolved.token orelse return error.NotLoggedIn,
+    };
+}
+
+fn resolveProjectContext(allocator: std.mem.Allocator, cwd: []const u8, flags: config.ResolvedConfig) !ProjectContext {
+    const resolved = try config.resolve(allocator, cwd, flags);
+    return .{
+        .api = .{
+            .api_url = resolved.api_url orelse "https://sigillo.dev",
+            .token = resolved.token orelse return error.NotLoggedIn,
+        },
+        .project_id = resolved.project orelse return error.ProjectNotConfigured,
+    };
+}
+
+fn resolveEnvironmentContext(allocator: std.mem.Allocator, cwd: []const u8, flags: config.ResolvedConfig) !EnvironmentContext {
+    const resolved = try config.resolve(allocator, cwd, flags);
+    return .{
+        .api = .{
+            .api_url = resolved.api_url orelse "https://sigillo.dev",
+            .token = resolved.token orelse return error.NotLoggedIn,
+        },
+        .environment_id = resolved.environment orelse return error.EnvironmentNotConfigured,
+    };
+}
+
+fn quoteString(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+    return std.json.stringifyAlloc(allocator, value, .{});
+}
+
+fn requireApiContext(allocator: std.mem.Allocator, stderr: Writer, cwd: []const u8, flags: config.ResolvedConfig) !ApiContext {
+    return resolveApiContext(allocator, cwd, flags) catch |err| switch (err) {
+        error.NotLoggedIn => {
+            try color.err(stderr, "error");
+            try stderr.print(": not logged in\n", .{});
+            try stderr.writeAll("  sigillo login\n");
+            std.process.exit(1);
+        },
+        else => return err,
+    };
+}
+
+fn requireProjectContext(allocator: std.mem.Allocator, stderr: Writer, cwd: []const u8, flags: config.ResolvedConfig) !ProjectContext {
+    return resolveProjectContext(allocator, cwd, flags) catch |err| switch (err) {
+        error.NotLoggedIn => {
+            try color.err(stderr, "error");
+            try stderr.print(": not logged in\n", .{});
+            try stderr.writeAll("  sigillo login\n");
+            std.process.exit(1);
+        },
+        error.ProjectNotConfigured => {
+            try color.err(stderr, "error");
+            try stderr.print(": project not configured\n", .{});
+            try stderr.writeAll("  sigillo setup --project <PROJECT_ID> --environment <ENVIRONMENT_ID>\n");
+            std.process.exit(1);
+        },
+        else => return err,
+    };
+}
+
+fn requireEnvironmentContext(allocator: std.mem.Allocator, stderr: Writer, cwd: []const u8, flags: config.ResolvedConfig) !EnvironmentContext {
+    return resolveEnvironmentContext(allocator, cwd, flags) catch |err| switch (err) {
+        error.NotLoggedIn => {
+            try color.err(stderr, "error");
+            try stderr.print(": not logged in\n", .{});
+            try stderr.writeAll("  sigillo login\n");
+            std.process.exit(1);
+        },
+        error.EnvironmentNotConfigured => {
+            try color.err(stderr, "error");
+            try stderr.print(": environment not configured\n", .{});
+            try stderr.writeAll("  sigillo setup --project <PROJECT_ID> --environment <ENVIRONMENT_ID>\n");
+            std.process.exit(1);
+        },
+        else => return err,
+    };
+}
+
+fn secretsAction(_: Secrets.Args, opts: Secrets.Options) !void {
+    const stderr = getStderr();
+    const stdout = getStdout();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const cwd = try config.getCwd(allocator);
+    const ctx = try requireEnvironmentContext(allocator, stderr, cwd, .{
+        .token = opts.token,
+        .api_url = opts.api_url,
+        .environment = opts.environment,
+    });
+
+    const res = try client.listSecrets(.{
+        .allocator = allocator,
+        .api_url = ctx.api.api_url,
+        .token = ctx.api.token,
+        .environment_id = ctx.environment_id,
+    });
+    if (res.status != 200 or res.value == null) {
+        const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
+        try color.err(stderr, "error");
+        try stderr.print(": failed to list secrets ({d}): {s}\n", .{ res.status, message });
+        std.process.exit(1);
+    }
+
+    const payload = res.value.?;
+    const env_id = try quoteString(allocator, payload.environmentId);
+    try stdout.print("environment_id: {s}\nsecrets:\n", .{env_id});
+    for (payload.secrets) |secret| {
+        const id = try quoteString(allocator, secret.id);
+        const name = try quoteString(allocator, secret.name);
+        try stdout.print("  - id: {s}\n    name: {s}\n", .{ id, name });
+    }
+}
+
+fn secretsGetAction(args: SecretsGet.Args, opts: SecretsGet.Options) !void {
+    const stderr = getStderr();
+    const stdout = getStdout();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const cwd = try config.getCwd(allocator);
+    const ctx = try requireEnvironmentContext(allocator, stderr, cwd, .{
+        .token = opts.token,
+        .api_url = opts.api_url,
+        .environment = opts.environment,
+    });
+
+    const res = try client.getSecret(.{
+        .allocator = allocator,
+        .api_url = ctx.api.api_url,
+        .token = ctx.api.token,
+        .environment_id = ctx.environment_id,
+        .name = args.name,
+    });
+    if (res.status != 200 or res.value == null) {
+        const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
+        try color.err(stderr, "error");
+        try stderr.print(": failed to get secret ({d}): {s}\n", .{ res.status, message });
+        std.process.exit(1);
+    }
+
+    const secret = res.value.?;
+    try stdout.print(
+        "environment_id: {s}\nname: {s}\nvalue: {s}\n",
+        .{
+            try quoteString(allocator, secret.environmentId),
+            try quoteString(allocator, secret.name),
+            try quoteString(allocator, secret.value),
+        },
+    );
+}
+
+fn secretsSetAction(args: SecretsSet.Args, opts: SecretsSet.Options) !void {
+    const stderr = getStderr();
+    const stdout = getStdout();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const cwd = try config.getCwd(allocator);
+    const ctx = try requireEnvironmentContext(allocator, stderr, cwd, .{
+        .token = opts.token,
+        .api_url = opts.api_url,
+        .environment = opts.environment,
+    });
+
+    const res = try client.setSecret(.{
+        .allocator = allocator,
+        .api_url = ctx.api.api_url,
+        .token = ctx.api.token,
+        .environment_id = ctx.environment_id,
+        .name = args.name,
+        .value = args.value,
+    });
+    if (res.status != 200 or res.value == null) {
+        const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
+        try color.err(stderr, "error");
+        try stderr.print(": failed to set secret ({d}): {s}\n", .{ res.status, message });
+        std.process.exit(1);
+    }
+
+    const secret = res.value.?;
+    try stdout.print(
+        "ok: true\nenvironment_id: {s}\nid: {s}\nname: {s}\n",
+        .{
+            try quoteString(allocator, secret.environmentId),
+            try quoteString(allocator, secret.id),
+            try quoteString(allocator, secret.name),
+        },
+    );
+}
+
+fn secretsDeleteAction(args: SecretsDelete.Args, opts: SecretsDelete.Options) !void {
+    const stderr = getStderr();
+    const stdout = getStdout();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const cwd = try config.getCwd(allocator);
+    const ctx = try requireEnvironmentContext(allocator, stderr, cwd, .{
+        .token = opts.token,
+        .api_url = opts.api_url,
+        .environment = opts.environment,
+    });
+
+    const res = try client.deleteSecret(.{
+        .allocator = allocator,
+        .api_url = ctx.api.api_url,
+        .token = ctx.api.token,
+        .environment_id = ctx.environment_id,
+        .name = args.name,
+    });
+    if (res.status != 200 or res.value == null) {
+        const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
+        try color.err(stderr, "error");
+        try stderr.print(": failed to delete secret ({d}): {s}\n", .{ res.status, message });
+        std.process.exit(1);
+    }
+
+    try stdout.print("ok: true\nname: {s}\n", .{try quoteString(allocator, res.value.?.name)});
+}
+
+fn secretsDownloadAction(_: SecretsDownload.Args, opts: SecretsDownload.Options) !void {
+    const stderr = getStderr();
+    const stdout = getStdout();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const cwd = try config.getCwd(allocator);
+    const ctx = try requireEnvironmentContext(allocator, stderr, cwd, .{
+        .token = opts.token,
+        .api_url = opts.api_url,
+        .environment = opts.environment,
+    });
+
+    const res = try client.downloadSecretsYaml(.{
+        .allocator = allocator,
+        .api_url = ctx.api.api_url,
+        .token = ctx.api.token,
+        .environment_id = ctx.environment_id,
+    });
+    if (res.status != 200) {
+        const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
+        try color.err(stderr, "error");
+        try stderr.print(": failed to download secrets ({d}): {s}\n", .{ res.status, message });
+        std.process.exit(1);
+    }
+
+    try stdout.print("{s}\n", .{std.mem.trimRight(u8, res.body, "\n")});
+}
+
+fn projectsAction(_: Projects.Args, opts: Projects.Options) !void {
+    const stderr = getStderr();
+    const stdout = getStdout();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const cwd = try config.getCwd(allocator);
+    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
+    const me = try client.getMe(.{ .allocator = allocator, .api_url = api_ctx.api_url, .token = api_ctx.token });
+    if (me.status != 200 or me.value == null) {
+        const message = client.parseError(allocator, me.body) orelse try allocator.dupe(u8, "unknown error");
+        try color.err(stderr, "error");
+        try stderr.print(": failed to list projects ({d}): {s}\n", .{ me.status, message });
+        std.process.exit(1);
+    }
+
+    try stdout.writeAll("projects:\n");
+    for (me.value.?.orgs) |org| {
+        const projects = try client.listProjects(.{
+            .allocator = allocator,
+            .api_url = api_ctx.api_url,
+            .token = api_ctx.token,
+            .org_id = org.id,
+        });
+        if (projects.status != 200 or projects.value == null) continue;
+        for (projects.value.?.projects) |project| {
+            try stdout.print(
+                "  - id: {s}\n    name: {s}\n    org_id: {s}\n    org_name: {s}\n",
+                .{
+                    try quoteString(allocator, project.id),
+                    try quoteString(allocator, project.name),
+                    try quoteString(allocator, project.orgId),
+                    try quoteString(allocator, org.name),
+                },
+            );
+        }
+    }
+}
+
+fn projectsCreateAction(_: ProjectsCreate.Args, opts: ProjectsCreate.Options) !void {
+    const stderr = getStderr();
+    const stdout = getStdout();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const cwd = try config.getCwd(allocator);
+    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
+    const res = try client.createProject(.{
+        .allocator = allocator,
+        .api_url = api_ctx.api_url,
+        .token = api_ctx.token,
+        .org_id = opts.org,
+        .name = opts.name,
+    });
+    if (res.status != 200 or res.value == null) {
+        const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
+        try color.err(stderr, "error");
+        try stderr.print(": failed to create project ({d}): {s}\n", .{ res.status, message });
+        std.process.exit(1);
+    }
+    const project = res.value.?;
+    try stdout.print("ok: true\nid: {s}\nname: {s}\norg_id: {s}\n", .{
+        try quoteString(allocator, project.id),
+        try quoteString(allocator, project.name),
+        try quoteString(allocator, project.orgId),
+    });
+}
+
+fn projectsGetAction(args: ProjectsGet.Args, opts: ProjectsGet.Options) !void {
+    const stderr = getStderr();
+    const stdout = getStdout();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const cwd = try config.getCwd(allocator);
+    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
+    const res = try client.getProject(.{ .allocator = allocator, .api_url = api_ctx.api_url, .token = api_ctx.token, .project_id = args.id });
+    if (res.status != 200 or res.value == null) {
+        const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
+        try color.err(stderr, "error");
+        try stderr.print(": failed to get project ({d}): {s}\n", .{ res.status, message });
+        std.process.exit(1);
+    }
+    const project = res.value.?;
+    try stdout.print("id: {s}\nname: {s}\norg_id: {s}\nenvironments:\n", .{
+        try quoteString(allocator, project.id),
+        try quoteString(allocator, project.name),
+        try quoteString(allocator, project.orgId),
+    });
+    for (project.environments) |environment| {
+        try stdout.print("  - id: {s}\n    name: {s}\n    slug: {s}\n", .{
+            try quoteString(allocator, environment.id),
+            try quoteString(allocator, environment.name),
+            try quoteString(allocator, environment.slug),
+        });
+    }
+}
+
+fn projectsUpdateAction(args: ProjectsUpdate.Args, opts: ProjectsUpdate.Options) !void {
+    const stderr = getStderr();
+    const stdout = getStdout();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const cwd = try config.getCwd(allocator);
+    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
+    const res = try client.updateProject(.{ .allocator = allocator, .api_url = api_ctx.api_url, .token = api_ctx.token, .project_id = args.id, .name = opts.name });
+    if (res.status != 200 or res.value == null) {
+        const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
+        try color.err(stderr, "error");
+        try stderr.print(": failed to update project ({d}): {s}\n", .{ res.status, message });
+        std.process.exit(1);
+    }
+    const project = res.value.?;
+    try stdout.print("ok: true\nid: {s}\nname: {s}\norg_id: {s}\n", .{
+        try quoteString(allocator, project.id),
+        try quoteString(allocator, project.name),
+        try quoteString(allocator, project.orgId),
+    });
+}
+
+fn projectsDeleteAction(args: ProjectsDelete.Args, opts: ProjectsDelete.Options) !void {
+    const stderr = getStderr();
+    const stdout = getStdout();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const cwd = try config.getCwd(allocator);
+    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
+    const res = try client.deleteProject(.{ .allocator = allocator, .api_url = api_ctx.api_url, .token = api_ctx.token, .project_id = args.id });
+    if (res.status != 200 or res.value == null) {
+        const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
+        try color.err(stderr, "error");
+        try stderr.print(": failed to delete project ({d}): {s}\n", .{ res.status, message });
+        std.process.exit(1);
+    }
+    try stdout.print("ok: true\nid: {s}\n", .{try quoteString(allocator, res.value.?.id)});
+}
+
+fn environmentsAction(_: Environments.Args, opts: Environments.Options) !void {
+    const stderr = getStderr();
+    const stdout = getStdout();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const cwd = try config.getCwd(allocator);
+    const ctx = try requireProjectContext(allocator, stderr, cwd, .{
+        .token = opts.token,
+        .api_url = opts.api_url,
+        .project = opts.project,
+    });
+    const res = try client.listEnvironments(.{ .allocator = allocator, .api_url = ctx.api.api_url, .token = ctx.api.token, .project_id = ctx.project_id });
+    if (res.status != 200 or res.value == null) {
+        const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
+        try color.err(stderr, "error");
+        try stderr.print(": failed to list environments ({d}): {s}\n", .{ res.status, message });
+        std.process.exit(1);
+    }
+    try stdout.print("project_id: {s}\nenvironments:\n", .{try quoteString(allocator, ctx.project_id)});
+    for (res.value.?.environments) |environment| {
+        try stdout.print("  - id: {s}\n    name: {s}\n    slug: {s}\n", .{
+            try quoteString(allocator, environment.id),
+            try quoteString(allocator, environment.name),
+            try quoteString(allocator, environment.slug),
+        });
+    }
+}
+
+fn environmentsCreateAction(_: EnvironmentsCreate.Args, opts: EnvironmentsCreate.Options) !void {
+    const stderr = getStderr();
+    const stdout = getStdout();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const cwd = try config.getCwd(allocator);
+    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
+    const res = try client.createEnvironment(.{
+        .allocator = allocator,
+        .api_url = api_ctx.api_url,
+        .token = api_ctx.token,
+        .project_id = opts.project,
+        .name = opts.name,
+        .slug = opts.slug,
+    });
+    if (res.status != 200 or res.value == null) {
+        const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
+        try color.err(stderr, "error");
+        try stderr.print(": failed to create environment ({d}): {s}\n", .{ res.status, message });
+        std.process.exit(1);
+    }
+    const environment = res.value.?;
+    try stdout.print("ok: true\nid: {s}\nproject_id: {s}\nname: {s}\nslug: {s}\n", .{
+        try quoteString(allocator, environment.id),
+        try quoteString(allocator, environment.projectId),
+        try quoteString(allocator, environment.name),
+        try quoteString(allocator, environment.slug),
+    });
+}
+
+fn environmentsGetAction(args: EnvironmentsGet.Args, opts: EnvironmentsGet.Options) !void {
+    const stderr = getStderr();
+    const stdout = getStdout();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const cwd = try config.getCwd(allocator);
+    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
+    const res = try client.getEnvironment(.{ .allocator = allocator, .api_url = api_ctx.api_url, .token = api_ctx.token, .environment_id = args.id });
+    if (res.status != 200 or res.value == null) {
+        const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
+        try color.err(stderr, "error");
+        try stderr.print(": failed to get environment ({d}): {s}\n", .{ res.status, message });
+        std.process.exit(1);
+    }
+    const environment = res.value.?;
+    try stdout.print("id: {s}\nproject_id: {s}\nname: {s}\nslug: {s}\n", .{
+        try quoteString(allocator, environment.id),
+        try quoteString(allocator, environment.projectId),
+        try quoteString(allocator, environment.name),
+        try quoteString(allocator, environment.slug),
+    });
+}
+
+fn environmentsRenameAction(args: EnvironmentsRename.Args, opts: EnvironmentsRename.Options) !void {
+    const stderr = getStderr();
+    const stdout = getStdout();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const cwd = try config.getCwd(allocator);
+    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
+    if (opts.name == null and opts.slug == null) {
+        try color.err(stderr, "error");
+        try stderr.print(": pass --name, --slug, or both\n", .{});
+        std.process.exit(1);
+    }
+    const res = try client.updateEnvironment(.{
+        .allocator = allocator,
+        .api_url = api_ctx.api_url,
+        .token = api_ctx.token,
+        .environment_id = args.id,
+        .name = opts.name,
+        .slug = opts.slug,
+    });
+    if (res.status != 200 or res.value == null) {
+        const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
+        try color.err(stderr, "error");
+        try stderr.print(": failed to rename environment ({d}): {s}\n", .{ res.status, message });
+        std.process.exit(1);
+    }
+    const environment = res.value.?;
+    try stdout.print("ok: true\nid: {s}\nproject_id: {s}\nname: {s}\nslug: {s}\n", .{
+        try quoteString(allocator, environment.id),
+        try quoteString(allocator, environment.projectId),
+        try quoteString(allocator, environment.name),
+        try quoteString(allocator, environment.slug),
+    });
+}
+
+fn environmentsDeleteAction(args: EnvironmentsDelete.Args, opts: EnvironmentsDelete.Options) !void {
+    const stderr = getStderr();
+    const stdout = getStdout();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const cwd = try config.getCwd(allocator);
+    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
+    const res = try client.deleteEnvironment(.{ .allocator = allocator, .api_url = api_ctx.api_url, .token = api_ctx.token, .environment_id = args.id });
+    if (res.status != 200 or res.value == null) {
+        const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
+        try color.err(stderr, "error");
+        try stderr.print(": failed to delete environment ({d}): {s}\n", .{ res.status, message });
+        std.process.exit(1);
+    }
+    try stdout.print("ok: true\nid: {s}\n", .{try quoteString(allocator, res.value.?.id)});
 }
 
 fn mergeSecretsIntoEnvMap(env_map: *std.process.EnvMap, secrets: std.json.ObjectMap) !void {
@@ -916,6 +1576,63 @@ test "run command still parses flags before double dash" {
     try std.testing.expect(State.used_disable_redaction);
 }
 
+test "secrets command parses environment override" {
+    const State = struct {
+        var environment: ?[]const u8 = null;
+
+        fn action(_: Secrets.Args, opts: Secrets.Options) !void {
+            environment = opts.environment;
+        }
+    };
+
+    const TestSecrets = Secrets.bind(State.action);
+    var app = zeke.App(.{TestSecrets}).init(std.testing.allocator, "sigillo");
+    try app.dispatch(&.{ "secrets", "--environment", "env_123" });
+
+    try std.testing.expectEqualStrings("env_123", State.environment.?);
+}
+
+test "projects create parses required options" {
+    const State = struct {
+        var org: ?[]const u8 = null;
+        var name: ?[]const u8 = null;
+
+        fn action(_: ProjectsCreate.Args, opts: ProjectsCreate.Options) !void {
+            org = opts.org;
+            name = opts.name;
+        }
+    };
+
+    const TestProjectsCreate = ProjectsCreate.bind(State.action);
+    var app = zeke.App(.{TestProjectsCreate}).init(std.testing.allocator, "sigillo");
+    try app.dispatch(&.{ "projects", "create", "--org", "org_123", "--name", "backend" });
+
+    try std.testing.expectEqualStrings("org_123", State.org.?);
+    try std.testing.expectEqualStrings("backend", State.name.?);
+}
+
+test "environments rename parses optional name and slug" {
+    const State = struct {
+        var id: ?[]const u8 = null;
+        var name: ?[]const u8 = null;
+        var slug: ?[]const u8 = null;
+
+        fn action(args: EnvironmentsRename.Args, opts: EnvironmentsRename.Options) !void {
+            id = args.id;
+            name = opts.name;
+            slug = opts.slug;
+        }
+    };
+
+    const TestEnvironmentsRename = EnvironmentsRename.bind(State.action);
+    var app = zeke.App(.{TestEnvironmentsRename}).init(std.testing.allocator, "sigillo");
+    try app.dispatch(&.{ "environments", "rename", "env_123", "--name", "prod", "--slug", "production" });
+
+    try std.testing.expectEqualStrings("env_123", State.id.?);
+    try std.testing.expectEqualStrings("prod", State.name.?);
+    try std.testing.expectEqualStrings("production", State.slug.?);
+}
+
 fn openBrowser(allocator: std.mem.Allocator, url: []const u8) void {
     const argv: []const []const u8 = switch (builtin.os.tag) {
         .macos => &.{ "open", url },
@@ -943,6 +1660,21 @@ pub fn main() !void {
         Me.bind(meAction),
         Setup.bind(setupAction),
         Run.bind(runAction),
+        Secrets.bind(secretsAction),
+        SecretsGet.bind(secretsGetAction),
+        SecretsSet.bind(secretsSetAction),
+        SecretsDelete.bind(secretsDeleteAction),
+        SecretsDownload.bind(secretsDownloadAction),
+        Projects.bind(projectsAction),
+        ProjectsCreate.bind(projectsCreateAction),
+        ProjectsGet.bind(projectsGetAction),
+        ProjectsUpdate.bind(projectsUpdateAction),
+        ProjectsDelete.bind(projectsDeleteAction),
+        Environments.bind(environmentsAction),
+        EnvironmentsCreate.bind(environmentsCreateAction),
+        EnvironmentsGet.bind(environmentsGetAction),
+        EnvironmentsRename.bind(environmentsRenameAction),
+        EnvironmentsDelete.bind(environmentsDeleteAction),
     }).init(allocator, "sigillo");
 
     const build_options = @import("build_options");
