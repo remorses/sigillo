@@ -87,7 +87,7 @@ pub fn parseJsonResult(comptime T: type, args: RequestArgs) !JsonResult(T) {
 }
 
 fn jsonBody(allocator: std.mem.Allocator, value: anytype) ![]const u8 {
-    return std.json.stringifyAlloc(allocator, value, .{});
+    return std.fmt.allocPrint(allocator, "{f}", .{std.json.fmt(value, .{})});
 }
 
 pub fn parseError(allocator: std.mem.Allocator, body: []const u8) ?[]const u8 {

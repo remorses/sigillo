@@ -22,9 +22,12 @@ fn getStderr() Writer {
 }
 
 const Login = zeke.cmd("login", "Authenticate to Sigillo with device flow")
+    .option("--token [token]", "Save an existing bearer token instead of starting device flow")
     .option("--api-url [url]", "Base URL of the Sigillo API (default: https://sigillo.dev)")
     .option("--scope [scope]", "Directory scope for saved auth (default: /)")
     .example("sigillo login")
+    .example("SIGILLO_TOKEN=sig_xxx sigillo login --scope /")
+    .example("sigillo login --token sig_xxx --scope /")
     .example("sigillo login --api-url https://sigillo.dev --scope /Users/me/project");
 
 const Logout = zeke.cmd("logout", "Remove saved auth for a scope")
@@ -174,19 +177,32 @@ fn loginAction(_: Login.Args, opts: Login.Options) !void {
     };
 
     const resolved = try config.resolve(allocator, cwd, .{
+        .token = opts.token,
         .api_url = opts.api_url,
     });
 
     const api_url = resolved.api_url.?; // always set — defaults to https://sigillo.dev
 
-    const code_res = client.request(
-        allocator,
-        .POST,
-        api_url,
-        "/api/auth/device/code",
-        null,
-        "{\"client_id\":\"sigillo-cli\"}",
-    ) catch |err| {
+    if (resolved.token) |token| {
+        try config.setScope(allocator, scope, .{
+            .token = token,
+            .api_url = api_url,
+        });
+
+        try color.green(stdout, "✔");
+        try stdout.writeAll(" Saved bearer token\n");
+        try color.dim(stdout, "Use this for CI or API-token-based secret access.\n");
+        return;
+    }
+
+    const code_res = client.request(.{
+        .allocator = allocator,
+        .method = .POST,
+        .base_url = api_url,
+        .path = "/api/auth/device/code",
+        .token = null,
+        .json_body = "{\"client_id\":\"sigillo-cli\"}",
+    }) catch |err| {
         try color.err(stderr, "error");
         try stderr.print(": failed to request device code: {s}\n", .{@errorName(err)});
         std.process.exit(1);
@@ -240,14 +256,14 @@ fn loginAction(_: Login.Args, opts: Login.Options) !void {
     while (attempts < 120) : (attempts += 1) {
         std.Thread.sleep(sleep_seconds * std.time.ns_per_s);
 
-        const token_res = client.request(
-            allocator,
-            .POST,
-            api_url,
-            "/api/auth/device/token",
-            null,
-            poll_body,
-        ) catch continue;
+        const token_res = client.request(.{
+            .allocator = allocator,
+            .method = .POST,
+            .base_url = api_url,
+            .path = "/api/auth/device/token",
+            .token = null,
+            .json_body = poll_body,
+        }) catch continue;
         if (token_res.status == 200) {
             const access_token = client.jsonString(allocator, token_res.body, "access_token") orelse {
                 try color.err(stderr, "error");
@@ -719,7 +735,7 @@ fn resolveEnvironmentContext(allocator: std.mem.Allocator, cwd: []const u8, flag
 }
 
 fn quoteString(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
-    return std.json.stringifyAlloc(allocator, value, .{});
+    return std.fmt.allocPrint(allocator, "{f}", .{std.json.fmt(value, .{})});
 }
 
 fn requireApiContext(allocator: std.mem.Allocator, stderr: Writer, cwd: []const u8, flags: config.ResolvedConfig) !ApiContext {
@@ -1631,6 +1647,25 @@ test "environments rename parses optional name and slug" {
     try std.testing.expectEqualStrings("env_123", State.id.?);
     try std.testing.expectEqualStrings("prod", State.name.?);
     try std.testing.expectEqualStrings("production", State.slug.?);
+}
+
+test "login parses token option" {
+    const State = struct {
+        var token: ?[]const u8 = null;
+        var scope: ?[]const u8 = null;
+
+        fn action(_: Login.Args, opts: Login.Options) !void {
+            token = opts.token;
+            scope = opts.scope;
+        }
+    };
+
+    const TestLogin = Login.bind(State.action);
+    var app = zeke.App(.{TestLogin}).init(std.testing.allocator, "sigillo");
+    try app.dispatch(&.{ "login", "--token", "sig_test_123", "--scope", "/" });
+
+    try std.testing.expectEqualStrings("sig_test_123", State.token.?);
+    try std.testing.expectEqualStrings("/", State.scope.?);
 }
 
 fn openBrowser(allocator: std.mem.Allocator, url: []const u8) void {
