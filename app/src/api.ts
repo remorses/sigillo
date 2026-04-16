@@ -150,8 +150,114 @@ const bulkSecretsResponseSchema = z.object({
   secrets: z.array(z.string()),
 })
 
+const downloadedSecretsFormats = [
+  'json',
+  'env',
+  'env-no-quotes',
+  'yaml',
+  'docker',
+  'dotnet-json',
+] as const
+const downloadedSecretsFormatSchema = z.enum(downloadedSecretsFormats)
 const downloadedSecretsSchema = z.record(z.string(), z.string())
 const errorResponseSchema = z.object({ error: z.string() })
+
+type DotnetJsonValue = string | { [key: string]: DotnetJsonValue }
+
+function toDotnetJsonKey(segment: string) {
+  return segment
+    .toLowerCase()
+    .replace(/(^|_)([a-z])/g, (_, _separator: string, char: string) =>
+      char.toUpperCase(),
+    )
+}
+
+function renderTextDownload(lines: string[], contentType = 'text/plain; charset=utf-8') {
+  return new Response(lines.join('\n') + '\n', {
+    headers: { 'content-type': contentType },
+  })
+}
+
+function renderKeyValueDownload(
+  entries: Record<string, string>,
+  renderValue: (value: string) => string,
+) {
+  return renderTextDownload(
+    Object.entries(entries).map(([key, value]) => `${key}=${renderValue(value)}`),
+  )
+}
+
+function buildDotnetJson(entries: Record<string, string>): DotnetJsonValue | Error {
+  const root: { [key: string]: DotnetJsonValue } = {}
+
+  for (const [rawKey, value] of Object.entries(entries)) {
+    const path = rawKey.split('__').map(toDotnetJsonKey)
+    let current = root
+
+    for (const key of path.slice(0, -1)) {
+      const existing = current[key]
+      if (existing == null) {
+        const next: { [key: string]: DotnetJsonValue } = {}
+        current[key] = next
+        current = next
+        continue
+      }
+
+      if (typeof existing === 'string') {
+        return new Error(
+          `dotnet-json format conflict: ${rawKey} overlaps with an existing scalar key`,
+        )
+      }
+
+      current = existing
+    }
+
+    const leafKey = path[path.length - 1]!
+    const existing = current[leafKey]
+    if (existing != null && typeof existing !== 'string') {
+      return new Error(
+        `dotnet-json format conflict: ${rawKey} overlaps with an existing object key`,
+      )
+    }
+
+    current[leafKey] = value
+  }
+
+  return root
+}
+
+function renderDownloadedSecrets(
+  entries: Record<string, string>,
+  format: z.infer<typeof downloadedSecretsFormatSchema>,
+) {
+  if (format === 'json') return entries
+
+  if (format === 'env') {
+    return renderKeyValueDownload(entries, (value) => JSON.stringify(value))
+  }
+
+  if (format === 'env-no-quotes') {
+    return renderKeyValueDownload(entries, (value) => value)
+  }
+
+  if (format === 'docker') {
+    return renderKeyValueDownload(entries, (value) => value.replace(/\n/g, '\\n'))
+  }
+
+  if (format === 'yaml') {
+    return renderTextDownload(
+      Object.entries(entries).map(([key, value]) => `${key}: ${JSON.stringify(value)}`),
+      'text/yaml; charset=utf-8',
+    )
+  }
+
+  const dotnetJson = buildDotnetJson(entries)
+  if (dotnetJson instanceof Error) return dotnetJson
+
+  return new Response(JSON.stringify(dotnetJson, null, 2) + '\n', {
+    headers: { 'content-type': 'application/json; charset=utf-8' },
+  })
+}
 
 export const apiApp = new Spiceflow()
   .use(openapi({ path: '/api/openapi.json' }))
@@ -487,11 +593,12 @@ export const apiApp = new Spiceflow()
 
   // ── Bulk download (like Doppler's /secrets/download) ────────────
   // Returns all secrets with decrypted values for an environment.
-  // Supports format query param: json (default), env, yaml.
+  // Supports format query param: json (default), env, env-no-quotes,
+  // yaml, docker, dotnet-json.
   .route({
     method: 'GET',
     path: '/api/environments/:environmentId/secrets/download',
-    query: z.object({ format: z.enum(['json', 'env', 'yaml']).optional() }),
+    query: z.object({ format: downloadedSecretsFormatSchema.optional() }),
     async handler({ params, request, query }) {
       await requireSecretsApiAuth(request, params.environmentId)
 
@@ -503,22 +610,11 @@ export const apiApp = new Spiceflow()
         entries[d.name] = await decrypt(d.valueEncrypted, d.iv)
       }
 
-      if (format === 'env') {
-        const lines = Object.entries(entries).map(([k, v]) => `${k}=${JSON.stringify(v)}`)
-        return new Response(lines.join('\n') + '\n', {
-          headers: { 'content-type': 'text/plain; charset=utf-8' },
-        })
+      const rendered = renderDownloadedSecrets(entries, format)
+      if (rendered instanceof Error) {
+        throw json({ error: rendered.message }, { status: 400 })
       }
-
-      if (format === 'yaml') {
-        const lines = Object.entries(entries).map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
-        return new Response(lines.join('\n') + '\n', {
-          headers: { 'content-type': 'text/yaml; charset=utf-8' },
-        })
-      }
-
-      // Default: json
-      return entries
+      return rendered
     },
   })
 

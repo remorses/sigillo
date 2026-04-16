@@ -13,6 +13,15 @@ const prompt = @import("prompt.zig");
 const File = std.fs.File;
 const Writer = File.DeprecatedWriter;
 
+const supported_mount_formats = [_][]const u8{
+    "env",
+    "env-no-quotes",
+    "json",
+    "yaml",
+    "docker",
+    "dotnet-json",
+};
+
 fn getStdout() Writer {
     return File.stdout().deprecatedWriter();
 }
@@ -48,7 +57,7 @@ const Setup = zeke.cmd("setup", "Save project and environment for the current di
 const Run = zeke.cmd("run <...cmd>", "Run a command with secrets injected")
     .option("--command [cmd]", "Run a shell command string")
     .option("--mount [path]", "Write secrets to a file before running")
-    .option("--mount-format [fmt]", "Format for mounted file: env, json, yaml (default: env)")
+    .option("--mount-format [fmt]", "Format for mounted file: env, env-no-quotes, json, yaml, docker, dotnet-json (default: env)")
     .option("--disable-redaction", "Print child output without secret redaction")
     .option("--project [id]", "Project ID override")
     .option("--environment [id]", "Environment ID override")
@@ -621,40 +630,38 @@ fn runAction(args: Run.Args, opts: Run.Options) !void {
     try mergeSecretsIntoEnvMap(&env_map, secrets);
 
     // ── Mount: write secrets to a file ────────────────────────────
-    if (opts.mount) |mount_path| {
+    const exit_code: u8 = if (opts.mount) |mount_path| mount_block: {
         const mount_format = opts.mount_format orelse "env";
 
-        // Validate format
-        const valid_formats = [_][]const u8{ "env", "json", "yaml" };
-        var format_valid = false;
-        for (valid_formats) |f| {
-            if (std.mem.eql(u8, mount_format, f)) { format_valid = true; break; }
-        }
-        if (!format_valid) {
+        if (!isSupportedMountFormat(mount_format)) {
             try color.err(stderr, "error");
-            try stderr.print(": invalid mount format '{s}' (expected: env, json, yaml)\n", .{mount_format});
+            try stderr.print(": invalid mount format '{s}' (expected: env, env-no-quotes, json, yaml, docker, dotnet-json)\n", .{mount_format});
             std.process.exit(1);
         }
 
-        // Fetch secrets in the requested format
-        const mount_url = try std.fmt.allocPrint(allocator, "/api/environments/{s}/secrets/download?format={s}", .{ environment, mount_format });
-        const mount_res = client.request(.{
-            .allocator = allocator,
-            .method = .GET,
-            .base_url = api_url,
-            .path = mount_url,
-            .token = token,
-        }) catch |err| {
-            try color.err(stderr, "error");
-            try stderr.print(": failed to fetch secrets for mount: {s}\n", .{@errorName(err)});
-            std.process.exit(1);
+        const mount_body = if (std.mem.eql(u8, mount_format, "json"))
+            res.body
+        else blk: {
+            const mount_url = try std.fmt.allocPrint(allocator, "/api/environments/{s}/secrets/download?format={s}", .{ environment, mount_format });
+            const mount_res = client.request(.{
+                .allocator = allocator,
+                .method = .GET,
+                .base_url = api_url,
+                .path = mount_url,
+                .token = token,
+            }) catch |err| {
+                try color.err(stderr, "error");
+                try stderr.print(": failed to fetch secrets for mount: {s}\n", .{@errorName(err)});
+                std.process.exit(1);
+            };
+            if (mount_res.status != 200) {
+                const message = client.parseError(allocator, mount_res.body) orelse try allocator.dupe(u8, "unknown error");
+                try color.err(stderr, "error");
+                try stderr.print(": failed to fetch secrets for mount ({d}): {s}\n", .{ mount_res.status, message });
+                std.process.exit(1);
+            }
+            break :blk mount_res.body;
         };
-        if (mount_res.status != 200) {
-            const message = client.parseError(allocator, mount_res.body) orelse try allocator.dupe(u8, "unknown error");
-            try color.err(stderr, "error");
-            try stderr.print(": failed to fetch secrets for mount ({d}): {s}\n", .{ mount_res.status, message });
-            std.process.exit(1);
-        }
 
         // Write secrets to the mount file
         {
@@ -664,7 +671,7 @@ fn runAction(args: Run.Args, opts: Run.Options) !void {
                 std.process.exit(1);
             };
             defer file.close();
-            try file.writeAll(mount_res.body);
+            try file.writeAll(mount_body);
         }
 
         // Clean up the mount file after the command finishes
@@ -676,31 +683,45 @@ fn runAction(args: Run.Args, opts: Run.Options) !void {
         };
         const mount_cleanup = MountCleanup{ .path = mount_path };
         defer mount_cleanup.cleanup();
-    }
+        break :mount_block try runChildProcess(
+            allocator,
+            gpa.allocator(),
+            &env_map,
+            if (opts.disable_redaction) &.{} else try collectLikelySecretValues(allocator, secrets),
+            if (use_shell) try shellCommandArgv(allocator, opts.command.?) else args.cmd,
+        );
+    } else try runChildProcess(
+        allocator,
+        gpa.allocator(),
+        &env_map,
+        if (opts.disable_redaction) &.{} else try collectLikelySecretValues(allocator, secrets),
+        if (use_shell) try shellCommandArgv(allocator, opts.command.?) else args.cmd,
+    );
 
-    const redact_values = if (opts.disable_redaction)
-        &.{}
-    else
-        try collectLikelySecretValues(allocator, secrets);
+    std.process.exit(exit_code);
+}
 
-    const argv: []const []const u8 = if (use_shell)
-        try shellCommandArgv(allocator, opts.command.?)
-    else args.cmd;
-
-    var child = std.process.Child.init(argv, gpa.allocator());
+fn runChildProcess(
+    allocator: std.mem.Allocator,
+    child_allocator: std.mem.Allocator,
+    env_map: *std.process.EnvMap,
+    redact_values: []const []const u8,
+    argv: []const []const u8,
+) !u8 {
+    var child = std.process.Child.init(argv, child_allocator);
     child.stdin_behavior = .Inherit;
     child.stdout_behavior = if (redact_values.len == 0) .Inherit else .Pipe;
     child.stderr_behavior = if (redact_values.len == 0) .Inherit else .Pipe;
-    child.env_map = &env_map;
+    child.env_map = env_map;
 
     try child.spawn();
     if (redact_values.len > 0) {
         var stdout_buf = std.ArrayListUnmanaged(u8).empty;
-        defer stdout_buf.deinit(gpa.allocator());
+        defer stdout_buf.deinit(child_allocator);
         var stderr_buf = std.ArrayListUnmanaged(u8).empty;
-        defer stderr_buf.deinit(gpa.allocator());
+        defer stderr_buf.deinit(child_allocator);
 
-        try child.collectOutput(gpa.allocator(), &stdout_buf, &stderr_buf, 4096);
+        try child.collectOutput(child_allocator, &stdout_buf, &stderr_buf, 4096);
 
         const stdout_redacted = try redactOutputAlloc(allocator, stdout_buf.items, redact_values);
         const stderr_redacted = try redactOutputAlloc(allocator, stderr_buf.items, redact_values);
@@ -709,10 +730,17 @@ fn runAction(args: Run.Args, opts: Run.Options) !void {
         if (stderr_redacted.len > 0) try File.stderr().writeAll(stderr_redacted);
     }
     const term = try child.wait();
-    switch (term) {
-        .Exited => |code| std.process.exit(code),
-        else => std.process.exit(1),
+    return switch (term) {
+        .Exited => |code| code,
+        else => 1,
+    };
+}
+
+fn isSupportedMountFormat(format: []const u8) bool {
+    for (supported_mount_formats) |value| {
+        if (std.mem.eql(u8, format, value)) return true;
     }
+    return false;
 }
 
 const ApiContext = struct {
@@ -1649,6 +1677,14 @@ test "run command leaves mount unset when flag is omitted" {
 
     try std.testing.expect(State.mount == null);
     try std.testing.expect(State.mount_format == null);
+}
+
+test "supported mount formats match documented values" {
+    for (supported_mount_formats) |format| {
+        try std.testing.expect(isSupportedMountFormat(format));
+    }
+
+    try std.testing.expect(!isSupportedMountFormat("toml"));
 }
 
 test "secrets command parses environment override" {
