@@ -6,126 +6,6 @@
     "version": "0.0.0"
   },
   "paths": {
-    "/*": {
-      "get": {
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          },
-          "default": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          },
-          "default": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          }
-        }
-      }
-    },
-    "/orgs/{orgId}/projects/{projectId}/*": {
-      "get": {
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "orgId",
-            "required": true
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "projectId",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          },
-          "default": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "orgId",
-            "required": true
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "projectId",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          },
-          "default": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          }
-        }
-      }
-    },
     "/": {
       "get": {
         "responses": {
@@ -178,328 +58,6 @@
             }
           }
         }
-      },
-      "post": {
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "orgId",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          },
-          "default": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          }
-        }
-      }
-    },
-    "/new-org": {
-      "get": {
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          },
-          "default": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          },
-          "default": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          }
-        }
-      }
-    },
-    "/orgs/{orgId}/projects/{id}": {
-      "get": {
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "orgId",
-            "required": true
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "id",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          },
-          "default": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "orgId",
-            "required": true
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "id",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          },
-          "default": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          }
-        }
-      }
-    },
-    "/orgs/{orgId}/projects/{projectId}/envs/{envId}": {
-      "get": {
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "orgId",
-            "required": true
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "projectId",
-            "required": true
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "envId",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          },
-          "default": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "orgId",
-            "required": true
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "projectId",
-            "required": true
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "envId",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          },
-          "default": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          }
-        }
-      }
-    },
-    "/orgs/{orgId}/projects/{projectId}/access": {
-      "get": {
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "orgId",
-            "required": true
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "projectId",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          },
-          "default": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "orgId",
-            "required": true
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "projectId",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          },
-          "default": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          }
-        }
       }
     },
     "/orgs/{orgId}/projects/{projectId}/event-log": {
@@ -519,190 +77,6 @@
             },
             "in": "path",
             "name": "projectId",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          },
-          "default": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "orgId",
-            "required": true
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "projectId",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          },
-          "default": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          }
-        }
-      }
-    },
-    "/device": {
-      "get": {
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          },
-          "default": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          },
-          "default": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          }
-        }
-      }
-    },
-    "/login": {
-      "get": {
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          },
-          "default": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          },
-          "default": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          }
-        }
-      }
-    },
-    "/invite/{id}": {
-      "get": {
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "id",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          },
-          "default": {
-            "description": "",
-            "content": {
-              "*/*": {
-                "schema": {}
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "id",
             "required": true
           }
         ],
@@ -772,8 +146,53 @@
           "200": {
             "description": "",
             "content": {
-              "*/*": {
-                "schema": {}
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "orgs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "updatedAt": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "role": {
+                            "type": "string",
+                            "enum": [
+                              "admin",
+                              "member"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "createdAt",
+                          "updatedAt",
+                          "role"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "orgs"
+                  ]
+                }
               }
             }
           },
@@ -795,8 +214,31 @@
           "200": {
             "description": "",
             "content": {
-              "*/*": {
-                "schema": {}
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "orgId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "id",
+                    "orgId",
+                    "name"
+                  ]
+                }
               }
             }
           },
@@ -817,12 +259,10 @@
                 "type": "object",
                 "properties": {
                   "name": {
-                    "type": "string",
-                    "minLength": 1
+                    "type": "string"
                   },
                   "orgId": {
-                    "type": "string",
-                    "minLength": 1
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -835,12 +275,103 @@
         }
       },
       "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "in": "query",
+            "name": "orgId",
+            "required": true
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
             "content": {
-              "*/*": {
-                "schema": {}
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "projects": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "orgId": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "updatedAt": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "environments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "projectId": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "slug": {
+                                  "type": "string"
+                                },
+                                "createdAt": {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                "updatedAt": {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "projectId",
+                                "name",
+                                "slug",
+                                "createdAt",
+                                "updatedAt"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "orgId",
+                          "name",
+                          "createdAt",
+                          "updatedAt",
+                          "environments"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "projects"
+                  ]
+                }
               }
             }
           },
@@ -856,6 +387,212 @@
       }
     },
     "/api/projects/{id}": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "orgId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "updatedAt": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "environments": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "projectId": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "slug": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "updatedAt": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "projectId",
+                          "name",
+                          "slug",
+                          "createdAt",
+                          "updatedAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "orgId",
+                    "name",
+                    "createdAt",
+                    "updatedAt",
+                    "environments"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "*/*": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "orgId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "id",
+                    "orgId",
+                    "name"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "*/*": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "parameters": [
           {
@@ -871,8 +608,41 @@
           "200": {
             "description": "",
             "content": {
-              "*/*": {
-                "schema": {}
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "id"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
               }
             }
           },
@@ -903,8 +673,75 @@
           "200": {
             "description": "",
             "content": {
-              "*/*": {
-                "schema": {}
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "projectId": {
+                      "type": "string"
+                    },
+                    "environments": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "projectId": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "slug": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "updatedAt": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "projectId",
+                          "name",
+                          "slug",
+                          "createdAt",
+                          "updatedAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "projectId",
+                    "environments"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
               }
             }
           },
@@ -933,8 +770,53 @@
           "200": {
             "description": "",
             "content": {
-              "*/*": {
-                "schema": {}
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "projectId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "id",
+                    "name",
+                    "slug",
+                    "projectId"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
               }
             }
           },
@@ -955,12 +837,10 @@
                 "type": "object",
                 "properties": {
                   "name": {
-                    "type": "string",
-                    "minLength": 1
+                    "type": "string"
                   },
                   "slug": {
-                    "type": "string",
-                    "minLength": 1
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -974,6 +854,88 @@
       }
     },
     "/api/environments/{id}": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "projectId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "updatedAt": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "projectId",
+                    "name",
+                    "slug",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "*/*": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "parameters": [
           {
@@ -989,8 +951,41 @@
           "200": {
             "description": "",
             "content": {
-              "*/*": {
-                "schema": {}
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "id"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
               }
             }
           },
@@ -999,6 +994,117 @@
             "content": {
               "*/*": {
                 "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "projectId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "id",
+                    "name",
+                    "slug",
+                    "projectId"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "*/*": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "slug": {
+                    "type": "string"
+                  }
+                }
               }
             }
           }
@@ -1021,8 +1127,47 @@
           "200": {
             "description": "",
             "content": {
-              "*/*": {
-                "schema": {}
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "environmentId": {
+                      "type": "string"
+                    },
+                    "secrets": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "updatedAt": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "createdAt",
+                          "updatedAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "environmentId",
+                    "secrets"
+                  ]
+                }
               }
             }
           },
@@ -1051,8 +1196,31 @@
           "200": {
             "description": "",
             "content": {
-              "*/*": {
-                "schema": {}
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "environmentId": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "environmentId",
+                    "id",
+                    "name"
+                  ]
+                }
               }
             }
           },
@@ -1105,8 +1273,30 @@
           "200": {
             "description": "",
             "content": {
-              "*/*": {
-                "schema": {}
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "environmentId": {
+                      "type": "string"
+                    },
+                    "secrets": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "environmentId",
+                    "secrets"
+                  ]
+                }
               }
             }
           },
@@ -1169,8 +1359,58 @@
           "200": {
             "description": "",
             "content": {
-              "*/*": {
-                "schema": {}
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "updatedAt": {
+                      "type": "number"
+                    },
+                    "value": {
+                      "type": "string"
+                    },
+                    "environmentId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "createdAt",
+                    "updatedAt",
+                    "value",
+                    "environmentId"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
               }
             }
           },
@@ -1207,8 +1447,23 @@
           "200": {
             "description": "",
             "content": {
-              "*/*": {
-                "schema": {}
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "name"
+                  ]
+                }
               }
             }
           },
@@ -1233,8 +1488,118 @@
             "in": "path",
             "name": "environmentId",
             "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "env",
+                "yaml"
+              ]
+            },
+            "in": "query",
+            "name": "format",
+            "required": false
           }
         ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "*/*": {
+                "schema": {}
+              }
+            }
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "*/*": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/me": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "email": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "email"
+                      ]
+                    },
+                    "orgs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "role": {
+                            "type": "string",
+                            "enum": [
+                              "admin",
+                              "member"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "role"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "user",
+                    "orgs"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "*/*": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/info": {
+      "get": {
         "responses": {
           "200": {
             "description": "",
