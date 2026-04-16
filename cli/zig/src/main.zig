@@ -698,14 +698,12 @@ fn runAction(args: Run.Args, opts: Run.Options) !void {
         const mount_cleanup = MountCleanup{ .path = mount_path };
         defer mount_cleanup.cleanup();
         break :mount_block try runChildProcess(
-            allocator,
             gpa.allocator(),
             &env_map,
             if (opts.disable_redaction) &.{} else try collectLikelySecretValues(allocator, secrets),
             if (use_shell) try shellCommandArgv(allocator, opts.command.?) else args.cmd,
         );
     } else try runChildProcess(
-        allocator,
         gpa.allocator(),
         &env_map,
         if (opts.disable_redaction) &.{} else try collectLikelySecretValues(allocator, secrets),
@@ -716,11 +714,28 @@ fn runAction(args: Run.Args, opts: Run.Options) !void {
 }
 
 fn runChildProcess(
-    allocator: std.mem.Allocator,
     child_allocator: std.mem.Allocator,
     env_map: *std.process.EnvMap,
     redact_values: []const []const u8,
     argv: []const []const u8,
+) !u8 {
+    return runChildProcessWithWriters(
+        child_allocator,
+        env_map,
+        redact_values,
+        argv,
+        File.stdout().writer(),
+        File.stderr().writer(),
+    );
+}
+
+fn runChildProcessWithWriters(
+    child_allocator: std.mem.Allocator,
+    env_map: *std.process.EnvMap,
+    redact_values: []const []const u8,
+    argv: []const []const u8,
+    stdout_writer: anytype,
+    stderr_writer: anytype,
 ) !u8 {
     var child = std.process.Child.init(argv, child_allocator);
     child.stdin_behavior = .Inherit;
@@ -730,24 +745,119 @@ fn runChildProcess(
 
     try child.spawn();
     if (redact_values.len > 0) {
-        var stdout_buf = std.ArrayListUnmanaged(u8).empty;
-        defer stdout_buf.deinit(child_allocator);
-        var stderr_buf = std.ArrayListUnmanaged(u8).empty;
-        defer stderr_buf.deinit(child_allocator);
+        const stdout_pipe = child.stdout.?;
+        const stderr_pipe = child.stderr.?;
+        child.stdout = null;
+        child.stderr = null;
 
-        try child.collectOutput(child_allocator, &stdout_buf, &stderr_buf, 4096);
+        var stdout_result = PipeStreamResult{};
+        var stderr_result = PipeStreamResult{};
 
-        const stdout_redacted = try redactOutputAlloc(allocator, stdout_buf.items, redact_values);
-        const stderr_redacted = try redactOutputAlloc(allocator, stderr_buf.items, redact_values);
+        const stdout_thread = try std.Thread.spawn(.{}, streamPipeRedactedThread, .{
+            stdout_pipe,
+            redact_values,
+            stdout_writer,
+            &stdout_result,
+        });
+        const stderr_thread = try std.Thread.spawn(.{}, streamPipeRedactedThread, .{
+            stderr_pipe,
+            redact_values,
+            stderr_writer,
+            &stderr_result,
+        });
 
-        if (stdout_redacted.len > 0) try File.stdout().writeAll(stdout_redacted);
-        if (stderr_redacted.len > 0) try File.stderr().writeAll(stderr_redacted);
+        stdout_thread.join();
+        stderr_thread.join();
+
+        if (stdout_result.err) |err| return err;
+        if (stderr_result.err) |err| return err;
     }
     const term = try child.wait();
     return switch (term) {
         .Exited => |code| code,
         else => 1,
     };
+}
+
+const PipeStreamResult = struct {
+    err: ?anyerror = null,
+};
+
+fn streamPipeRedactedThread(
+    pipe: File,
+    redact_values: []const []const u8,
+    writer: anytype,
+    result: *PipeStreamResult,
+) void {
+    streamPipeRedacted(pipe, redact_values, writer) catch |err| {
+        result.err = err;
+    };
+}
+
+fn streamPipeRedacted(
+    pipe: File,
+    redact_values: []const []const u8,
+    writer: anytype,
+) !void {
+    defer pipe.close();
+
+    const allocator = std.heap.page_allocator;
+    const max_secret_len = maxSecretLen(redact_values);
+    const keep_tail_len = if (max_secret_len > 0) max_secret_len - 1 else 0;
+
+    var pending = std.ArrayListUnmanaged(u8).empty;
+    defer pending.deinit(allocator);
+
+    var read_buf: [8192]u8 = undefined;
+    while (true) {
+        const bytes_read = try pipe.read(&read_buf);
+        if (bytes_read == 0) break;
+
+        try pending.appendSlice(allocator, read_buf[0..bytes_read]);
+        try flushRedactedPending(&pending, redact_values, keep_tail_len, false, writer);
+    }
+
+    try flushRedactedPending(&pending, redact_values, keep_tail_len, true, writer);
+}
+
+fn flushRedactedPending(
+    pending: *std.ArrayListUnmanaged(u8),
+    redact_values: []const []const u8,
+    keep_tail_len: usize,
+    flush_all: bool,
+    writer: anytype,
+) !void {
+    if (pending.items.len == 0) return;
+
+    const write_len = if (flush_all)
+        pending.items.len
+    else if (pending.items.len > keep_tail_len)
+        pending.items.len - keep_tail_len
+    else
+        0;
+
+    if (write_len == 0) return;
+
+    redactInPlace(pending.items, redact_values);
+    try writer.writeAll(pending.items[0..write_len]);
+
+    const tail_len = pending.items.len - write_len;
+    std.mem.copyForwards(u8, pending.items[0..tail_len], pending.items[write_len..]);
+    pending.items.len = tail_len;
+}
+
+fn maxSecretLen(redact_values: []const []const u8) usize {
+    var max_len: usize = 0;
+    for (redact_values) |value| {
+        max_len = @max(max_len, value.len);
+    }
+    return max_len;
+}
+
+fn redactInPlace(output: []u8, redact_values: []const []const u8) void {
+    for (redact_values) |value| {
+        redactSecretInPlace(output, value);
+    }
 }
 
 fn isSupportedMountFormat(format: []const u8) bool {
@@ -1431,7 +1541,7 @@ fn redactOutputAlloc(
     }.lessThan);
 
     for (sorted_values) |value| {
-        redactInPlace(output, value);
+        redactSecretInPlace(output, value);
     }
     return output;
 }
@@ -1442,7 +1552,7 @@ fn maskOfLen(allocator: std.mem.Allocator, len: usize) ![]u8 {
     return mask;
 }
 
-fn redactInPlace(output: []u8, secret: []const u8) void {
+fn redactSecretInPlace(output: []u8, secret: []const u8) void {
     if (secret.len == 0 or secret.len > output.len) return;
 
     var start: usize = 0;
@@ -1593,6 +1703,72 @@ test "longer secrets are redacted before shorter overlapping ones" {
     const output = try redactOutputAlloc(allocator, "value=abcd1234wxyz9876", &.{ short, long });
 
     try std.testing.expectEqualStrings("value=****************", output);
+}
+
+test "streaming redaction handles chunk boundaries" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var pending = std.ArrayListUnmanaged(u8).empty;
+    defer pending.deinit(allocator);
+    var output = std.ArrayListUnmanaged(u8).empty;
+    defer output.deinit(allocator);
+
+    try pending.appendSlice(allocator, "prefix sk_live_ab");
+    try flushRedactedPending(
+        &pending,
+        &.{"sk_live_abcdefghijklmnop"},
+        "sk_live_abcdefghijklmnop".len - 1,
+        false,
+        output.writer(allocator),
+    );
+
+    try pending.appendSlice(allocator, "cdefghijklmnop suffix");
+    try flushRedactedPending(
+        &pending,
+        &.{"sk_live_abcdefghijklmnop"},
+        "sk_live_abcdefghijklmnop".len - 1,
+        true,
+        output.writer(allocator),
+    );
+
+    try std.testing.expectEqualStrings("prefix ************************ suffix", output.items);
+}
+
+test "runChildProcessWithWriters streams large stdout without buffering it all" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var env_map = std.process.EnvMap.init(allocator);
+    defer env_map.deinit();
+
+    const argv = try shellCommandArgv(
+        allocator,
+        "yes x | tr -d '\n' | head -c 20000000",
+    );
+
+    var stdout_buf = std.ArrayListUnmanaged(u8).empty;
+    defer stdout_buf.deinit(allocator);
+    var stderr_buf = std.ArrayListUnmanaged(u8).empty;
+    defer stderr_buf.deinit(allocator);
+
+    const exit_code = try runChildProcessWithWriters(
+        allocator,
+        &env_map,
+        &.{"not-a-real-secret"},
+        argv,
+        stdout_buf.writer(allocator),
+        stderr_buf.writer(allocator),
+    );
+
+    try std.testing.expectEqual(@as(u8, 0), exit_code);
+    try std.testing.expectEqual(@as(usize, 20_000_000), stdout_buf.items.len);
+    try std.testing.expectEqual(@as(usize, 0), stderr_buf.items.len);
+    try std.testing.expect(std.mem.allEqual(u8, stdout_buf.items, 'x'));
 }
 
 test "run command keeps argv after double dash as positional command" {
