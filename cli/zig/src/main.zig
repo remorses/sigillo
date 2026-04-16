@@ -47,12 +47,16 @@ const Setup = zeke.cmd("setup", "Save project and environment for the current di
 
 const Run = zeke.cmd("run <...cmd>", "Run a command with secrets injected")
     .option("--command [cmd]", "Run a shell command string")
+    .option("--mount [path]", "Write secrets to a file before running")
+    .option("--mount-format [fmt]", "Format for mounted file: env, json, yaml (default: env)")
     .option("--disable-redaction", "Print child output without secret redaction")
     .option("--project [id]", "Project ID override")
     .option("--environment [id]", "Environment ID override")
     .option("--token [token]", "Auth token override")
     .option("--api-url [url]", "API URL override (default: https://sigillo.dev)")
     .example("sigillo run -- env")
+    .example("sigillo run --mount .env -- npm start")
+    .example("sigillo run --mount config.json --mount-format json -- next dev")
     .example("sigillo run --command 'echo $MY_SECRET'");
 
 const Secrets = zeke.cmd("secrets", "List secrets for the configured environment")
@@ -615,6 +619,65 @@ fn runAction(args: Run.Args, opts: Run.Options) !void {
     var env_map = try std.process.getEnvMap(gpa.allocator());
     defer env_map.deinit();
     try mergeSecretsIntoEnvMap(&env_map, secrets);
+
+    // ── Mount: write secrets to a file ────────────────────────────
+    if (opts.mount) |mount_path| {
+        const mount_format = opts.mount_format orelse "env";
+
+        // Validate format
+        const valid_formats = [_][]const u8{ "env", "json", "yaml" };
+        var format_valid = false;
+        for (valid_formats) |f| {
+            if (std.mem.eql(u8, mount_format, f)) { format_valid = true; break; }
+        }
+        if (!format_valid) {
+            try color.err(stderr, "error");
+            try stderr.print(": invalid mount format '{s}' (expected: env, json, yaml)\n", .{mount_format});
+            std.process.exit(1);
+        }
+
+        // Fetch secrets in the requested format
+        const mount_url = try std.fmt.allocPrint(allocator, "/api/environments/{s}/secrets/download?format={s}", .{ environment, mount_format });
+        const mount_res = client.request(.{
+            .allocator = allocator,
+            .method = .GET,
+            .base_url = api_url,
+            .path = mount_url,
+            .token = token,
+        }) catch |err| {
+            try color.err(stderr, "error");
+            try stderr.print(": failed to fetch secrets for mount: {s}\n", .{@errorName(err)});
+            std.process.exit(1);
+        };
+        if (mount_res.status != 200) {
+            const message = client.parseError(allocator, mount_res.body) orelse try allocator.dupe(u8, "unknown error");
+            try color.err(stderr, "error");
+            try stderr.print(": failed to fetch secrets for mount ({d}): {s}\n", .{ mount_res.status, message });
+            std.process.exit(1);
+        }
+
+        // Write secrets to the mount file
+        {
+            const file = std.fs.cwd().createFile(mount_path, .{}) catch |err| {
+                try color.err(stderr, "error");
+                try stderr.print(": failed to create mount file '{s}': {s}\n", .{ mount_path, @errorName(err) });
+                std.process.exit(1);
+            };
+            defer file.close();
+            try file.writeAll(mount_res.body);
+        }
+
+        // Clean up the mount file after the command finishes
+        const MountCleanup = struct {
+            path: []const u8,
+            fn cleanup(self: @This()) void {
+                std.fs.cwd().deleteFile(self.path) catch {};
+            }
+        };
+        const mount_cleanup = MountCleanup{ .path = mount_path };
+        defer mount_cleanup.cleanup();
+    }
+
     const redact_values = if (opts.disable_redaction)
         &.{}
     else
@@ -1519,6 +1582,73 @@ test "run command still parses flags before double dash" {
     try std.testing.expectEqualStrings("next", State.captured_cmd[0]);
     try std.testing.expectEqualStrings("dev", State.captured_cmd[1]);
     try std.testing.expect(State.used_disable_redaction);
+}
+
+test "run command parses --mount and --mount-format" {
+    const State = struct {
+        var mount: ?[]const u8 = null;
+        var mount_format: ?[]const u8 = null;
+        var captured_cmd: []const []const u8 = &.{};
+
+        fn action(args: Run.Args, opts: Run.Options) !void {
+            mount = opts.mount;
+            mount_format = opts.mount_format;
+            captured_cmd = try std.testing.allocator.dupe([]const u8, args.cmd);
+        }
+    };
+
+    defer if (State.captured_cmd.len > 0) std.testing.allocator.free(State.captured_cmd);
+
+    const TestRun = Run.bind(State.action);
+
+    var app = zeke.App(.{TestRun}).init(std.testing.allocator, "sigillo");
+    try app.dispatch(&.{ "run", "--mount", ".env", "--", "npm", "start" });
+
+    try std.testing.expectEqualStrings(".env", State.mount.?);
+    try std.testing.expect(State.mount_format == null);
+    try std.testing.expectEqual(@as(usize, 2), State.captured_cmd.len);
+    try std.testing.expectEqualStrings("npm", State.captured_cmd[0]);
+    try std.testing.expectEqualStrings("start", State.captured_cmd[1]);
+}
+
+test "run command parses --mount with explicit --mount-format" {
+    const State = struct {
+        var mount: ?[]const u8 = null;
+        var mount_format: ?[]const u8 = null;
+
+        fn action(_: Run.Args, opts: Run.Options) !void {
+            mount = opts.mount;
+            mount_format = opts.mount_format;
+        }
+    };
+
+    const TestRun = Run.bind(State.action);
+
+    var app = zeke.App(.{TestRun}).init(std.testing.allocator, "sigillo");
+    try app.dispatch(&.{ "run", "--mount", "config.json", "--mount-format", "json", "--", "next", "dev" });
+
+    try std.testing.expectEqualStrings("config.json", State.mount.?);
+    try std.testing.expectEqualStrings("json", State.mount_format.?);
+}
+
+test "run command leaves mount unset when flag is omitted" {
+    const State = struct {
+        var mount: ?[]const u8 = null;
+        var mount_format: ?[]const u8 = null;
+
+        fn action(_: Run.Args, opts: Run.Options) !void {
+            mount = opts.mount;
+            mount_format = opts.mount_format;
+        }
+    };
+
+    const TestRun = Run.bind(State.action);
+
+    var app = zeke.App(.{TestRun}).init(std.testing.allocator, "sigillo");
+    try app.dispatch(&.{ "run", "--", "env" });
+
+    try std.testing.expect(State.mount == null);
+    try std.testing.expect(State.mount_format == null);
 }
 
 test "secrets command parses environment override" {
