@@ -656,10 +656,7 @@ fn runAction(args: Run.Args, opts: Run.Options) !void {
 
     const argv: []const []const u8 = if (use_shell)
         try shellCommandArgv(allocator, opts.command.?)
-    else blk: {
-        const positional_command = try shellJoinArgs(allocator, args.cmd);
-        break :blk try shellCommandArgv(allocator, positional_command);
-    };
+    else args.cmd;
 
     var child = std.process.Child.init(argv, gpa.allocator());
     child.stdin_behavior = .Inherit;
@@ -1366,8 +1363,9 @@ fn redactInPlace(output: []u8, secret: []const u8) void {
 
 fn shellCommandArgv(allocator: std.mem.Allocator, command: []const u8) ![]const []const u8 {
     if (builtin.os.tag == .windows) {
+        const shell_path = try getWindowsShellPath(allocator);
         const argv = try allocator.alloc([]const u8, 3);
-        argv[0] = "cmd.exe";
+        argv[0] = shell_path;
         argv[1] = "/C";
         argv[2] = command;
         return argv;
@@ -1389,41 +1387,6 @@ fn shellCommandArgv(allocator: std.mem.Allocator, command: []const u8) ![]const 
     argv[1] = "-c";
     argv[2] = command;
     return argv;
-}
-
-fn shellJoinArgs(allocator: std.mem.Allocator, args: []const []const u8) ![]const u8 {
-    var out = std.ArrayListUnmanaged(u8).empty;
-    errdefer out.deinit(allocator);
-
-    if (builtin.os.tag == .windows) {
-        for (args, 0..) |arg, index| {
-            if (index > 0) try out.append(allocator, ' ');
-            try out.append(allocator, '"');
-            for (arg) |char| {
-                if (char == '"') {
-                    try out.appendSlice(allocator, "\\\"");
-                } else {
-                    try out.append(allocator, char);
-                }
-            }
-            try out.append(allocator, '"');
-        }
-        return out.toOwnedSlice(allocator);
-    }
-
-    for (args, 0..) |arg, index| {
-        if (index > 0) try out.append(allocator, ' ');
-        try out.append(allocator, '\'');
-        for (arg) |char| {
-            if (char == '\'') {
-                try out.appendSlice(allocator, "'\"'\"'");
-            } else {
-                try out.append(allocator, char);
-            }
-        }
-        try out.append(allocator, '\'');
-    }
-    return out.toOwnedSlice(allocator);
 }
 
 fn isSupportedShell(shell_path: []const u8) bool {
@@ -1671,7 +1634,10 @@ test "login parses token option" {
 fn openBrowser(allocator: std.mem.Allocator, url: []const u8) void {
     const argv: []const []const u8 = switch (builtin.os.tag) {
         .macos => &.{ "open", url },
-        .windows => &.{ "cmd.exe", "/C", "start", url },
+        .windows => blk: {
+            const shell_path = getWindowsShellPath(allocator) catch return;
+            break :blk &.{ shell_path, "/C", "start", "", url };
+        },
         else => &.{ "xdg-open", url },
     };
 
@@ -1680,6 +1646,13 @@ fn openBrowser(allocator: std.mem.Allocator, url: []const u8) void {
     child.stdout_behavior = .Ignore;
     child.stderr_behavior = .Ignore;
     child.spawn() catch return;
+}
+
+fn getWindowsShellPath(allocator: std.mem.Allocator) ![]const u8 {
+    return std.process.getEnvVarOwned(allocator, "COMSPEC") catch |err| switch (err) {
+        error.EnvironmentVariableNotFound => try allocator.dupe(u8, "cmd.exe"),
+        else => return err,
+    };
 }
 
 pub fn main() !void {

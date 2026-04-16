@@ -1,7 +1,9 @@
 // Scoped JSON config system for the sigillo CLI.
-// Stores everything in ~/.sigillo/config.json with Doppler-style directory scopes.
+// Stores everything in ~/.sigillo/config.json on Unix and %APPDATA%\sigillo\config.json
+// on Windows, with Doppler-style directory scopes.
 
 const std = @import("std");
+const builtin = @import("builtin");
 
 pub const ScopedEntry = struct {
     token: ?[]const u8 = null,
@@ -21,7 +23,7 @@ pub const ConfigFile = struct {
     scopes: std.ArrayListUnmanaged(ScopeRecord) = .empty,
 };
 
-const config_dir_name = ".sigillo";
+const config_dir_name = if (builtin.os.tag == .windows) "sigillo" else ".sigillo";
 const config_file_name = "config.json";
 
 pub fn configFilePath(allocator: std.mem.Allocator) ![]const u8 {
@@ -234,6 +236,13 @@ pub fn resolve(allocator: std.mem.Allocator, cwd_input: []const u8, flags: Resol
 }
 
 fn getHomeDir(allocator: std.mem.Allocator) ![]const u8 {
+    if (builtin.os.tag == .windows) {
+        return (try getEnvVarOptional(allocator, "APPDATA")) orelse
+            (try getEnvVarOptional(allocator, "LOCALAPPDATA")) orelse
+            (try getEnvVarOptional(allocator, "USERPROFILE")) orelse
+            error.NoHomeDir;
+    }
+
     return (try getEnvVarOptional(allocator, "HOME")) orelse
         (try getEnvVarOptional(allocator, "USERPROFILE")) orelse
         error.NoHomeDir;
