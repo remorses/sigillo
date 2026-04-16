@@ -180,12 +180,22 @@ export const DEFAULT_ENVIRONMENTS = [
 
 // ── Instance config ─────────────────────────────────────────────────
 // Single-row table for instance-level configuration.
-// The app auto-registers with the provider on first request and stores
-// the OAuth client_id here instead of requiring it as an env var.
 
 export const config = sqliteCore.sqliteTable('config', {
   id: sqliteCore.text('id').primaryKey().notNull().default('singleton'),
-  oauthClientId: sqliteCore.text('oauth_client_id'),
+  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
+  updatedAt: sqliteCore.integer('updated_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
+})
+
+// ── oauthDomain table ────────────────────────────────────────────────
+// One row per hostname that has been used to sign into this app.
+// Each hostname gets its own provider registration because the callback URL
+// is host-specific.
+
+export const oauthDomain = sqliteCore.sqliteTable('oauth_domain', {
+  id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
+  host: sqliteCore.text('host').notNull().unique(),
+  oauthClientId: sqliteCore.text('oauth_client_id').notNull(),
   createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
   updatedAt: sqliteCore.integer('updated_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
 })
@@ -212,7 +222,7 @@ export const deviceCode = sqliteCore.sqliteTable('device_code', {
 // ── Relations (v2 API) ──────────────────────────────────────────────
 
 export const relations = defineRelations(
-  { user, session, account, verification, org, orgMember, orgInvitation, project, environment, secretEvent, apiToken, deviceCode, config },
+  { user, session, account, verification, org, orgMember, orgInvitation, project, environment, secretEvent, apiToken, deviceCode, config, oauthDomain },
   (r) => ({
     user: {
       sessions: r.many.session(),
@@ -269,5 +279,6 @@ export const relations = defineRelations(
       user: r.one.user({ from: r.deviceCode.userId, to: r.user.id }),
     },
     config: {},
+    oauthDomain: {},
   }),
 )

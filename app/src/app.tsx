@@ -51,7 +51,7 @@ export const app = new Spiceflow({
   .use(async ({ request }, next) => {
     const url = new URL(request.url)
     if (url.pathname.startsWith('/api/auth')) {
-      const auth = await getAuth()
+      const auth = await getAuth(request)
       const res = await auth.handler(request)
       if (res.ok || res.status !== 404) return res
     }
@@ -140,7 +140,7 @@ export const app = new Spiceflow({
 
   // ── Root redirect → first org ─────────────────────────────────
   .get('/', async ({ request }) => {
-    const session = await getSession(request.headers)
+    const session = await getSession(request)
     if (!session) return redirect('/login')
     const db = getDb()
     const base = new URL(request.url)
@@ -251,7 +251,7 @@ export const app = new Spiceflow({
   })
 
   // ── Project detail with env ───────────────────────────────────
-  .page('/orgs/:orgId/projects/:projectId/envs/:envId', async ({ params }) => {
+  .page('/orgs/:orgId/projects/:projectId/envs/:envId', async ({ request, params }) => {
     const db = getDb()
     const { orgId, projectId, envId } = params
 
@@ -543,7 +543,7 @@ export const app = new Spiceflow({
   // 2. Approve/deny via authClient.device.approve() / .deny()
   .page('/device', async ({ request }) => {
     // User must be logged in to approve device codes
-    const session = await getSession(request.headers)
+    const session = await getSession(request)
     if (!session) return redirect('/login')
     const { DeviceFlow } = await import('sigillo-app/src/components/device-flow')
     return <ContentFrame><DeviceFlow /></ContentFrame>
@@ -551,7 +551,7 @@ export const app = new Spiceflow({
 
   // ── Login page (standalone, no sidebar) ─────────────────────────
   .page('/login', async ({ request }) => {
-    const session = await getSession(request.headers)
+    const session = await getSession(request)
     const url = new URL(request.url)
     const redirectTo = safeRedirectPath(url.searchParams.get('redirect'))
     if (session) return redirect(redirectTo)
@@ -584,7 +584,7 @@ export const app = new Spiceflow({
         </ContentFrame>
       )
     }
-    const session = await getSession(request.headers)
+    const session = await getSession(request)
     if (!session) return redirect(`/login?redirect=/invite/${params.id}`)
     // Already a member? Skip straight to the org
     const existing = await db.query.orgMember.findFirst({

@@ -2,8 +2,9 @@
 // The DO is a thin SQL proxy — all logic runs here in the worker.
 //
 // getDb() creates a drizzle-orm/sqlite-proxy client that routes SQL to the
-// DO's executeSql() RPC. getAuth() creates a BetterAuth instance backed by
-// the same drizzle client. encrypt()/decrypt() use env.ENCRYPTION_KEY.
+// DO's executeSql() RPC. getAuth(request) creates a BetterAuth instance backed
+// by the same drizzle client for the current request host. encrypt()/decrypt()
+// use env.ENCRYPTION_KEY.
 
 import { env } from 'cloudflare:workers'
 import { drizzle } from 'drizzle-orm/sqlite-proxy'
@@ -39,21 +40,51 @@ export function getDb() {
   )
 }
 
-// ── OAuth client registration ───────────────────────────────────────
-// Registers this instance with the provider via RFC 7591 dynamic client
-// registration on first request, then caches the client_id in the config table.
+function getRequestOrigin(request: Request): string {
+  return new URL(request.url).origin
+}
 
-export async function ensureOAuthClient(): Promise<string> {
+function getRequestHost(request: Request): string {
+  return new URL(request.url).host.toLowerCase()
+}
+
+async function listOAuthHosts(): Promise<string[]> {
   const db = getDb()
-  const row = await db.query.config.findFirst({ where: { id: 'singleton' } })
-  if (row?.oauthClientId) return row.oauthClientId
+  const rows = await db.query.oauthDomain.findMany({
+    columns: { host: true },
+    orderBy: { createdAt: 'asc' },
+  })
+  return rows.map((row) => row.host)
+}
 
-  const callbackUrl = `${env.APP_URL}/api/auth/oauth2/callback/sigillo`
+function originForHost(host: string): string {
+  const protocol = host.startsWith('localhost:') || host.startsWith('127.0.0.1:')
+    ? 'http'
+    : 'https'
+  return `${protocol}://${host}`
+}
+
+// ── OAuth client registration ───────────────────────────────────────
+// Registers each hostname with the provider via RFC 7591 dynamic client
+// registration on first login from that host.
+
+export async function ensureOAuthClient(request: Request): Promise<string> {
+  const db = getDb()
+  const host = getRequestHost(request)
+  const existing = await db.query.oauthDomain.findFirst({ where: { host } })
+  if (existing) return existing.oauthClientId
+
+  if (host.endsWith('.workers.dev')) {
+    throw new Error(`Refusing OAuth registration for temporary host: ${host}`)
+  }
+
+  const origin = getRequestOrigin(request)
+  const callbackUrl = new URL('/api/auth/oauth2/callback/sigillo', origin).toString()
   const res = await fetch(`${env.PROVIDER_URL}/api/auth/oauth2/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      client_name: `Sigillo Self-Hosted (${env.APP_URL})`,
+      client_name: `Sigillo Self-Hosted (${origin})`,
       redirect_uris: [callbackUrl],
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
@@ -65,12 +96,12 @@ export async function ensureOAuthClient(): Promise<string> {
     const body = await res.text()
     throw new Error(`OAuth client registration failed: ${res.status} ${body}`)
   }
-  const { client_id } = (await res.json()) as { client_id: string }
+  const { client_id }: { client_id: string } = await res.json()
 
-  await db.insert(schema.config)
-    .values({ id: 'singleton', oauthClientId: client_id })
+  await db.insert(schema.oauthDomain)
+    .values({ host, oauthClientId: client_id })
     .onConflictDoUpdate({
-      target: schema.config.id,
+      target: schema.oauthDomain.host,
       set: { oauthClientId: client_id, updatedAt: Date.now() },
     })
 
@@ -79,13 +110,17 @@ export async function ensureOAuthClient(): Promise<string> {
 
 // ── BetterAuth ──────────────────────────────────────────────────────
 
-export async function getAuth() {
+export async function getAuth(request: Request) {
   const db = getDb()
-  const clientId = await ensureOAuthClient()
+  const host = getRequestHost(request)
+  const clientId = await ensureOAuthClient(request)
+  const trustedOrigins = (await listOAuthHosts()).map(originForHost)
+  trustedOrigins.push(originForHost(host))
   return betterAuth({
-    baseURL: env.APP_URL,
+    baseURL: getRequestOrigin(request),
     secret: env.BETTER_AUTH_SECRET,
     database: drizzleAdapter(db, { provider: 'sqlite' }),
+    trustedOrigins: Array.from(new Set(trustedOrigins)),
     session: {
       cookieCache: {
         enabled: true,
@@ -122,21 +157,21 @@ export function getDataCenter(): Promise<string> {
 
 type Session = { userId: string; user: { id: string; name: string; email: string } }
 
-export async function getSession(headers: Headers): Promise<Session | null> {
-  const auth = await getAuth()
-  const session = await auth.api.getSession({ headers })
+export async function getSession(request: Request): Promise<Session | null> {
+  const auth = await getAuth(request)
+  const session = await auth.api.getSession({ headers: request.headers })
   if (!session) return null
   return { userId: session.user.id, user: { id: session.user.id, name: session.user.name, email: session.user.email } }
 }
 
 export async function requireApiSession(request: Request): Promise<Session> {
-  const session = await getSession(request.headers)
+  const session = await getSession(request)
   if (!session) throw new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'content-type': 'application/json' } })
   return session
 }
 
 export async function requirePageSession(request: Request): Promise<Session> {
-  const session = await getSession(request.headers)
+  const session = await getSession(request)
   if (!session) throw redirect('/login')
   return session
 }
@@ -339,7 +374,7 @@ export async function requireSecretsApiAuth(request: Request, environmentId: str
   }
 
   // Session auth path — works with both cookies and BetterAuth bearer tokens
-  const session = await getSession(request.headers)
+  const session = await getSession(request)
   if (!session) throw unauthorizedResponse()
 
   const orgId = await getOrgIdForEnvironment(environmentId)

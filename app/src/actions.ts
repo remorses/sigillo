@@ -25,7 +25,7 @@ import {
 
 async function requireSession() {
   const request = getActionRequest()
-  const session = await getSession(request.headers)
+  const session = await getSession(request)
   if (!session) throw new Error('Unauthorized')
   return session
 }
