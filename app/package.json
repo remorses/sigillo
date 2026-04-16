@@ -10,12 +10,14 @@
   },
   "scripts": {
     "dev": "vite dev",
+    "prebuild": "pnpm generate:install",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "types": "wrangler types",
     "deploy": "CLOUDFLARE_ENV=preview vite build && wrangler deploy --env preview",
     "deploy:prod": "vite build && wrangler deploy && CLOUDFLARE_ENV=preview vite build && wrangler deploy --env preview",
-    "openapi": "tsx src/generate-openapi.ts"
+    "openapi": "tsx src/generate-openapi.ts",
+    "generate:install": "tsx src/generate-install-script.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.0",
@@ -43,6 +45,7 @@
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "@vitejs/plugin-react": "latest",
+    "tsx": "^4.21.0",
     "typescript": "latest",
     "vite": "latest",
     "wrangler": "latest"
