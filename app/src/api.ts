@@ -154,6 +154,7 @@ const downloadedSecretsFormats = [
   'json',
   'env',
   'env-no-quotes',
+  'xargs',
   'yaml',
   'docker',
   'dotnet-json',
@@ -238,6 +239,29 @@ function renderDownloadedSecrets(
 
   if (format === 'env-no-quotes') {
     return renderKeyValueDownload(entries, (value) => value)
+  }
+
+  if (format === 'xargs') {
+    const encoder = new TextEncoder()
+    const chunks: Uint8Array[] = []
+    let totalLength = 0
+    for (const [key, value] of Object.entries(entries)) {
+      const keyBytes = encoder.encode(key)
+      const valueBytes = encoder.encode(value)
+      chunks.push(keyBytes, new Uint8Array([0]), valueBytes, new Uint8Array([0]))
+      totalLength += keyBytes.length + valueBytes.length + 2
+    }
+
+    const output = new Uint8Array(totalLength)
+    let offset = 0
+    for (const chunk of chunks) {
+      output.set(chunk, offset)
+      offset += chunk.length
+    }
+
+    return new Response(output, {
+      headers: { 'content-type': 'application/octet-stream' },
+    })
   }
 
   if (format === 'docker') {
@@ -594,7 +618,7 @@ export const apiApp = new Spiceflow()
   // ── Bulk download (like Doppler's /secrets/download) ────────────
   // Returns all secrets with decrypted values for an environment.
   // Supports format query param: json (default), env, env-no-quotes,
-  // yaml, docker, dotnet-json.
+  // xargs, yaml, docker, dotnet-json.
   .route({
     method: 'GET',
     path: '/api/environments/:environmentId/secrets/download',

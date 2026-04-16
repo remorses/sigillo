@@ -20,3 +20,26 @@ curl -fsSL https://sigillo.dev/install.sh | bash
 ```
 
 The installer downloads the latest GitHub release binary for your platform and installs it into `~/.sigillo/bin`.
+
+## Integrations
+
+### Upload to Cloudflare workers
+
+```sh
+sigillo run -c production --mount .env.prod --mount-format env -- wrangler secret bulk .env.prod
+```
+
+### Sync secrets to Vercel
+
+`vercel env add` only uploads one variable at a time, so Sigillo exposes an
+`xargs` download format made for piping into it.
+
+```sh
+sigillo secrets download --format xargs | xargs -0 -n2 sh -c 'printf %s "$2" | vercel env add "$1" production --force' sh
+```
+
+Add `--sensitive` if you want Vercel to mark the uploaded values as sensitive.
+
+```sh
+sigillo secrets download --format xargs | xargs -0 -n2 sh -c 'printf %s "$2" | vercel env add "$1" production --sensitive --force' sh
+```

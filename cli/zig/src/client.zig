@@ -467,16 +467,17 @@ pub const DownloadSecretsArgs = struct {
     api_url: []const u8,
     token: []const u8,
     environment_id: []const u8,
+    format: []const u8,
 };
 
-pub fn downloadSecretsYaml(args: DownloadSecretsArgs) !ApiResult {
-    const path = try std.fmt.allocPrint(args.allocator, "/api/environments/{s}/secrets/download?format=yaml", .{args.environment_id});
+pub fn downloadSecrets(args: DownloadSecretsArgs) !ApiResult {
+    const path = try std.fmt.allocPrint(args.allocator, "/api/environments/{s}/secrets/download?format={s}", .{ args.environment_id, args.format });
     return request(.{
         .allocator = args.allocator,
         .method = .GET,
         .base_url = args.api_url,
         .path = path,
         .token = args.token,
-        .accept = "text/yaml",
+        .accept = "*/*",
     });
 }

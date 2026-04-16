@@ -307,6 +307,10 @@ export const app = new Spiceflow({
 
     const dataKey = `${selectedEnvId}-${Date.now()}`
 
+    // Skip rendering CLI banner if cookie says it was dismissed
+    const cookieHeader = request.headers.get("cookie") ?? ""
+    const showBanner = !cookieHeader.includes("sigillo-cli-banner-dismissed")
+
     return (
       <div>
         <ProjectPage
@@ -318,6 +322,7 @@ export const app = new Spiceflow({
           selectedEnvId={selectedEnvId}
           secrets={secrets}
           allSecretNames={allSecretNames}
+          showBanner={showBanner}
         />
       </div>
     )

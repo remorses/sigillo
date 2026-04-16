@@ -5,16 +5,16 @@
 "use client";
 
 import { useState } from "react";
-import { getRouter } from "spiceflow/react";
 import { SecretsTable } from "sigillo-app/src/components/secrets-table";
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectPopup,
-  SelectItem,
-} from "sigillo-app/src/components/ui/select";
 import { Button } from "sigillo-app/src/components/ui/button";
+import {
+    Select,
+    SelectItem,
+    SelectPopup,
+    SelectTrigger,
+    SelectValue,
+} from "sigillo-app/src/components/ui/select";
+import { getRouter } from "spiceflow/react";
 import type { App } from "../app.tsx";
 
 type Secret = {
@@ -34,6 +34,7 @@ export function ProjectPage({
   selectedEnvId,
   secrets,
   allSecretNames,
+  showBanner,
 }: {
   projectId: string;
   projectName: string;
@@ -48,6 +49,7 @@ export function ProjectPage({
   selectedEnvId: string | null;
   secrets: Secret[];
   allSecretNames: string[];
+  showBanner?: boolean;
 }) {
   const router = getRouter<App>();
   const [allVisible, setAllVisible] = useState(false);
@@ -85,6 +87,9 @@ export function ProjectPage({
           </Select>
         </div>
       </div>
+
+      {/* TODO CLI Banner */}
+      {/*{showBanner && <CliBanner />}*/}
 
       {/* Secrets table */}
       {selectedEnvId ? (

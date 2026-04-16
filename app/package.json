@@ -33,6 +33,7 @@
     "db": "workspace:^",
     "drizzle-orm": "1.0.0-beta.21",
     "lucide-react": "^1.8.0",
+    "prismjs": "^1.29.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "spiceflow": "workspace:^",
@@ -44,6 +45,7 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.31.2",
     "@types/node": "^25.6.0",
+    "@types/prismjs": "^1.26.6",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "@vitejs/plugin-react": "latest",

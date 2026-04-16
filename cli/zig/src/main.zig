@@ -22,6 +22,16 @@ const supported_mount_formats = [_][]const u8{
     "dotnet-json",
 };
 
+const supported_download_formats = [_][]const u8{
+    "json",
+    "env",
+    "env-no-quotes",
+    "xargs",
+    "yaml",
+    "docker",
+    "dotnet-json",
+};
+
 fn getStdout() Writer {
     return File.stdout().deprecatedWriter();
 }
@@ -88,10 +98,14 @@ const SecretsDelete = zeke.cmd("secrets delete <name>", "Delete a secret")
     .option("--token [token]", "Auth token override")
     .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
 
-const SecretsDownload = zeke.cmd("secrets download", "Download all secrets as YAML")
+const SecretsDownload = zeke.cmd("secrets download", "Download all secrets in a chosen format")
+    .option("--format [fmt]", "Output format: json, env, env-no-quotes, xargs, yaml, docker, dotnet-json (default: yaml)")
     .option("--environment [id]", "Environment ID override")
     .option("--token [token]", "Auth token override")
-    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)")
+    .example("sigillo secrets download")
+    .example("sigillo secrets download --format json")
+    .example("sigillo secrets download --format xargs | xargs -0 -n2 sh -c 'printf %s \"$2\" | vercel env add \"$1\" production --force' sh");
 
 const Projects = zeke.cmd("projects", "List projects across organizations")
     .option("--token [token]", "Auth token override")
@@ -743,6 +757,13 @@ fn isSupportedMountFormat(format: []const u8) bool {
     return false;
 }
 
+fn isSupportedDownloadFormat(format: []const u8) bool {
+    for (supported_download_formats) |value| {
+        if (std.mem.eql(u8, format, value)) return true;
+    }
+    return false;
+}
+
 const ApiContext = struct {
     api_url: []const u8,
     token: []const u8,
@@ -1006,17 +1027,30 @@ fn secretsDownloadAction(_: SecretsDownload.Args, opts: SecretsDownload.Options)
         .environment = opts.environment,
     });
 
-    const res = try client.downloadSecretsYaml(.{
+    const format = opts.format orelse "yaml";
+    if (!isSupportedDownloadFormat(format)) {
+        try color.err(stderr, "error");
+        try stderr.print(": invalid download format '{s}' (expected: json, env, env-no-quotes, xargs, yaml, docker, dotnet-json)\n", .{format});
+        std.process.exit(1);
+    }
+
+    const res = try client.downloadSecrets(.{
         .allocator = allocator,
         .api_url = ctx.api.api_url,
         .token = ctx.api.token,
         .environment_id = ctx.environment_id,
+        .format = format,
     });
     if (res.status != 200) {
         const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
         try color.err(stderr, "error");
         try stderr.print(": failed to download secrets ({d}): {s}\n", .{ res.status, message });
         std.process.exit(1);
+    }
+
+    if (std.mem.eql(u8, format, "xargs")) {
+        try File.stdout().writeAll(res.body);
+        return;
     }
 
     try stdout.print("{s}\n", .{std.mem.trimRight(u8, res.body, "\n")});
@@ -1685,6 +1719,46 @@ test "supported mount formats match documented values" {
     }
 
     try std.testing.expect(!isSupportedMountFormat("toml"));
+}
+
+test "supported download formats match documented values" {
+    for (supported_download_formats) |format| {
+        try std.testing.expect(isSupportedDownloadFormat(format));
+    }
+
+    try std.testing.expect(!isSupportedDownloadFormat("toml"));
+}
+
+test "secrets download parses explicit format" {
+    const State = struct {
+        var format: ?[]const u8 = null;
+
+        fn action(_: SecretsDownload.Args, opts: SecretsDownload.Options) !void {
+            format = opts.format;
+        }
+    };
+
+    const TestSecretsDownload = SecretsDownload.bind(State.action);
+    var app = zeke.App(.{TestSecretsDownload}).init(std.testing.allocator, "sigillo");
+    try app.dispatch(&.{ "secrets", "download", "--format", "xargs" });
+
+    try std.testing.expectEqualStrings("xargs", State.format.?);
+}
+
+test "secrets download leaves format unset when omitted" {
+    const State = struct {
+        var format: ?[]const u8 = null;
+
+        fn action(_: SecretsDownload.Args, opts: SecretsDownload.Options) !void {
+            format = opts.format;
+        }
+    };
+
+    const TestSecretsDownload = SecretsDownload.bind(State.action);
+    var app = zeke.App(.{TestSecretsDownload}).init(std.testing.allocator, "sigillo");
+    try app.dispatch(&.{ "secrets", "download" });
+
+    try std.testing.expect(State.format == null);
 }
 
 test "secrets command parses environment override" {
