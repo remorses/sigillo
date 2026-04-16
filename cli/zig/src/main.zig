@@ -743,6 +743,9 @@ fn runChildProcessWithWriters(
     child.stderr_behavior = if (redact_values.len == 0) .Inherit else .Pipe;
     child.env_map = env_map;
 
+    const redaction_plan = try createRedactionPlan(child_allocator, redact_values);
+    defer child_allocator.free(redaction_plan.sorted_values);
+
     try child.spawn();
     if (redact_values.len > 0) {
         const stdout_pipe = child.stdout.?;
@@ -755,13 +758,13 @@ fn runChildProcessWithWriters(
 
         const stdout_thread = try std.Thread.spawn(.{}, streamPipeRedactedThread, .{
             stdout_pipe,
-            redact_values,
+            redaction_plan,
             stdout_writer,
             &stdout_result,
         });
         const stderr_thread = try std.Thread.spawn(.{}, streamPipeRedactedThread, .{
             stderr_pipe,
-            redact_values,
+            redaction_plan,
             stderr_writer,
             &stderr_result,
         });
@@ -783,27 +786,47 @@ const PipeStreamResult = struct {
     err: ?anyerror = null,
 };
 
+const RedactionPlan = struct {
+    sorted_values: []const []const u8,
+    keep_tail_len: usize,
+};
+
+fn createRedactionPlan(
+    allocator: std.mem.Allocator,
+    redact_values: []const []const u8,
+) !RedactionPlan {
+    const sorted_values = try allocator.dupe([]const u8, redact_values);
+    std.mem.sort([]const u8, sorted_values, {}, struct {
+        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+            return a.len > b.len;
+        }
+    }.lessThan);
+
+    return .{
+        .sorted_values = sorted_values,
+        .keep_tail_len = if (maxSecretLen(sorted_values) > 0) maxSecretLen(sorted_values) - 1 else 0,
+    };
+}
+
 fn streamPipeRedactedThread(
     pipe: File,
-    redact_values: []const []const u8,
+    redaction_plan: RedactionPlan,
     writer: anytype,
     result: *PipeStreamResult,
 ) void {
-    streamPipeRedacted(pipe, redact_values, writer) catch |err| {
+    streamPipeRedacted(pipe, redaction_plan, writer) catch |err| {
         result.err = err;
     };
 }
 
 fn streamPipeRedacted(
     pipe: File,
-    redact_values: []const []const u8,
+    redaction_plan: RedactionPlan,
     writer: anytype,
 ) !void {
     defer pipe.close();
 
     const allocator = std.heap.page_allocator;
-    const max_secret_len = maxSecretLen(redact_values);
-    const keep_tail_len = if (max_secret_len > 0) max_secret_len - 1 else 0;
 
     var pending = std.ArrayListUnmanaged(u8).empty;
     defer pending.deinit(allocator);
@@ -814,16 +837,15 @@ fn streamPipeRedacted(
         if (bytes_read == 0) break;
 
         try pending.appendSlice(allocator, read_buf[0..bytes_read]);
-        try flushRedactedPending(&pending, redact_values, keep_tail_len, false, writer);
+        try flushRedactedPending(&pending, redaction_plan, false, writer);
     }
 
-    try flushRedactedPending(&pending, redact_values, keep_tail_len, true, writer);
+    try flushRedactedPending(&pending, redaction_plan, true, writer);
 }
 
 fn flushRedactedPending(
     pending: *std.ArrayListUnmanaged(u8),
-    redact_values: []const []const u8,
-    keep_tail_len: usize,
+    redaction_plan: RedactionPlan,
     flush_all: bool,
     writer: anytype,
 ) !void {
@@ -831,14 +853,14 @@ fn flushRedactedPending(
 
     const write_len = if (flush_all)
         pending.items.len
-    else if (pending.items.len > keep_tail_len)
-        pending.items.len - keep_tail_len
+    else if (pending.items.len > redaction_plan.keep_tail_len)
+        pending.items.len - redaction_plan.keep_tail_len
     else
         0;
 
     if (write_len == 0) return;
 
-    redactInPlace(pending.items, redact_values);
+    redactInPlace(pending.items, redaction_plan.sorted_values);
     try writer.writeAll(pending.items[0..write_len]);
 
     const tail_len = pending.items.len - write_len;
@@ -1715,11 +1737,12 @@ test "streaming redaction handles chunk boundaries" {
     var output = std.ArrayListUnmanaged(u8).empty;
     defer output.deinit(allocator);
 
+    const redaction_plan = try createRedactionPlan(allocator, &.{"sk_live_abcdefghijklmnop"});
+
     try pending.appendSlice(allocator, "prefix sk_live_ab");
     try flushRedactedPending(
         &pending,
-        &.{"sk_live_abcdefghijklmnop"},
-        "sk_live_abcdefghijklmnop".len - 1,
+        redaction_plan,
         false,
         output.writer(allocator),
     );
@@ -1727,13 +1750,32 @@ test "streaming redaction handles chunk boundaries" {
     try pending.appendSlice(allocator, "cdefghijklmnop suffix");
     try flushRedactedPending(
         &pending,
-        &.{"sk_live_abcdefghijklmnop"},
-        "sk_live_abcdefghijklmnop".len - 1,
+        redaction_plan,
         true,
         output.writer(allocator),
     );
 
     try std.testing.expectEqualStrings("prefix ************************ suffix", output.items);
+}
+
+test "streaming redaction handles overlapping secrets" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var pending = std.ArrayListUnmanaged(u8).empty;
+    defer pending.deinit(allocator);
+    var output = std.ArrayListUnmanaged(u8).empty;
+    defer output.deinit(allocator);
+
+    const redaction_plan = try createRedactionPlan(allocator, &.{ "1234wxyz", "abcd1234wxyz9876" });
+
+    try pending.appendSlice(allocator, "value=abcd1234");
+    try flushRedactedPending(&pending, redaction_plan, false, output.writer(allocator));
+    try pending.appendSlice(allocator, "wxyz9876");
+    try flushRedactedPending(&pending, redaction_plan, true, output.writer(allocator));
+
+    try std.testing.expectEqualStrings("value=****************", output.items);
 }
 
 test "runChildProcessWithWriters streams large stdout without buffering it all" {
