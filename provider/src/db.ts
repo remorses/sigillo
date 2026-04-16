@@ -28,12 +28,12 @@ function getStub() {
 
 export function getDb() {
   const stub = getStub()
-  return drizzle(async (sql, params, method) => {
-    // Cast needed: drizzle types expect { rows: any[] } but the get method
-    // must return { rows: null } when no row is found (see auth-store.ts).
-    return stub.executeSql(sql, params, method) as any
-  }, { schema, relations: schema.relations })
-}
+    return drizzle(async (sql, params, method) => {
+      // Cast needed: drizzle types expect { rows: any[] } but the get method
+      // must return { rows: null } when no row is found (see auth-store.ts).
+      return stub.executeSql({ sql, params, method }) as any
+    }, { schema, relations: schema.relations })
+  }
 
 // ── BetterAuth ──────────────────────────────────────────────────────
 

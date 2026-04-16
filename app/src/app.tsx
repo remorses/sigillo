@@ -35,6 +35,10 @@ export { SecretsStore } from './secrets-store.ts'
 
 const cliBannerCookieName = 'sigillo-cli-banner-dismissed'
 
+function isTruthy<T>(value: T | null | undefined): value is T {
+  return value != null
+}
+
 // Only allow local paths for redirects — prevents open redirect attacks
 // on /login?redirect=https://evil.example
 function safeRedirectPath(value: string | null): string {
@@ -76,7 +80,7 @@ export const app = new Spiceflow({
           <Head.Title>Sigillo — Secret Manager</Head.Title>
         </Head>
         <body className="relative flex flex-col min-h-screen bg-background font-sans antialiased">
-          <ProgressBar />
+          <ProgressBar color="var(--primary)" />
           <Navbar />
           <div className="border-t border-border" />
           {children ?? (
@@ -296,7 +300,7 @@ export const app = new Spiceflow({
     if (selectedEnvId) {
       const derived = await deriveSecrets(selectedEnvId)
       // Look up user info for each secret's latest event author
-      const userIds = [...new Set(derived.map((d) => d.userId).filter((userId): userId is string => userId != null))]
+      const userIds = [...new Set(derived.map((d) => d.userId).filter(isTruthy))]
       const userMap = new Map<string, { id: string; name: string }>()
       for (const uid of userIds) {
         const u = await db.query.user.findFirst({

@@ -32,7 +32,7 @@ export function getDb() {
     async (sql, params, method) => {
       // Cast needed: drizzle types expect { rows: any[] } but the get method
       // must return { rows: null } when no row is found (see secrets-store.ts).
-      return stub.executeSql(sql, params, method) as any
+      return stub.executeSql({ sql, params, method }) as any
     },
     async (batch) => {
       return stub.executeSqlBatch(batch) as any
@@ -370,20 +370,26 @@ export async function deriveAllSecretNames(environmentIds: string[]): Promise<st
   const db = getDb()
 
   // Fetch all environments' events in a single RPC round-trip
-  const results = await db.batch(
-    environmentIds.map((envId) =>
+  const [firstEnvironmentId, ...restEnvironmentIds] = environmentIds
+  const results = await db.batch([
+    db.query.secretEvent.findMany({
+      where: { environmentId: firstEnvironmentId },
+      columns: { name: true, operation: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    }),
+    ...restEnvironmentIds.map((envId) =>
       db.query.secretEvent.findMany({
         where: { environmentId: envId },
         columns: { name: true, operation: true, createdAt: true },
         orderBy: { createdAt: 'asc' },
       }),
-    ) as [any, ...any[]],
-  )
+    ),
+  ])
 
   const allNames = new Set<string>()
   for (const events of results) {
     const active = new Set<string>()
-    for (const evt of events as { name: string; operation: string }[]) {
+    for (const evt of events) {
       if (evt.operation === 'delete') active.delete(evt.name)
       else active.add(evt.name)
     }

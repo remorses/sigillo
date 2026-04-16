@@ -17,7 +17,7 @@ export class AuthStore extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
     this.db = durable.drizzle(ctx.storage, { schema, relations: schema.relations })
-    ctx.blockConcurrencyWhile(async () => {
+    void ctx.blockConcurrencyWhile(async () => {
       await migrator.migrate(this.db, migrations)
     })
   }
@@ -25,7 +25,7 @@ export class AuthStore extends DurableObject<Env> {
   // RPC: execute a SQL query on the DO's SQLite database.
   // Called by the worker's drizzle-orm/sqlite-proxy callback.
   // method is 'all' | 'get' | 'run' | 'values'
-  async executeSql(sql: string, params: unknown[], method: string) {
+  async executeSql({ sql, params, method }: { sql: string; params: SqlStorageValue[]; method: string }) {
     const stmt = this.ctx.storage.sql.exec(sql, ...params)
     const columnNames = stmt.columnNames
     const rawRows = stmt.toArray()

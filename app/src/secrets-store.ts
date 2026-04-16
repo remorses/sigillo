@@ -16,7 +16,7 @@ export class SecretsStore extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
     this.db = durable.drizzle(ctx.storage, { schema, relations: schema.relations })
-    ctx.blockConcurrencyWhile(async () => {
+    void ctx.blockConcurrencyWhile(async () => {
       await migrator.migrate(this.db, migrations)
     })
   }
@@ -39,7 +39,7 @@ export class SecretsStore extends DurableObject<Env> {
 
   // Shared logic for executing a single SQL statement and formatting the result
   // for drizzle-orm/sqlite-proxy's expected { rows } shape.
-  private execOne(sql: string, params: unknown[], method: string) {
+  private execOne({ sql, params, method }: { sql: string; params: SqlStorageValue[]; method: string }) {
     const stmt = this.ctx.storage.sql.exec(sql, ...params)
     const columnNames = stmt.columnNames
     const rawRows = stmt.toArray()
@@ -47,11 +47,15 @@ export class SecretsStore extends DurableObject<Env> {
     if (method === 'get') {
       const row = rawRows[0]
       if (!row) return { rows: null }
-      return { rows: columnNames.map((col) => (row as Record<string, unknown>)[col]) }
+      const record: Record<string, SqlStorageValue> = row
+      return { rows: columnNames.map((col) => record[col]) }
     }
 
     const rows = rawRows.map((row) =>
-      columnNames.map((col) => (row as Record<string, unknown>)[col]),
+      {
+        const record: Record<string, SqlStorageValue> = row
+        return columnNames.map((col) => record[col])
+      },
     )
     return { rows }
   }
@@ -59,15 +63,15 @@ export class SecretsStore extends DurableObject<Env> {
   // RPC: execute a SQL query on the DO's SQLite database.
   // Called by the worker's drizzle-orm/sqlite-proxy callback.
   // method is 'all' | 'get' | 'run' | 'values'
-  async executeSql(sql: string, params: unknown[], method: string) {
-    return this.execOne(sql, params, method)
+  async executeSql({ sql, params, method }: { sql: string; params: SqlStorageValue[]; method: string }) {
+    return this.execOne({ sql, params, method })
   }
 
   // RPC: execute multiple SQL statements in a single RPC round-trip.
   // Called by the worker's drizzle-orm/sqlite-proxy batchCallback.
   // All statements run sequentially in the DO's local SQLite — one RPC
   // instead of N, which avoids N worker↔DO round-trips.
-  async executeSqlBatch(batch: { sql: string; params: unknown[]; method: string }[]) {
-    return batch.map((q) => this.execOne(q.sql, q.params, q.method))
+  async executeSqlBatch(batch: { sql: string; params: SqlStorageValue[]; method: string }[]) {
+    return batch.map((q) => this.execOne(q))
   }
 }
