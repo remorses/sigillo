@@ -23,6 +23,13 @@ const cliBannerCookieName = "sigillo-cli-banner-dismissed";
 const cliBannerCookieValue = "1";
 const cliBannerCodeLines = [
   [
+    { text: "curl", kind: "command" },
+    { text: " -fsSL ", kind: "plain" },
+    { text: "https://sigillo.dev/install.sh", kind: "value" },
+    { text: " | ", kind: "operator" },
+    { text: "bash", kind: "command" },
+  ],
+  [
     { text: "npm", kind: "command" },
     { text: " install -g ", kind: "plain" },
     { text: "sigillo", kind: "value" },
@@ -34,6 +41,16 @@ const cliBannerCodeLines = [
   [
     { text: "sigillo", kind: "value" },
     { text: " run", kind: "plain" },
+    { text: " -- ", kind: "operator" },
+    { text: "next", kind: "command" },
+    { text: " dev", kind: "plain" },
+  ],
+  [
+    { text: "sigillo", kind: "value" },
+    { text: " run --project ", kind: "plain" },
+    { text: "website", kind: "value" },
+    { text: " --config ", kind: "plain" },
+    { text: "dev", kind: "value" },
     { text: " -- ", kind: "operator" },
     { text: "next", kind: "command" },
     { text: " dev", kind: "plain" },
@@ -71,13 +88,13 @@ function CliBanner() {
               Use the Sigillo CLI
             </h2>
             <p className="text-sm leading-6 text-muted-foreground">
-              Install the CLI, log in, then use <code className="font-mono text-foreground">sigillo run</code> to pass secrets to your process. Output is redacted by default to help avoid leaks in logs or agent context.
+              Install with the script URL or npm, then use <code className="font-mono text-foreground">sigillo run</code> to pass secrets to your process. Output is redacted by default to help avoid leaks in logs or agent context.
             </p>
           </div>
         </div>
 
         <div className="flex items-center justify-center border-t border-border/60 p-4 md:border-l md:border-t-0 md:p-5">
-          <pre className="cli-banner-code w-full max-w-md overflow-x-auto rounded-xl border border-border/70 bg-background/95 p-4 text-[11px] shadow-xs/5">
+          <pre className="cli-banner-code w-full max-w-md overflow-x-auto rounded-xl border border-border/70 bg-background/95 p-4 text-[12px] shadow-xs/5">
             <code className="block font-mono">
               {cliBannerCodeLines.map((line, lineIndex) => (
                 <span key={lineIndex} className="grid grid-cols-[1.25rem_1fr] gap-x-4 leading-6">
