@@ -49,7 +49,7 @@ const cliBannerCodeLines = [
     { text: "sigillo", kind: "value" },
     { text: " run --project ", kind: "plain" },
     { text: "website", kind: "value" },
-    { text: " --config ", kind: "plain" },
+    { text: " --env ", kind: "plain" },
     { text: "dev", kind: "value" },
     { text: " -- ", kind: "operator" },
     { text: "next", kind: "command" },
