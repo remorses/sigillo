@@ -8,6 +8,7 @@ import { TrashIcon } from "lucide-react"
 import { removeOrgMemberAction, updateOrgMemberRoleAction } from "sigillo-app/src/actions"
 import { Button } from "sigillo-app/src/components/ui/button"
 import { Frame } from "sigillo-app/src/components/ui/frame"
+import { NativeSelect } from "sigillo-app/src/components/ui/native-select"
 import { Spinner } from "sigillo-app/src/components/ui/spinner"
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -43,6 +44,10 @@ export function AccessTable({
   function getRole(member: Member) {
     return roleOverrides[member.id] ?? member.role
   }
+
+  const adminCount = members.reduce((count, member) => {
+    return count + (getRole(member) === "admin" ? 1 : 0)
+  }, 0)
 
   function saveRole(member: Member, nextRole: Member["role"]) {
     const previousRole = getRole(member)
@@ -108,6 +113,7 @@ export function AccessTable({
               const isDeleting = pendingDeleteId === member.id
               const isBusy = isSavingRole || isDeleting
               const isCurrentUser = member.user?.id === currentUserId
+              const isLastAdmin = currentRole === "admin" && adminCount === 1
 
               return (
                 <TableRow key={member.id}>
@@ -128,21 +134,21 @@ export function AccessTable({
                   </TableCell>
                   <TableCell>
                     {canManage ? (
-                      <div className="relative">
-                        <select
-                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 pr-8 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-64"
+                      <div className="relative w-full">
+                        <NativeSelect
                           disabled={isBusy}
                           value={currentRole}
                           onChange={(event) => {
                             const nextRole = event.target.value as Member["role"]
-                            if (nextRole !== currentRole) {
-                              saveRole(member, nextRole)
+                            if (nextRole === currentRole) {
+                              return
                             }
+                            saveRole(member, nextRole)
                           }}
                         >
                           <option value="admin">Admin</option>
-                          <option value="member">Member</option>
-                        </select>
+                          <option disabled={isLastAdmin} value="member">Member</option>
+                        </NativeSelect>
                         {isSavingRole ? (
                           <Spinner className="absolute right-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                         ) : null}
@@ -160,10 +166,14 @@ export function AccessTable({
                     <TableCell className="p-0">
                       <Button
                         aria-label={isCurrentUser ? "Remove yourself" : "Remove user"}
-                        disabled={isBusy}
+                        disabled={isBusy || isLastAdmin}
                         loading={isDeleting}
                         size="icon-xs"
-                        title={isCurrentUser ? "Remove yourself" : "Remove user"}
+                        title={isLastAdmin
+                          ? "This organization needs at least one admin"
+                          : isCurrentUser
+                            ? "Remove yourself"
+                            : "Remove user"}
                         variant="ghost"
                         onClick={() => removeMember(member)}
                       >

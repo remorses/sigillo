@@ -60,7 +60,7 @@ CREATE TABLE `oauth_client` (
 	`type` text,
 	`public` integer,
 	`disabled` integer DEFAULT false,
-	`skip_consent` integer DEFAULT true,
+	`skip_consent` integer DEFAULT false,
 	`enable_end_session` integer,
 	`subject_type` text,
 	`require_pkce` integer,

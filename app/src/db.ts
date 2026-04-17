@@ -1,44 +1,58 @@
 // Worker-level database client, auth, encryption, and authorization guards.
-// The DO is a thin SQL proxy — all logic runs here in the worker.
+// Uses D1 directly — no Durable Object proxy layer.
 //
-// getDb() creates a drizzle-orm/sqlite-proxy client that routes SQL to the
-// DO's executeSql() RPC. getAuth(request) creates a BetterAuth instance backed
-// by the same drizzle client for the current request host. encrypt()/decrypt()
-// use ENCRYPTION_KEY when set, otherwise derive a stable AES-256 key from
-// BETTER_AUTH_SECRET.
+// getDb() creates a drizzle-orm/d1 client bound to env.DB.
+// getAuth(request) creates a BetterAuth instance backed by the same drizzle
+// client for the current request host. encrypt()/decrypt() use ENCRYPTION_KEY
+// when set, otherwise derive a stable AES-256 key from BETTER_AUTH_SECRET.
 
 import { env } from 'cloudflare:workers'
-import { drizzle } from 'drizzle-orm/sqlite-proxy'
+import { drizzle } from 'drizzle-orm/d1'
 import * as orm from 'drizzle-orm'
 import * as schema from 'db/src/app-schema.ts'
 import { betterAuth } from 'better-auth'
 import { genericOAuth, deviceAuthorization, bearer } from 'better-auth/plugins'
 import { drizzleAdapter } from '@better-auth/drizzle-adapter/relations-v2'
 import { redirect } from 'spiceflow'
-import type { SecretsStore } from './secrets-store.ts'
 
-// ── DO stub ─────────────────────────────────────────────────────────
+// ── Drizzle client via D1 ───────────────────────────────────────────
 
-function getStub() {
-  const id = env.SECRETS_STORE.idFromName('main')
-  return env.SECRETS_STORE.get(id) as DurableObjectStub<SecretsStore>
+type D1BindValue = string | number | ArrayBuffer | ArrayBufferView | null | Date
+
+// D1 only accepts string | number | null | ArrayBuffer as bound params.
+// BetterAuth passes Date objects for timestamp columns. Wrap the D1 binding
+// so auth queries keep working after the DO → D1 migration.
+
+function wrapD1(d1: D1Database): D1Database {
+  return new Proxy(d1, {
+    get(target, prop, receiver) {
+      if (prop === 'prepare') {
+        return (sql: string) => {
+          const stmt = target.prepare(sql)
+          return new Proxy(stmt, {
+            get(statement, statementProp, statementReceiver) {
+              if (statementProp === 'bind') {
+                return (...params: D1BindValue[]) => {
+                  const fixedParams = params.map((value) => (value instanceof Date ? value.getTime() : value))
+                  return statement.bind(...fixedParams)
+                }
+              }
+
+              const value = Reflect.get(statement, statementProp, statementReceiver)
+              return typeof value === 'function' ? value.bind(statement) : value
+            },
+          })
+        }
+      }
+
+      const value = Reflect.get(target, prop, receiver)
+      return typeof value === 'function' ? value.bind(target) : value
+    },
+  })
 }
 
-// ── Drizzle client via sqlite-proxy ─────────────────────────────────
-
 export function getDb() {
-  const stub = getStub()
-  return drizzle(
-    async (sql, params, method) => {
-      // Cast needed: drizzle types expect { rows: any[] } but the get method
-      // must return { rows: null } when no row is found (see secrets-store.ts).
-      return stub.executeSql({ sql, params, method }) as any
-    },
-    async (batch) => {
-      return stub.executeSqlBatch(batch) as any
-    },
-    { schema, relations: schema.relations },
-  )
+  return drizzle(wrapD1(env.DB), { schema, relations: schema.relations })
 }
 
 // ── OAuth client registration ───────────────────────────────────────
@@ -188,7 +202,7 @@ export async function getAuth(request: Request) {
     session: {
       cookieCache: {
         enabled: true,
-        maxAge: 5 * 60, // 5 minutes — avoids a DO SQL round-trip on every request
+        maxAge: 5 * 60, // 5 minutes — avoids a D1 round-trip on every request
       },
     },
     plugins: [
@@ -213,8 +227,8 @@ export async function getAuth(request: Request) {
 
 // ── Data center location ────────────────────────────────────────────
 
-export function getDataCenter(): Promise<string> {
-  return getStub().getColo()
+export function getDataCenter(request: Request & { cf?: { colo?: string } }): string {
+  return request.cf?.colo ?? 'unknown'
 }
 
 // ── Session helpers ─────────────────────────────────────────────────
@@ -369,7 +383,7 @@ export async function deriveAllSecretNames(environmentIds: string[]): Promise<st
   if (environmentIds.length === 0) return []
   const db = getDb()
 
-  // Fetch all environments' events in a single RPC round-trip
+  // Fetch all environments' events in a single D1 batch round-trip
   const [firstEnvironmentId, ...restEnvironmentIds] = environmentIds
   const results = await db.batch([
     db.query.secretEvent.findMany({

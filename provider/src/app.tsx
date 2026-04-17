@@ -9,7 +9,6 @@ import { Head } from 'spiceflow/react'
 import { getAuth } from './db.ts'
 import { ConsentButtons } from './components/consent-buttons.tsx'
 
-export { AuthStore } from './auth-store.ts'
 
 function getRedirectDomain(redirectUri: string | null) {
   if (!redirectUri) return null
@@ -55,9 +54,21 @@ export const app = new Spiceflow()
   // BetterAuth oauthProvider redirects here when user is not logged in.
   // Instead of showing a button, redirect straight to Google via the
   // type-safe BetterAuth API — now runs directly in the worker.
+  //
+  // Important: after Google redirects back here, this route must detect the
+  // freshly created provider session and resume the original OAuth authorize
+  // request. Otherwise it would immediately start another Google sign-in and
+  // loop forever between /sign-in and accounts.google.com.
   .get('/sign-in', async ({ request }) => {
     const currentUrl = new URL(request.url)
     const auth = getAuth()
+    const session = await auth.api.getSession({ headers: request.headers })
+    if (session) {
+      const authorizeUrl = new URL('/api/auth/oauth2/authorize', currentUrl.origin)
+      authorizeUrl.search = currentUrl.search
+      return Response.redirect(authorizeUrl.toString(), 302)
+    }
+
     // Use returnHeaders so we get both the redirect URL and the Set-Cookie
     // headers (state cookie for CSRF). A bare Response.redirect() drops
     // those cookies → state_mismatch on the Google callback.

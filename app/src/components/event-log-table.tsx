@@ -79,7 +79,7 @@ export function EventLogTable({
         <h1 className="text-2xl font-bold tracking-tight">{projectName}</h1>
         <Select
           defaultValue={selectedEnvId || ""}
-          onValueChange={(val) => {
+          onValueChange={(val: string | null) => {
             if (!val) return
             router.push(router.href('/orgs/:orgId/projects/:projectId/envs/:envId/event-log', { orgId, projectId, envId: val }));
           }}

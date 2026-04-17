@@ -94,7 +94,7 @@ function CliBanner() {
         </div>
 
         <div className="flex items-center justify-center border-t border-border/60 p-4 md:border-l md:border-t-0 md:p-5">
-          <pre className="cli-banner-code w-full max-w-md overflow-x-auto rounded-xl border border-border/70 bg-background/95 p-4 text-[12px] shadow-xs/5">
+          <pre className="cli-banner-code w-full overflow-x-auto rounded-xl border border-border/70 bg-background/95 p-4 text-[12px] shadow-xs/5">
             <code className="block font-mono">
               {cliBannerCodeLines.map((line, lineIndex) => (
                 <span key={lineIndex} className="grid grid-cols-[1.25rem_1fr] gap-x-4 leading-6">
@@ -171,7 +171,7 @@ export function ProjectPage({
           )}
           <Select
             defaultValue={selectedEnvId || ""}
-            onValueChange={(val) => {
+            onValueChange={(val: string | null) => {
               if (!val) return
               router.push(router.href('/orgs/:orgId/projects/:projectId/envs/:envId', { orgId, projectId, envId: val }));
             }}

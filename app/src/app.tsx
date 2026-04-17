@@ -26,7 +26,6 @@ import { Sidebar, NewProjectButton, FooterColo } from 'sigillo-app/src/component
 import { ProjectPage } from 'sigillo-app/src/components/project-page'
 import { CreateOrgForm } from 'sigillo-app/src/components/create-org-form'
 
-export { SecretsStore } from './secrets-store.ts'
 
 const cliBannerCookieName = 'sigillo-cli-banner-dismissed'
 
@@ -123,11 +122,17 @@ export const app = new Spiceflow({
       const sortedEnvs = [...(p.environments || [])].sort((a, b) => a.createdAt - b.createdAt)
       return { id: p.id, name: p.name, firstEnvId: sortedEnvs[0]?.id ?? null }
     })
+    const currentProjectFirstEnvId = projects.find((project) => project.id === projectId)?.firstEnvId ?? null
     const user = { name: session.user.name || 'User', email: session.user.email || '' }
 
     return (
       <>
-        <TabBar orgId={orgId} projectId={projectId} pathname={url.pathname} />
+        <TabBar
+          orgId={orgId}
+          projectId={projectId}
+          pathname={url.pathname}
+          firstEnvId={currentProjectFirstEnvId}
+        />
         <div className="border-t border-border" />
         <div className="isolate grow relative flex max-w-(--content-max-width) mx-auto w-full border-x border-border">
           <Sidebar
@@ -606,12 +611,23 @@ function GitHubIcon({ className }: { className?: string }) {
   )
 }
 
-function TabBar({ orgId, projectId, pathname }: { orgId: string; projectId: string; pathname: string }) {
+function TabBar({
+  orgId,
+  projectId,
+  pathname,
+  firstEnvId,
+}: {
+  orgId: string
+  projectId: string
+  pathname: string
+  firstEnvId: string | null
+}) {
   const base = `/orgs/${orgId}/projects/${projectId}`
   const envMatch = pathname.match(new RegExp(`^${base}/envs/([^/]+)`))
   const currentEnvBase = envMatch ? `${base}/envs/${envMatch[1]}` : null
+  const secretsHref = currentEnvBase ?? (firstEnvId ? `${base}/envs/${firstEnvId}` : base)
   const tabs = [
-    { label: 'Secrets', href: currentEnvBase || base, active: pathname === base || (pathname.startsWith(`${base}/envs`) && !pathname.endsWith('/event-log')) },
+    { label: 'Secrets', href: secretsHref, active: pathname === base || (pathname.startsWith(`${base}/envs`) && !pathname.endsWith('/event-log')) },
     { label: 'Environments', href: `${base}/environments`, active: pathname === `${base}/environments` },
     { label: 'Tokens', href: `${base}/tokens`, active: pathname === `${base}/tokens` },
     { label: 'Access', href: `${base}/access`, active: pathname === `${base}/access` },

@@ -1,4 +1,4 @@
-// Schema for the self-hosted app Durable Object.
+// Schema for the self-hosted app D1 database.
 // Contains BetterAuth core tables for local auth (genericOAuth sessions)
 // and the secrets domain tables.
 

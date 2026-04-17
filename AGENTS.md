@@ -2,29 +2,29 @@ sigillo is still in pre release. ignore backwards compatibility, instead focus o
 
 # Sigillo
 
-Self-hostable secret manager (Doppler/Infisical alternative) running entirely on Cloudflare Workers + Durable Objects. No external database needed — everything lives in DO SQLite.
+Self-hostable secret manager (Doppler/Infisical alternative) running on Cloudflare Workers + D1.
 
 ## Architecture
 
-Two Cloudflare Workers in a pnpm monorepo:
+Two Cloudflare Workers in a pnpm monorepo, each backed by a D1 database:
 
 - **`provider`** — Centralized OAuth/OIDC provider at `auth.sigillo.dev`. Wraps Google login via BetterAuth's `oauthProvider` plugin. Self-hosted instances register here automatically via RFC 7591 dynamic client registration as public PKCE clients (no client_secret needed).
 - **`app`** — The secret manager users self-host. Authenticates via the provider using `genericOAuth` + PKCE. Encrypts secrets with AES-256-GCM (Web Crypto). Supports RFC 8628 device flow for CLI/agent login.
-- **`db`** — Shared Drizzle schemas and migrations for both DOs.
+- **`db`** — Shared Drizzle schemas and migrations for the app's D1 database.
 
-Each worker has a single Durable Object (`AuthStore` / `SecretsStore`) that holds all state in SQLite via drizzle durable-sqlite.
+Each worker uses `drizzle-orm/d1` directly — no Durable Objects or proxy layers. The drizzle client is created via `drizzle(env.DB)` in the worker.
 
 ## Stack
 
 - **Spiceflow** — API routes + React Server Components
 - **BetterAuth** — Auth on both sides (provider + client)
-- **Drizzle ORM** — durable-sqlite driver, migrations via drizzle-kit
-- **Cloudflare Workers + Durable Objects** — compute + storage
+- **Drizzle ORM** — D1 driver, migrations via drizzle-kit + `wrangler d1 migrations apply`
+- **Cloudflare Workers + D1** — compute + storage
 - **pnpm** workspaces
 
 ## Secrets encryption
 
-Secrets are AES-256-GCM encrypted in the `SecretsStore` DO. If `ENCRYPTION_KEY` is set, the app uses it directly. Otherwise it derives a stable 32-byte AES key from `BETTER_AUTH_SECRET`. Each secret gets a random 12-byte IV.
+Secrets are AES-256-GCM encrypted in the worker. If `ENCRYPTION_KEY` is set, the app uses it directly. Otherwise it derives a stable 32-byte AES key from `BETTER_AUTH_SECRET`. Each secret gets a random 12-byte IV.
 
 Generate a valid `ENCRYPTION_KEY` (32 random bytes, base64-encoded):
 
@@ -57,9 +57,15 @@ The value must be valid base64 — `atob()` is used to decode it at runtime. If 
 
 Always load these skills before working on this project:
 
-- **`cloudflare-workers`** — wrangler.jsonc config, type-safe env, Durable Objects, deploy scripts, preview/production environments
-- **`drizzle`** — schema conventions, namespace imports, query API, migrations, durable-sqlite driver setup
+- **`cloudflare-workers`** — wrangler.jsonc config, type-safe env, deploy scripts, preview/production environments
+- **`drizzle`** — schema conventions, namespace imports, query API, migrations, D1 driver setup
 - **`spiceflow`** — API routes + React Server Components framework (fetch latest README every time)
+
+## Deployments
+
+- When asked to deploy `app` or `provider`, default to **production deployment**, not preview.
+- Use script names with `deployment` instead of `deploy` to avoid pnpm's built-in `pnpm deploy` command confusion.
+- Use `deployment` for production and `deployment:preview` for preview-only deploys.
 
 
 ## REST API reference

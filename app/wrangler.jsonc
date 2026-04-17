@@ -1,14 +1,27 @@
 {
   "name": "sigillo-app",
-  "compatibility_date": "2025-06-01",
-  "placement": { "region": "aws:us-east-1" },
+  "compatibility_date": "2026-04-17",
   "compatibility_flags": ["nodejs_compat"],
   "main": "spiceflow/cloudflare-entrypoint",
-  "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
-  "durable_objects": {
-    "bindings": [{ "name": "SECRETS_STORE", "class_name": "SecretsStore" }],
+  // DO → D1 migration: delete the old SecretsStore DO class
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["SecretsStore"] },
+    { "tag": "v2", "deleted_classes": ["SecretsStore"] },
+  ],
+  "observability": {
+    "enabled": true,
+    "traces": {
+      "enabled": true,
+    },
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SecretsStore"] }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sigillo-app-db",
+      "database_id": "d8470d94-d394-40e1-88c0-799d17530d15",
+      "migrations_dir": "../db/drizzle-app",
+    },
+  ],
   "vars": {
     "PROVIDER_URL": "https://auth.sigillo.dev",
   },
@@ -24,13 +37,20 @@
   "env": {
     "preview": {
       "name": "sigillo-app-preview",
-      "durable_objects": {
-        "bindings": [{ "name": "SECRETS_STORE", "class_name": "SecretsStore" }],
-      },
-      "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SecretsStore"] }],
+      "migrations": [
+        { "tag": "v1", "new_sqlite_classes": ["SecretsStore"] },
+        { "tag": "v2", "deleted_classes": ["SecretsStore"] },
+      ],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "sigillo-app-preview-db",
+          "database_id": "73a6309b-4678-4b43-886b-41282ff0ec3a",
+          "migrations_dir": "../db/drizzle-app",
+        },
+      ],
       "vars": {
         "PROVIDER_URL": "https://auth.preview.sigillo.dev",
-
       },
       "secrets": {
         "required": ["BETTER_AUTH_SECRET"],
@@ -39,7 +59,6 @@
         {
           "pattern": "preview.sigillo.dev",
           "custom_domain": true,
-
         },
       ],
     },

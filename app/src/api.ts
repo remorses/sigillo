@@ -696,10 +696,10 @@ export const apiApp = new Spiceflow()
   })
 
   // ── Info (public) ───────────────────────────────────────────────
-  // Returns the IATA colo code of the Durable Object's data center.
-  // Used by the UI footer to display "database in <region>".
-  .get('/api/info', async () => {
-    const colo = await getDataCenter()
+  // Returns the IATA colo code of the worker's data center.
+  // Used by the UI footer to display "serving from <region>".
+  .get('/api/info', async ({ request }) => {
+    const colo = getDataCenter(request)
     return { colo }
   })
 

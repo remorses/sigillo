@@ -1,39 +1,55 @@
 // Worker-level database client and BetterAuth instance for the provider.
-// The DO is a thin SQL proxy — all logic runs here in the worker.
+// Uses D1 directly — no Durable Object proxy layer.
 //
-// getDb() creates a drizzle-orm/sqlite-proxy client that routes SQL to the
-// DO's executeSql() RPC. getAuth() creates a BetterAuth instance backed by
-// the same drizzle client with oauthProvider + jwt + Google social.
-//
-// This mirrors the app's db.ts pattern exactly: BetterAuth runs in the worker,
-// only raw SQL crosses the DO boundary via sqlite-proxy.
+// getDb() creates a drizzle-orm/d1 client bound to env.DB.
+// getAuth() creates a BetterAuth instance backed by the same drizzle client
+// with oauthProvider + jwt + Google social.
 
 import { env } from 'cloudflare:workers'
-import { drizzle } from 'drizzle-orm/sqlite-proxy'
+import { drizzle } from 'drizzle-orm/d1'
 import * as schema from './schema.ts'
 import { betterAuth } from 'better-auth'
 import { jwt } from 'better-auth/plugins'
 import { oauthProvider } from '@better-auth/oauth-provider'
 import { drizzleAdapter } from '@better-auth/drizzle-adapter/relations-v2'
-import type { AuthStore } from './auth-store.ts'
 
-// ── DO stub ─────────────────────────────────────────────────────────
+// ── Drizzle client via D1 ───────────────────────────────────────────
 
-function getStub() {
-  const id = env.AUTH_STORE.idFromName('main')
-  return env.AUTH_STORE.get(id) as DurableObjectStub<AuthStore>
+type D1BindValue = string | number | ArrayBuffer | ArrayBufferView | null | Date
+
+// D1 only accepts string | number | null | ArrayBuffer as bound params.
+// BetterAuth passes Date objects for timestamp columns. Wrap the D1
+// binding to auto-convert Date→epoch ms before they reach D1.
+
+function wrapD1(d1: D1Database): D1Database {
+  return new Proxy(d1, {
+    get(target, prop, receiver) {
+      if (prop === 'prepare') {
+        return (sql: string) => {
+          const stmt = target.prepare(sql)
+          return new Proxy(stmt, {
+            get(s, p, r) {
+              if (p === 'bind') {
+                return (...params: D1BindValue[]) => {
+                  const fixed = params.map((v) => (v instanceof Date ? v.getTime() : v))
+                  return s.bind(...fixed)
+                }
+              }
+              const val = Reflect.get(s, p, r)
+              return typeof val === 'function' ? val.bind(s) : val
+            },
+          })
+        }
+      }
+      const val = Reflect.get(target, prop, receiver)
+      return typeof val === 'function' ? val.bind(target) : val
+    },
+  })
 }
 
-// ── Drizzle client via sqlite-proxy ─────────────────────────────────
-
 export function getDb() {
-  const stub = getStub()
-    return drizzle(async (sql, params, method) => {
-      // Cast needed: drizzle types expect { rows: any[] } but the get method
-      // must return { rows: null } when no row is found (see auth-store.ts).
-      return stub.executeSql({ sql, params, method }) as any
-    }, { schema, relations: schema.relations })
-  }
+  return drizzle(wrapD1(env.DB), { schema, relations: schema.relations })
+}
 
 // ── BetterAuth ──────────────────────────────────────────────────────
 
@@ -46,7 +62,7 @@ export function getAuth() {
     session: {
       cookieCache: {
         enabled: true,
-        maxAge: 5 * 60, // 5 minutes — avoids a DO SQL round-trip on every request
+        maxAge: 5 * 60, // 5 minutes — avoids a D1 round-trip on every request
       },
     },
     socialProviders: {
