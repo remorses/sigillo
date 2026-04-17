@@ -30,6 +30,22 @@ async function requireSession() {
   return session
 }
 
+async function requireAdminRole(userId: string, orgId: string) {
+  const { role } = await requireOrgMember(userId, orgId)
+  if (role !== 'admin') throw new Error('Only admins can manage access')
+}
+
+async function ensureAnotherAdminExists(orgId: string, userId: string) {
+  const db = getDb()
+  const admins = await db.query.orgMember.findMany({
+    where: { orgId, role: 'admin' },
+    columns: { userId: true },
+  })
+  if (admins.length === 1 && admins[0]?.userId === userId) {
+    throw new Error('This organization needs at least one admin')
+  }
+}
+
 export async function createProjectAction({ name, orgId }: { name: string; orgId: string }) {
   if (!name) throw new Error('Name is required')
   if (!orgId) throw new Error('No org selected')
@@ -222,6 +238,54 @@ export async function acceptInviteAction({ invitationId }: { invitationId: strin
     .onConflictDoNothing({ target: [schema.orgMember.orgId, schema.orgMember.userId] })
     .returning({ id: schema.orgMember.id })
   throw redirect(`/orgs/${invite.orgId}`)
+}
+
+export async function updateOrgMemberRoleAction({ memberId, role }: {
+  memberId: string
+  role: 'admin' | 'member'
+}) {
+  const session = await requireSession()
+  const db = getDb()
+  const member = await db.query.orgMember.findFirst({
+    where: { id: memberId },
+    columns: { id: true, orgId: true, userId: true, role: true },
+  })
+  if (!member) throw new Error('Member not found')
+
+  await requireAdminRole(session.userId, member.orgId)
+
+  if (member.role === role) {
+    return { id: member.id, role: member.role }
+  }
+
+  if (member.role === 'admin' && role !== 'admin') {
+    await ensureAnotherAdminExists(member.orgId, member.userId)
+  }
+
+  await db.update(schema.orgMember)
+    .set({ role })
+    .where(orm.eq(schema.orgMember.id, member.id))
+
+  return { id: member.id, role }
+}
+
+export async function removeOrgMemberAction({ memberId }: { memberId: string }) {
+  const session = await requireSession()
+  const db = getDb()
+  const member = await db.query.orgMember.findFirst({
+    where: { id: memberId },
+    columns: { id: true, orgId: true, userId: true, role: true },
+  })
+  if (!member) throw new Error('Member not found')
+
+  await requireAdminRole(session.userId, member.orgId)
+
+  if (member.role === 'admin') {
+    await ensureAnotherAdminExists(member.orgId, member.userId)
+  }
+
+  await db.delete(schema.orgMember).where(orm.eq(schema.orgMember.id, member.id))
+  return { id: member.id }
 }
 
 // ── API Token actions ───────────────────────────────────────────────

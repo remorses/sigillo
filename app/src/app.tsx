@@ -22,14 +22,9 @@ import {
   decrypt,
 } from './db.ts'
 import { apiApp } from './api.ts'
-import { formatTime } from 'sigillo-app/src/lib/utils'
 import { Sidebar, NewProjectButton, FooterColo } from 'sigillo-app/src/components/sidebar'
 import { ProjectPage } from 'sigillo-app/src/components/project-page'
 import { CreateOrgForm } from 'sigillo-app/src/components/create-org-form'
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from 'sigillo-app/src/components/ui/table'
-import { Frame } from 'sigillo-app/src/components/ui/frame'
 
 export { SecretsStore } from './secrets-store.ts'
 
@@ -363,10 +358,12 @@ export const app = new Spiceflow({
     )
   })
 
-  // ── Access page (read-only org members table) ─────────────────
-  .page('/orgs/:orgId/projects/:projectId/access', async ({ params }) => {
+  // ── Access page ────────────────────────────────────────────────
+  .page('/orgs/:orgId/projects/:projectId/access', async ({ params, request }) => {
     const db = getDb()
     const { orgId, projectId } = params
+    const session = await requirePageSession(request)
+    const { role } = await requirePageOrgMember(session.userId, orgId)
 
     const project = await db.query.project.findFirst({
       where: { id: projectId },
@@ -380,60 +377,19 @@ export const app = new Spiceflow({
     })
 
     const { InviteButton } = await import('sigillo-app/src/components/invite-dialog')
+    const { AccessTable } = await import('sigillo-app/src/components/access-table')
 
     return (
       <div className="flex flex-col gap-3 w-full">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold tracking-tight">{project?.name ?? 'Project'}</h1>
-          <InviteButton orgId={orgId} />
+          {role === 'admin' ? <InviteButton orgId={orgId} /> : null}
         </div>
-        <Frame className="w-full">
-          <Table className="table-fixed">
-            <colgroup>
-              <col className="w-1/4" />
-              <col className="w-1/3" />
-              <col className="w-28" />
-              <col className="w-32" />
-            </colgroup>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Joined</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {members.map((m) => (
-                <TableRow key={m.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      {m.user?.image ? (
-                        <img src={m.user.image} alt="" className="size-6 rounded-full object-cover" />
-                      ) : (
-                        <div className="size-6 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground">
-                          {(m.user?.name || '?').charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                      <span className="text-sm font-medium">{m.user?.name || '—'}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-sm text-muted-foreground">{m.user?.email || '—'}</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-xs font-medium capitalize">{m.role}</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-muted-foreground text-xs tabular-nums">
-                      {formatTime(m.createdAt)}
-                    </span>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Frame>
+        <AccessTable
+          canManage={role === 'admin'}
+          currentUserId={session.userId}
+          members={members}
+        />
       </div>
     )
   })
