@@ -97,6 +97,7 @@ Doppler UX rather than inventing a new interface.
 - Use `zig build` and `zig build test` for local validation.
 - Keep command implementations simple and short-lived.
 - Prefer arenas backed by a general allocator for command-scoped memory.
+- Never use `std.heap.page_allocator` in the CLI. Prefer a command-scoped or function-scoped `GeneralPurposeAllocator`, and use an `ArenaAllocator` on top when the lifetime is naturally whole-command.
 - Allocate at command start, free at command end, and avoid complex per-value
   lifetime management when a command-scoped arena is enough.
 - If command parsing behavior needs to change, check `zeke` first before adding
