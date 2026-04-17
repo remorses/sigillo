@@ -44,18 +44,93 @@ fn envOverride(env: ?[]const u8, config_alias: ?[]const u8) ?[]const u8 {
     return env orelse config_alias;
 }
 
-fn exitProjectNotFound(stderr: Writer, project: []const u8) noreturn {
+fn printAvailableProjects(
+    allocator: std.mem.Allocator,
+    stderr: Writer,
+    api_url: []const u8,
+    token: []const u8,
+) !void {
+    const me_res = try client.getMe(.{
+        .allocator = allocator,
+        .api_url = api_url,
+        .token = token,
+    });
+    if (me_res.status != 200 or me_res.value == null) return;
+
+    const me = me_res.value.?;
+    var wrote_any = false;
+    for (me.orgs) |org| {
+        const proj_res = client.listProjects(.{
+            .allocator = allocator,
+            .api_url = api_url,
+            .token = token,
+            .org_id = org.id,
+        }) catch continue;
+        if (proj_res.status != 200 or proj_res.value == null) continue;
+        for (proj_res.value.?.projects) |project| {
+            if (!wrote_any) {
+                try stderr.writeAll("available projects:\n");
+                wrote_any = true;
+            }
+            try stderr.print("  - {s} ({s})\n", .{ project.name, project.id });
+        }
+    }
+}
+
+fn printAvailableEnvs(
+    stderr: Writer,
+    envs: []const client.api.EnvironmentListResponseEnvironmentsItem,
+) !void {
+    if (envs.len == 0) return;
+    try stderr.writeAll("available envs:\n");
+    for (envs) |env| {
+        try stderr.print("  - {s} ({s})\n", .{ env.name, env.id });
+    }
+}
+
+fn fetchAvailableEnvs(
+    allocator: std.mem.Allocator,
+    api_url: []const u8,
+    token: []const u8,
+    project: []const u8,
+) !?client.api.EnvironmentListResponse {
+    const res = try client.listEnvironments(.{
+        .allocator = allocator,
+        .api_url = api_url,
+        .token = token,
+        .project_id = project,
+    });
+    if (res.status != 200) return null;
+    return res.value;
+}
+
+fn exitProjectNotFound(
+    allocator: std.mem.Allocator,
+    stderr: Writer,
+    api_url: []const u8,
+    token: []const u8,
+    project: []const u8,
+) noreturn {
     color.err(stderr, "error") catch {};
     stderr.print(": project {s} was not found or you do not have access to it\n", .{project}) catch {};
-    stderr.writeAll("  sigillo projects\n") catch {};
+    printAvailableProjects(allocator, stderr, api_url, token) catch {};
     std.process.exit(1);
 }
 
-fn exitEnvNotFound(stderr: Writer, env: []const u8, project: ?[]const u8) noreturn {
+fn exitEnvNotFound(
+    allocator: std.mem.Allocator,
+    stderr: Writer,
+    api_url: []const u8,
+    token: []const u8,
+    env: []const u8,
+    project: ?[]const u8,
+) noreturn {
     color.err(stderr, "error") catch {};
     if (project) |project_id| {
         stderr.print(": env {s} was not found in project {s}\n", .{ env, project_id }) catch {};
-        stderr.print("  sigillo environments --project {s}\n", .{project_id}) catch {};
+        if (fetchAvailableEnvs(allocator, api_url, token, project_id) catch null) |available| {
+            printAvailableEnvs(stderr, available.environments) catch {};
+        }
     } else {
         stderr.print(": env {s} was not found or you do not have access to it\n", .{env}) catch {};
     }
@@ -530,7 +605,7 @@ fn setupAction(_: Setup.Args, opts: Setup.Options) !void {
     };
     if (env_res.status != 200) {
         if (env_res.status == 404 and opts.project != null) {
-            exitProjectNotFound(stderr, project);
+            exitProjectNotFound(allocator, stderr, api_url, token, project);
         }
         const message = client.parseError(allocator, env_res.body) orelse try allocator.dupe(u8, "unknown error");
         try color.err(stderr, "error");
@@ -552,7 +627,7 @@ fn setupAction(_: Setup.Args, opts: Setup.Options) !void {
             if (std.mem.eql(u8, env.id, e)) { found = true; break; }
         }
         if (!found) {
-            exitEnvNotFound(stderr, e, project);
+            exitEnvNotFound(allocator, stderr, api_url, token, e, project);
         }
         break :env_val e;
     } else if (is_tty) env_sel: {
@@ -654,7 +729,7 @@ fn runAction(args: Run.Args, opts: Run.Options) !void {
 
     if (res.status != 200) {
         if (res.status == 404) {
-            exitEnvNotFound(stderr, environment, resolved.project);
+            exitEnvNotFound(allocator, stderr, api_url, token, environment, resolved.project);
         }
         const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
         try color.err(stderr, "error");
@@ -703,7 +778,7 @@ fn runAction(args: Run.Args, opts: Run.Options) !void {
             };
             if (mount_res.status != 200) {
                 if (mount_res.status == 404) {
-                    exitEnvNotFound(stderr, environment, resolved.project);
+                    exitEnvNotFound(allocator, stderr, api_url, token, environment, resolved.project);
                 }
                 const message = client.parseError(allocator, mount_res.body) orelse try allocator.dupe(u8, "unknown error");
                 try color.err(stderr, "error");
@@ -951,6 +1026,7 @@ const ProjectContext = struct {
 
 const EnvironmentContext = struct {
     api: ApiContext,
+    project_id: ?[]const u8,
     environment_id: []const u8,
 };
 
@@ -980,6 +1056,7 @@ fn resolveEnvironmentContext(allocator: std.mem.Allocator, cwd: []const u8, flag
             .api_url = resolved.api_url orelse "https://sigillo.dev",
             .token = resolved.token orelse return error.NotLoggedIn,
         },
+        .project_id = resolved.project,
         .environment_id = resolved.environment orelse return error.EnvironmentNotConfigured,
     };
 }
@@ -1059,7 +1136,7 @@ fn secretsAction(_: Secrets.Args, opts: Secrets.Options) !void {
     });
     if (res.status != 200 or res.value == null) {
         if (res.status == 404) {
-            exitEnvNotFound(stderr, ctx.environment_id, null);
+            exitEnvNotFound(allocator, stderr, ctx.api.api_url, ctx.api.token, ctx.environment_id, ctx.project_id);
         }
         const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
         try color.err(stderr, "error");
@@ -1221,7 +1298,7 @@ fn secretsDownloadAction(_: SecretsDownload.Args, opts: SecretsDownload.Options)
     });
     if (res.status != 200) {
         if (res.status == 404) {
-            exitEnvNotFound(stderr, ctx.environment_id, null);
+            exitEnvNotFound(allocator, stderr, ctx.api.api_url, ctx.api.token, ctx.environment_id, ctx.project_id);
         }
         const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
         try color.err(stderr, "error");
