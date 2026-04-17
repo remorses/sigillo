@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.4.0
+
+1. **New file mount mode for `sigillo run`** — write secrets to a temporary file before launching your process, then clean it up automatically when the command exits:
+
+   ```bash
+   sigillo run --mount .env -- npm start
+   sigillo run --mount config.json --mount-format json -- next dev
+   sigillo run --mount secrets.yaml --mount-format yaml -- ./deploy.sh
+   ```
+
+   This is useful for tools that expect config files instead of plain environment variables.
+
+2. **More download and mount formats, including Vercel sync support** — `sigillo secrets download` and `sigillo run --mount-format` now support Doppler-style formats like `env-no-quotes`, `docker`, `dotnet-json`, and `xargs`:
+
+   ```bash
+   sigillo secrets download --format json
+   sigillo secrets download --format xargs | xargs -0 -n2 sh -c 'printf %s "$2" | vercel env add "$1" production --force' sh
+   ```
+
+   The new `xargs` mode emits NUL-delimited `KEY VALUE` pairs so spaces, quotes, and multiline secrets survive shell pipelines safely.
+
+3. **`sigillo run` no longer falls over on huge child output** — redaction now streams stdout and stderr incrementally instead of buffering the whole process first, so long-running commands and very large logs keep working while still hiding secrets.
+
+4. **New env aliases for scoped commands** — env-scoped commands now use `--env` as the main flag, with `--config` and `-c` available as aliases:
+
+   ```bash
+   sigillo setup --project website --env dev
+   sigillo run --project website --env dev -- next dev
+   sigillo run --project website -c production -- next dev
+   ```
+
+5. **Clearer project and env lookup errors** — when you pass a missing project or env, the CLI now shows the matching list of available projects or envs instead of leaving you with a generic fetch error.
+
 ## 0.3.0
 
 1. **New CRUD commands for projects, environments, and secrets** — manage Sigillo resources from the terminal instead of jumping back to the web UI:
