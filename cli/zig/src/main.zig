@@ -935,7 +935,9 @@ fn streamPipeRedacted(
 ) !void {
     defer pipe.close();
 
-    const allocator = std.heap.page_allocator;
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
 
     var pending = std.ArrayListUnmanaged(u8).empty;
     defer pending.deinit(allocator);
