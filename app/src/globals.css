@@ -173,26 +173,21 @@
 }
 
 .cli-banner-code {
-  color: var(--primary);
-}
-
-.cli-banner-code code {
-  display: block;
-  line-height: 1.7;
+  color: var(--muted-foreground);
 }
 
 .cli-banner-code .cli-token-command {
-  color: var(--primary);
+  color: #f472b6; /* pink */
 }
 
 .cli-banner-code .cli-token-value {
-  color: color-mix(in srgb, var(--primary) 84%, white);
+  color: #34d399; /* emerald */
 }
 
 .cli-banner-code .cli-token-operator {
-  color: color-mix(in srgb, var(--primary) 72%, var(--muted-foreground));
+  color: #facc15; /* yellow */
 }
 
 .cli-banner-code .cli-token-plain {
-  color: color-mix(in srgb, var(--primary) 88%, white);
+  color: #93c5fd; /* sky blue */
 }

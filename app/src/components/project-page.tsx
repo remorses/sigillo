@@ -20,15 +20,7 @@ import { getRouter } from "spiceflow/react";
 import type { App } from "../app.tsx";
 
 const cliBannerCookieName = "sigillo-cli-banner-dismissed";
-const cliBannerCookieValue = "1";
 const cliBannerCodeLines = [
-  [
-    { text: "curl", kind: "command" },
-    { text: " -fsSL ", kind: "plain" },
-    { text: "https://sigillo.dev/install.sh", kind: "value" },
-    { text: " | ", kind: "operator" },
-    { text: "bash", kind: "command" },
-  ],
   [
     { text: "npm", kind: "command" },
     { text: " install -g ", kind: "plain" },
@@ -59,63 +51,51 @@ const cliBannerCodeLines = [
 
 function CliBanner() {
   const [open, setOpen] = useState(true);
-
-  if (!open) {
-    return null;
-  }
+  if (!open) return null;
 
   return (
-    <FramePanel className="relative overflow-hidden border-border/70 bg-muted/45 p-0">
+    <FramePanel className="relative overflow-hidden border-border/70 bg-muted/45 p-5">
       <button
         type="button"
         onClick={() => {
-          document.cookie = `${cliBannerCookieName}=${cliBannerCookieValue}; Path=/; Max-Age=31536000; SameSite=Lax`;
+          document.cookie = `${cliBannerCookieName}=1; Path=/; Max-Age=31536000; SameSite=Lax`;
           setOpen(false);
         }}
-        className="absolute right-3 top-1 z-10 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        className="absolute right-3 top-3 z-10 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         aria-label="Dismiss CLI banner"
         title="Dismiss"
       >
         <XIcon className="size-4" />
       </button>
 
-      <div className="grid gap-0 md:grid-cols-2">
-        <div className="flex flex-col gap-4 p-6 md:p-8">
-
-
-          <div className="flex max-w-md flex-col gap-2.5">
-            <h2 className="text-base font-semibold tracking-tight text-foreground">
-              Use the Sigillo CLI
-            </h2>
-            <p className="text-sm leading-6 text-muted-foreground">
-              Install with the script URL or npm, then use <code className="font-mono text-foreground">sigillo run</code> to pass secrets to your process. Output is redacted by default to help avoid leaks in logs or agent context.
-            </p>
-          </div>
+      <div className="flex flex-col gap-4 md:flex-row md:items-start">
+        <div className="flex flex-1 flex-col gap-1.5">
+          <h2 className="text-base font-semibold tracking-tight">
+            Use the Sigillo CLI
+          </h2>
+          <p className="text-sm leading-6 text-muted-foreground">
+            Install with npm, then use <code className="font-mono text-foreground">sigillo run</code> to pass secrets to your process. Output is redacted by default.
+          </p>
         </div>
 
-        <div className="flex items-center justify-center border-t border-border/60 p-4 md:border-l md:border-t-0 md:p-5">
-          <pre className="cli-banner-code w-full overflow-x-auto rounded-xl border border-border/70 bg-background/95 p-4 text-[12px] shadow-xs/5">
-            <code className="block font-mono">
-              {cliBannerCodeLines.map((line, lineIndex) => (
-                <span key={lineIndex} className="grid grid-cols-[1.25rem_1fr] gap-x-4 leading-6">
-                  <span className="select-none text-right text-muted-foreground/80">
-                    {lineIndex + 1}
-                  </span>
-                  <span className="min-w-0 whitespace-pre">
-                    {line.map((token, tokenIndex) => (
-                      <span
-                        key={tokenIndex}
-                        className={`cli-token-${token.kind}`}
-                      >
-                        {token.text}
-                      </span>
-                    ))}
-                  </span>
+        <pre className="cli-banner-code overflow-x-auto rounded-xl border border-border/70 bg-background/95 p-4 text-[12px]">
+          <code className="block font-mono">
+            {cliBannerCodeLines.map((line, i) => (
+              <span key={i} className="flex gap-x-4 leading-6">
+                <span className="w-5 shrink-0 select-none text-right text-muted-foreground/80">
+                  {i + 1}
                 </span>
-              ))}
-            </code>
-          </pre>
-        </div>
+                <span className="whitespace-pre">
+                  {line.map((token, j) => (
+                    <span key={j} className={`cli-token-${token.kind}`}>
+                      {token.text}
+                    </span>
+                  ))}
+                </span>
+              </span>
+            ))}
+          </code>
+        </pre>
       </div>
     </FramePanel>
   );
