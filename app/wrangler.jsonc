@@ -1,6 +1,6 @@
 {
   "name": "sigillo-app",
-  "compatibility_date": "2026-04-17",
+  "compatibility_date": "2026-04-16",
   "compatibility_flags": ["nodejs_compat"],
   "main": "spiceflow/cloudflare-entrypoint",
   // DO → D1 migration: delete the old SecretsStore DO class
