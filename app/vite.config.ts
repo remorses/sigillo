@@ -8,6 +8,7 @@ const port = parseInt(process.env.PORT || '5188', 10)
 
 export default defineConfig({
   server: { port, strictPort: true },
+  clearScreen: false,
   plugins: [
     react(),
     spiceflowPlugin({ entry: './src/app.tsx' }),
