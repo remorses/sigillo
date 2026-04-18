@@ -67,6 +67,34 @@ Always load these skills before working on this project:
 - Use script names with `deployment` instead of `deploy` to avoid pnpm's built-in `pnpm deploy` command confusion.
 - Use `deployment` for production and `deployment:preview` for preview-only deploys.
 
+## Local dev and first-time setup
+
+Local `pnpm dev` needs local D1 schema first. `vite dev` does **not** create tables by itself.
+
+Rules:
+
+- `app/package.json` and `provider/package.json` should keep `dev` scripts that run `wrangler d1 migrations apply DB --local` before starting Vite. `pnpm dev` should work on a fresh checkout without manual migration commands.
+- App migrations live in `db/drizzle-app/` and are applied by `app/wrangler.jsonc` via `migrations_dir: ../db/drizzle-app`.
+- Provider migrations live in `provider/drizzle/` and are applied by `provider/wrangler.jsonc` via `migrations_dir: ./drizzle`.
+- After changing any schema or migration path, validate local boot again with `pnpm --dir app dev -- --port 5188` and `pnpm --dir provider dev`.
+
+First-time local setup:
+
+1. `pnpm install`
+2. Create `app/.dev.vars` with at least `BETTER_AUTH_SECRET` and optionally `ENCRYPTION_KEY`
+3. Create `provider/.dev.vars` with `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, and `GOOGLE_CLIENT_SECRET`
+4. Run `pnpm --dir provider dev` once so local provider D1 is created and migrated
+5. Run `pnpm --dir app dev -- --port 5188` (or just `pnpm --dir app dev`) so local app D1 is created and migrated
+
+Useful manual commands:
+
+```bash
+pnpm --dir provider db:migrate:local
+pnpm --dir app db:migrate:local
+```
+
+If local dev crashes with `no such table`, assume the local D1 migrations were not applied to that worker's local database yet.
+
 
 ## REST API reference
 
