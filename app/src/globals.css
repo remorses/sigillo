@@ -177,17 +177,35 @@
 }
 
 .cli-banner-code .cli-token-command {
-  color: #f472b6; /* pink */
+  color: #db2777; /* pink-600 */
 }
 
 .cli-banner-code .cli-token-value {
-  color: #34d399; /* emerald */
+  color: #059669; /* emerald-600 */
 }
 
 .cli-banner-code .cli-token-operator {
-  color: #facc15; /* yellow */
+  color: #d97706; /* amber-600 */
 }
 
 .cli-banner-code .cli-token-plain {
-  color: #93c5fd; /* sky blue */
+  color: #2563eb; /* blue-600 */
+}
+
+@media (prefers-color-scheme: dark) {
+  .cli-banner-code .cli-token-command {
+    color: #f472b6; /* pink-300 */
+  }
+
+  .cli-banner-code .cli-token-value {
+    color: #34d399; /* emerald-300 */
+  }
+
+  .cli-banner-code .cli-token-operator {
+    color: #facc15; /* yellow-400 */
+  }
+
+  .cli-banner-code .cli-token-plain {
+    color: #93c5fd; /* blue-300 */
+  }
 }

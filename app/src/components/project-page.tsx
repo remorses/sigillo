@@ -54,7 +54,7 @@ function CliBanner() {
   if (!open) return null;
 
   return (
-    <FramePanel className="relative overflow-hidden border-border/70 bg-muted/45 p-5">
+    <FramePanel className="relative overflow-hidden border-border/70 bg-muted/45 p-8">
       <button
         type="button"
         onClick={() => {

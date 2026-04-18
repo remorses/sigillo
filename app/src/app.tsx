@@ -663,7 +663,7 @@ function TabBar({
           >
             {tab.label}
             {tab.active && (
-              <div className="absolute bottom-0 left-0 w-full h-[1.5px] bg-primary rounded-sm" />
+              <div className="absolute bottom-0 left-0 w-full h-[2.5px] bg-primary rounded-sm" />
             )}
           </Link>
         ))}
@@ -727,8 +727,8 @@ function Footer() {
   return (
     <footer className="flex flex-col ">
       <div className="border-t border-border" />
-      <div className="py-4 max-w-(--content-max-width) grow mx-auto w-full border-x border-border">
-        <div className="flex items-center justify-end gap-4 px-6 py-4">
+      <div className="max-w-(--content-max-width) grow mx-auto w-full border-x border-border">
+        <div className="flex items-center justify-end gap-4 px-6 py-5">
           <FooterColo />
           <span className="text-xs text-muted-foreground">
             © {new Date().getFullYear()} Sigillo
