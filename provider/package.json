@@ -17,11 +17,13 @@
   "dependencies": {
     "@better-auth/drizzle-adapter": "https://pkg.pr.new/better-auth/better-auth/@better-auth/drizzle-adapter@6913",
     "@better-auth/oauth-provider": "latest",
+    "@tailwindcss/vite": "^4.2.2",
     "better-auth": "latest",
     "drizzle-orm": "1.0.0-beta.21",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "spiceflow": "workspace:^",
+    "tailwindcss": "^4.2.2",
     "ulid": "latest",
     "zod": "latest"
   },

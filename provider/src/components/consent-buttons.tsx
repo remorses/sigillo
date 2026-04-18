@@ -9,6 +9,7 @@ import { authClient } from "../auth-client.ts"
 
 export function ConsentButtons() {
   const [loading, setLoading] = useState(false)
+  const buttonClassName = 'inline-flex min-h-11 items-center justify-center rounded-xl border px-4 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-60'
 
   async function handleConsent(accept: boolean) {
     setLoading(true)
@@ -18,16 +19,16 @@ export function ConsentButtons() {
   }
 
   return (
-    <div className="consent-buttons">
+    <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
       <button
-        className="consent-button consent-button-deny"
+        className={`${buttonClassName} border-border bg-transparent text-foreground hover:bg-secondary`}
         onClick={() => handleConsent(false)}
         disabled={loading}
       >
         Deny
       </button>
       <button
-        className="consent-button consent-button-allow"
+        className={`${buttonClassName} border-primary bg-primary text-primary-foreground shadow-sm hover:opacity-90`}
         onClick={() => handleConsent(true)}
         disabled={loading}
       >

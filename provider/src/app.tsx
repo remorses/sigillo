@@ -45,7 +45,7 @@ export const app = new Spiceflow()
           <Head.Meta name="viewport" content="width=device-width, initial-scale=1.0" />
           <Head.Title>Sigillo Auth</Head.Title>
         </Head>
-        <body>
+        <body className="min-h-screen bg-background font-sans text-foreground antialiased">
           {children}
         </body>
       </html>
@@ -109,60 +109,60 @@ export const app = new Spiceflow()
     }
 
     return (
-      <main className="consent-page">
-        <div className="consent-shell">
-          <div className="consent-grid">
-            <section className="consent-card">
-              <div className="consent-pill">
+      <main className="min-h-screen bg-background px-6 py-10 text-foreground sm:px-8">
+        <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-7xl items-center justify-center">
+          <div className="grid w-full max-w-5xl gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.9fr)]">
+            <section className="rounded-[28px] border border-border bg-card p-8 shadow-[0_24px_60px_rgba(15,23,42,0.12)] sm:p-10 dark:shadow-[0_24px_60px_rgba(0,0,0,0.4)]">
+              <div className="inline-flex items-center rounded-full border border-border bg-secondary px-3 py-1.5 text-xs font-semibold text-muted-foreground">
                 Sigillo Auth
               </div>
-              <h1 className="consent-title">
+              <h1 className="mt-5 text-4xl font-semibold tracking-[-0.03em] text-balance sm:text-5xl">
                 Allow access to continue?
               </h1>
-              <p className="consent-copy">
+              <p className="mt-4 text-base leading-7 text-muted-foreground">
                 {redirectDomain ? (
                   <>
-                    <span className="consent-domain">{redirectDomain}</span> wants to use Sigillo Auth to sign you in.
+                    <span className="font-semibold text-foreground">{redirectDomain}</span> wants to use Sigillo Auth to sign you in.
                   </>
                 ) : (
                   'This app wants to use Sigillo Auth to sign you in.'
                 )}
               </p>
 
-              <div className="consent-domain-card">
-                <p className="consent-label">
+              <div className="mt-8 rounded-[20px] border border-border bg-card p-5 shadow-sm">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">
                   Redirect domain
                 </p>
-                <p className="consent-domain-value">
+                <p className="mt-3.5 overflow-wrap-anywhere text-2xl font-semibold leading-8 text-foreground">
                   {redirectDomain ?? 'Unknown domain'}
                 </p>
-                <p className="consent-note">
+                <p className="mt-3.5 text-sm leading-6 text-muted-foreground">
                   Only continue if you expected this sign-in request and trust this domain.
                 </p>
               </div>
 
-              <div className="consent-actions">
+              <div className="mt-8">
                 <ConsentButtons />
               </div>
             </section>
 
-            <aside className="consent-side">
-              <div className="consent-side-card">
-                <p className="consent-side-title">What you’re approving</p>
-                <ul className="consent-side-list">
-                  <li className="consent-side-item">
+            <aside className="rounded-[28px] border border-border bg-secondary/80 p-8 sm:p-10">
+              <div className="rounded-[20px] border border-border bg-card p-5 shadow-sm">
+                <p className="text-sm font-semibold text-card-foreground">What you’re approving</p>
+                <ul className="mt-4 grid gap-3">
+                  <li className="rounded-2xl border border-border bg-card px-4 py-3.5 text-sm leading-6 text-muted-foreground shadow-sm">
                     Use your Sigillo account identity to complete sign-in
                   </li>
-                  <li className="consent-side-item">
+                  <li className="rounded-2xl border border-border bg-card px-4 py-3.5 text-sm leading-6 text-muted-foreground shadow-sm">
                     Share the basic profile fields needed for authentication
                   </li>
-                  <li className="consent-side-item">
-                    Return you to <span className="consent-domain">{redirectDomain ?? 'the requesting app'}</span> after approval
+                  <li className="rounded-2xl border border-border bg-card px-4 py-3.5 text-sm leading-6 text-muted-foreground shadow-sm">
+                    Return you to <span className="font-semibold text-foreground">{redirectDomain ?? 'the requesting app'}</span> after approval
                   </li>
                 </ul>
               </div>
 
-              <p className="consent-side-copy">
+              <p className="mt-4 text-sm leading-6 text-muted-foreground">
                 Sigillo does not show the raw OAuth client identifier here. The only thing worth checking at approval time is the destination host.
               </p>
             </aside>
@@ -203,7 +203,5 @@ export const app = new Spiceflow()
 export type App = typeof app
 
 export default {
-  async fetch(request: Request): Promise<Response> {
-    return app.handle(request)
-  },
+  fetch: app.handle,
 } satisfies ExportedHandler<Env>
