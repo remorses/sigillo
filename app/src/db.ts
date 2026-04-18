@@ -145,12 +145,18 @@ async function listOAuthHosts(): Promise<string[]> {
 // of trusting DB entries.
 export async function ensureOAuthClient(request: Request): Promise<string> {
   const db = getDb()
+  const pathname = new URL(request.url).pathname
   const host = getRequestHost(request)
   const [row] = await db.select({ oauthClientId: schema.oauthDomain.oauthClientId })
     .from(schema.oauthDomain)
     .where(orm.eq(schema.oauthDomain.host, host))
     .limit(1)
-  if (row) return row.oauthClientId
+
+  const isLocalHost = host.startsWith('localhost:') || host.startsWith('127.0.0.1:')
+  const isOAuthCallback = pathname.startsWith('/api/auth/oauth2/callback/')
+  if (row && (!isLocalHost || isOAuthCallback)) {
+    return row.oauthClientId
+  }
 
   if (host.endsWith('.workers.dev')) {
     throw new Error(`Refusing OAuth registration for temporary host: ${host}`)
@@ -158,6 +164,10 @@ export async function ensureOAuthClient(request: Request): Promise<string> {
 
   const origin = getRequestOrigin(request)
   const callbackUrl = new URL('/api/auth/oauth2/callback/sigillo', origin).toString()
+  // Localhost callback URLs are cheap disposable registrations. Refresh them on
+  // sign-in requests so stale provider-side client ids never break local login,
+  // but keep the cached id during the OAuth callback so the code exchange uses
+  // the same client that started the flow.
   const res = await fetch(`${env.PROVIDER_URL}/api/auth/oauth2/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
