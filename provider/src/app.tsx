@@ -4,6 +4,8 @@
 // endpoints, and health check.
 // Also serves as the Cloudflare Worker entry via the default export.
 
+import './globals.css'
+
 import { Spiceflow } from 'spiceflow'
 import { Head } from 'spiceflow/react'
 import { getAuth } from './db.ts'
@@ -43,7 +45,7 @@ export const app = new Spiceflow()
           <Head.Meta name="viewport" content="width=device-width, initial-scale=1.0" />
           <Head.Title>Sigillo Auth</Head.Title>
         </Head>
-        <body style={{ fontFamily: 'system-ui, sans-serif', margin: 0, padding: 0 }}>
+        <body>
           {children}
         </body>
       </html>
@@ -92,50 +94,78 @@ export const app = new Spiceflow()
   .page('/consent', async ({ request }) => {
     const url = new URL(request.url)
     const redirectDomain = getRedirectDomain(url.searchParams.get('redirect_uri'))
-    const clientId = url.searchParams.get('client_id')
+
+    if (redirectDomain === 'sigillo.dev') {
+      const auth = getAuth()
+      const result = await auth.api.oauth2Consent({
+        body: {
+          accept: true,
+          oauth_query: url.search.slice(1),
+        },
+        headers: request.headers,
+      })
+
+      return Response.redirect(result.url, 302)
+    }
 
     return (
-      <main
-        style={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 24,
-          background: '#f8fafc',
-        }}
-      >
-        <div
-          style={{
-            width: '100%',
-            maxWidth: 460,
-            background: 'white',
-            borderRadius: 16,
-            padding: 32,
-            boxShadow: '0 16px 40px rgba(15, 23, 42, 0.08)',
-          }}
-        >
-          <p style={{ margin: 0, fontSize: 13, color: '#64748b', fontWeight: 600 }}>OAuth consent</p>
-          <h1 style={{ margin: '12px 0 0', fontSize: 28, color: '#0f172a' }}>Allow access?</h1>
-          <p style={{ margin: '12px 0 0', color: '#334155', lineHeight: 1.6 }}>
-            {redirectDomain ? (
-              <>
-                <strong>{redirectDomain}</strong> wants to use Sigillo Auth to sign you in.
-              </>
-            ) : (
-              'This app wants to use Sigillo Auth to sign you in.'
-            )}
-          </p>
-          {clientId ? (
-            <p style={{ margin: '12px 0 0', color: '#64748b', fontSize: 14 }}>
-              Client ID: <code>{clientId}</code>
-            </p>
-          ) : null}
-          <p style={{ margin: '20px 0 0', color: '#64748b', fontSize: 14, lineHeight: 1.6 }}>
-            Only continue if you trust this domain and expected this sign-in request.
-          </p>
-          <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
-            <ConsentButtons />
+      <main className="consent-page">
+        <div className="consent-shell">
+          <div className="consent-grid">
+            <section className="consent-card">
+              <div className="consent-pill">
+                Sigillo Auth
+              </div>
+              <h1 className="consent-title">
+                Allow access to continue?
+              </h1>
+              <p className="consent-copy">
+                {redirectDomain ? (
+                  <>
+                    <span className="consent-domain">{redirectDomain}</span> wants to use Sigillo Auth to sign you in.
+                  </>
+                ) : (
+                  'This app wants to use Sigillo Auth to sign you in.'
+                )}
+              </p>
+
+              <div className="consent-domain-card">
+                <p className="consent-label">
+                  Redirect domain
+                </p>
+                <p className="consent-domain-value">
+                  {redirectDomain ?? 'Unknown domain'}
+                </p>
+                <p className="consent-note">
+                  Only continue if you expected this sign-in request and trust this domain.
+                </p>
+              </div>
+
+              <div className="consent-actions">
+                <ConsentButtons />
+              </div>
+            </section>
+
+            <aside className="consent-side">
+              <div className="consent-side-card">
+                <p className="consent-side-title">What you’re approving</p>
+                <ul className="consent-side-list">
+                  <li className="consent-side-item">
+                    Use your Sigillo account identity to complete sign-in
+                  </li>
+                  <li className="consent-side-item">
+                    Share the basic profile fields needed for authentication
+                  </li>
+                  <li className="consent-side-item">
+                    Return you to <span className="consent-domain">{redirectDomain ?? 'the requesting app'}</span> after approval
+                  </li>
+                </ul>
+              </div>
+
+              <p className="consent-side-copy">
+                Sigillo does not show the raw OAuth client identifier here. The only thing worth checking at approval time is the destination host.
+              </p>
+            </aside>
           </div>
         </div>
       </main>

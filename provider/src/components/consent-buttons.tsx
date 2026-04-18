@@ -18,39 +18,21 @@ export function ConsentButtons() {
   }
 
   return (
-    <>
+    <div className="consent-buttons">
       <button
-        onClick={() => handleConsent(true)}
-        disabled={loading}
-        style={{
-          padding: "10px 20px",
-          background: "#22c55e",
-          color: "white",
-          border: "none",
-          borderRadius: 6,
-          cursor: "pointer",
-          fontWeight: 600,
-          opacity: loading ? 0.6 : 1,
-        }}
-      >
-        Allow
-      </button>
-      <button
+        className="consent-button consent-button-deny"
         onClick={() => handleConsent(false)}
         disabled={loading}
-        style={{
-          padding: "10px 20px",
-          background: "#ef4444",
-          color: "white",
-          border: "none",
-          borderRadius: 6,
-          cursor: "pointer",
-          fontWeight: 600,
-          opacity: loading ? 0.6 : 1,
-        }}
       >
         Deny
       </button>
-    </>
+      <button
+        className="consent-button consent-button-allow"
+        onClick={() => handleConsent(true)}
+        disabled={loading}
+      >
+        {loading ? "Redirecting…" : "Allow access"}
+      </button>
+    </div>
   )
 }
