@@ -22,6 +22,15 @@ Each worker uses `drizzle-orm/d1` directly — no Durable Objects or proxy layer
 - **Cloudflare Workers + D1** — compute + storage
 - **pnpm** workspaces
 
+## CSS and theming
+
+`app/src/globals.css` is the single source of truth for all CSS custom properties (colors, radius, fonts). The provider imports it via `@import 'sigillo-app/src/globals.css'` — never duplicate color definitions across workers.
+
+Rules:
+- Never duplicate a CSS variable value. If `--ring` should match `--primary`, write `--ring: var(--primary)`, not the same `color-mix(...)` expression twice.
+- When adding a new token that derives from an existing one, always reference it with `var()`.
+- Provider-specific styles go in `provider/src/globals.css` after the app import, not as copied theme blocks.
+
 ## Secrets encryption
 
 Secrets are AES-256-GCM encrypted in the worker. If `ENCRYPTION_KEY` is set, the app uses it directly. Otherwise it derives a stable 32-byte AES key from `BETTER_AUTH_SECRET`. Each secret gets a random 12-byte IV.

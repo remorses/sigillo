@@ -22,6 +22,7 @@
     "drizzle-orm": "1.0.0-beta.21",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
+    "sigillo-app": "workspace:^",
     "spiceflow": "workspace:^",
     "tailwindcss": "^4.2.2",
     "ulid": "latest",

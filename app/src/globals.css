@@ -56,7 +56,7 @@
   --card-foreground: var(--color-neutral-800);
   --popover: var(--color-white);
   --popover-foreground: var(--color-neutral-800);
-  --primary: color-mix(in srgb, var(--color-orange-600) 70%, var(--color-black));
+  --primary: color-mix(in srgb, var(--color-blue-600) 80%, var(--color-black));
   --primary-foreground: var(--color-white);
   --secondary: --alpha(var(--color-black) / 4%);
   --secondary-foreground: var(--color-neutral-800);
@@ -78,14 +78,14 @@
   --warning-foreground: var(--color-amber-700);
   --border: --alpha(var(--color-black) / 8%);
   --input: --alpha(var(--color-black) / 10%);
-  --ring: color-mix(in srgb, var(--color-orange-600) 70%, var(--color-black));
+  --ring: var(--primary);
   --sidebar: var(--color-neutral-50);
   --sidebar-foreground: color-mix(
     in srgb,
     var(--color-neutral-800) 64%,
     var(--sidebar)
   );
-  --sidebar-primary: color-mix(in srgb, var(--color-orange-600) 70%, var(--color-black));
+  --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--color-white);
   --sidebar-accent: --alpha(var(--color-black) / 4%);
   --sidebar-accent-foreground: var(--color-neutral-800);
@@ -101,7 +101,7 @@
     --card-foreground: var(--color-neutral-100);
     --popover: var(--color-neutral-900);
     --popover-foreground: var(--color-neutral-100);
-    --primary: color-mix(in srgb, var(--color-orange-300) 70%, var(--color-white));
+    --primary: color-mix(in srgb, var(--color-blue-200) 80%, var(--color-white));
     --primary-foreground: var(--color-neutral-950);
     --secondary: --alpha(var(--color-white) / 6%);
     --secondary-foreground: var(--color-neutral-100);
@@ -119,10 +119,10 @@
     --warning-foreground: var(--color-amber-400);
     --border: --alpha(var(--color-white) / 4%);
     --input: --alpha(var(--color-white) / 14%);
-    --ring: color-mix(in srgb, var(--color-orange-300) 70%, var(--color-white));
+    --ring: var(--primary);
     --sidebar: var(--color-neutral-950);
     --sidebar-foreground: var(--color-neutral-400);
-    --sidebar-primary: color-mix(in srgb, var(--color-orange-300) 70%, var(--color-white));
+    --sidebar-primary: var(--primary);
     --sidebar-primary-foreground: var(--color-neutral-950);
     --sidebar-accent: --alpha(var(--color-white) / 8%);
     --sidebar-accent-foreground: var(--color-neutral-100);
