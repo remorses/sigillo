@@ -124,6 +124,42 @@ describe('sigillo cli e2e', () => {
     })
   }, 60_000)
 
+  test('secrets set reads value from piped stdin and strips trailing newline', async () => {
+    // Simulate `echo "value" | sigillo secrets set NAME` — echo always appends \n
+    const plainName = 'E2E_STDIN_PLAIN'
+    const plainValue = 'plain-secret-no-newline'
+
+    const setPlain = await runCli({
+      args: ['secrets', 'set', plainName],
+      context: cliContext,
+      stdin: plainValue + '\n', // echo adds a trailing newline
+    })
+    expect(setPlain.status).toBe(0)
+    expect(setPlain.stderr).toContain('trailing newline stripped')
+
+    const getPlain = await runCli({ args: ['secrets', 'get', plainName], context: cliContext })
+    expect(getPlain.status).toBe(0)
+    expect(getPlain.stdout).toContain(`value: "${plainValue}"`) // no \n stored
+
+    // Multiline value — trailing newline must NOT be stripped
+    const multiName = 'E2E_STDIN_MULTILINE'
+    const multiValue = 'line1\nline2\n'
+
+    const setMulti = await runCli({
+      args: ['secrets', 'set', multiName],
+      context: cliContext,
+      stdin: multiValue,
+    })
+    expect(setMulti.status).toBe(0)
+    expect(setMulti.stderr).not.toContain('trailing newline stripped')
+
+    const getMulti = await runCli({ args: ['secrets', 'get', multiName], context: cliContext })
+    expect(getMulti.status).toBe(0)
+    // Value contains embedded newlines — check it wasn't truncated
+    expect(getMulti.stdout).toContain('line1')
+    expect(getMulti.stdout).toContain('line2')
+  }, 60_000)
+
   test('run redacts secrets from stdout and stderr', async () => {
     const command = [
       `printf "stdout:%s\\n" "${'$'}${cliContext.secretName}"`,
@@ -231,16 +267,23 @@ async function runCli({
   args,
   context,
   timeout = 60_000,
+  stdin,
 }: {
   args: string[]
   context: Pick<CliContext, 'env' | 'tmpDir'>
   timeout?: number
+  stdin?: string
 }): Promise<{ status: number | null; stdout: string; stderr: string }> {
   const child = spawn(binaryPath, args, {
     cwd: context.tmpDir,
     env: context.env,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: [stdin !== undefined ? 'pipe' : 'ignore', 'pipe', 'pipe'],
   })
+
+  if (stdin !== undefined && child.stdin) {
+    child.stdin.write(stdin)
+    child.stdin.end()
+  }
 
   const stdoutChunks: Buffer[] = []
   const stderrChunks: Buffer[] = []

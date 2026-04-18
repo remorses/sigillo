@@ -189,7 +189,7 @@ const SecretsGet = zeke.cmd("secrets get <name>", "Get a secret value")
     .option("--token [token]", "Auth token override")
     .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
 
-const SecretsSet = zeke.cmd("secrets set <name> <value>", "Set a secret value")
+const SecretsSet = zeke.cmd("secrets set <name> [value]", "Set a secret value (omit value to read from stdin)")
     .option("--env [id]", "Env ID override")
     .option("-c, --config [id]", "Env ID override alias")
     .option("--token [token]", "Auth token override")
@@ -1211,13 +1211,36 @@ fn secretsSetAction(args: SecretsSet.Args, opts: SecretsSet.Options) !void {
         .environment = envOverride(opts.env, opts.config),
     });
 
+    // Resolve secret value: use positional arg, or read from piped stdin.
+    // When reading from stdin, strip a single trailing newline that `echo` adds
+    // (but preserve multiline values — only strip if the value is single-line).
+    const value: []const u8 = if (args.value) |v| v else blk: {
+        const stdin_is_tty = std.posix.isatty(File.stdin().handle);
+        if (stdin_is_tty) {
+            try color.err(stderr, "error");
+            try stderr.print(": value is required (pass as argument or pipe via stdin)\n", .{});
+            try stderr.print("  sigillo secrets set {s} <value>\n", .{args.name});
+            try stderr.print("  echo 'myvalue' | sigillo secrets set {s}\n", .{args.name});
+            std.process.exit(1);
+        }
+        const raw = try File.stdin().readToEndAlloc(allocator, 10 * 1024 * 1024);
+        // Strip a single trailing newline only for single-line values — this is the
+        // trailing `\n` that `echo` always appends. Multiline values are preserved.
+        const newline_count = std.mem.count(u8, raw, "\n");
+        if (newline_count == 1 and raw.len > 0 and raw[raw.len - 1] == '\n') {
+            try stderr.print("note: trailing newline stripped from piped stdin\n", .{});
+            break :blk raw[0 .. raw.len - 1];
+        }
+        break :blk raw;
+    };
+
     const res = try client.setSecret(.{
         .allocator = allocator,
         .api_url = ctx.api.api_url,
         .token = ctx.api.token,
         .environment_id = ctx.environment_id,
         .name = args.name,
-        .value = args.value,
+        .value = value,
     });
     if (res.status != 200 or res.value == null) {
         const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
