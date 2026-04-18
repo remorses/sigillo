@@ -163,6 +163,15 @@
   }
 }
 
+/* Hide scrollbar utility for horizontal tab scrolling on mobile */
+.scrollbar-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 .cli-banner-code {
   color: var(--primary);
 }

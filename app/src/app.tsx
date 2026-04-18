@@ -22,7 +22,7 @@ import {
   decrypt,
 } from './db.ts'
 import { apiApp } from './api.ts'
-import { Sidebar, NewProjectButton, FooterColo } from 'sigillo-app/src/components/sidebar'
+import { Sidebar, MobileDrawer, MobileMenuButton, NewProjectButton, FooterColo } from 'sigillo-app/src/components/sidebar'
 import { ProjectPage } from 'sigillo-app/src/components/project-page'
 import { CreateOrgForm } from 'sigillo-app/src/components/create-org-form'
 
@@ -75,7 +75,7 @@ export const app = new Spiceflow({
         </Head>
         <body className="relative flex flex-col min-h-screen bg-background font-sans antialiased">
           <ProgressBar color="var(--primary)" />
-          <Navbar />
+          <Navbar mobileMenuSlot={<MobileMenuButton />} />
           <div className="border-t border-border" />
           {children ?? (
             <div className="max-w-(--content-max-width) mx-auto w-full border-x border-border flex items-center justify-center text-muted-foreground py-12">
@@ -136,6 +136,13 @@ export const app = new Spiceflow({
         <div className="border-t border-border" />
         <div className="isolate grow relative flex max-w-(--content-max-width) mx-auto w-full border-x border-border">
           <Sidebar
+            orgs={orgs}
+            projects={projects}
+            currentOrgId={orgId}
+            currentProjectId={projectId}
+            user={user}
+          />
+          <MobileDrawer
             orgs={orgs}
             projects={projects}
             currentOrgId={orgId}
@@ -223,6 +230,7 @@ export const app = new Spiceflow({
       <ContentFrame>
         <div className="isolate relative flex min-h-[min(400px,100vh)]">
           <Sidebar orgs={orgs} projects={[]} currentOrgId={params.orgId} currentProjectId={null} user={user} />
+          <MobileDrawer orgs={orgs} projects={[]} currentOrgId={params.orgId} currentProjectId={null} user={user} />
           <main className="flex-1 p-6 overflow-auto">
             <div className="max-w-3xl">
               <h1 className="text-2xl font-bold tracking-tight mb-2">No projects yet</h1>
@@ -640,12 +648,12 @@ function TabBar({
 
   return (
     <div className="max-w-(--content-max-width) mx-auto w-full border-x border-border">
-      <div className="flex h-10 items-stretch gap-6 px-6">
+      <div className="flex h-10 items-stretch gap-6 px-6 overflow-x-auto scrollbar-hide">
         {tabs.map((tab) => (
           <Link
             key={tab.href}
             href={tab.href}
-            className={`relative flex items-center text-sm no-underline transition-colors duration-150 ${
+            className={`relative flex items-center shrink-0 whitespace-nowrap text-sm no-underline transition-colors duration-150 ${
               tab.active
                 ? 'font-medium text-foreground'
                 : 'text-muted-foreground hover:text-foreground'
@@ -670,15 +678,18 @@ function ContentFrame({ children, className }: { children: React.ReactNode; clas
   )
 }
 
-function Navbar() {
+function Navbar({ mobileMenuSlot }: { mobileMenuSlot?: React.ReactNode }) {
   return (
     <nav className="sticky top-0 z-50 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="max-w-(--content-max-width) mx-auto border-x border-border">
         <div className="flex h-14 items-center justify-between px-6">
-          <Link href="/" className="text-primary hover:opacity-80 transition-opacity">
-            <SigilloLogo className="h-[36px] w-auto shrink-0" />
-          </Link>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            {mobileMenuSlot}
+            <Link href="/" className="text-primary hover:opacity-80 transition-opacity">
+              <SigilloLogo className="h-[36px] w-auto shrink-0" />
+            </Link>
+          </div>
+          <div className="hidden md:flex items-center gap-3">
             <a
               href="https://github.com/remorses/sigillo/issues/new"
               target="_blank"

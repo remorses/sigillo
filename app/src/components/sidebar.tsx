@@ -1,14 +1,16 @@
-// Sidebar styled after shadcn sidebar-07.
+// Sidebar for the app shell — desktop aside + mobile drawer (vaul).
 // Top: org switcher dropdown (like team-switcher)
 // Middle: project list
 // Bottom: user section with avatar, email, logout
 //
-// Dropdowns use @base-ui/react Menu (portal-based) to avoid layout shifts.
-// The old implementation rendered dropdowns inline which pushed content around.
+// SidebarContent is the shared inner UI used by both the desktop <aside> and
+// the mobile Drawer, so the project list / org switcher / user footer are
+// never duplicated.
 
 "use client";
 
 import { useState, useEffect } from "react";
+import { Drawer } from "vaul";
 import { getRouter, Link, ErrorBoundary } from "spiceflow/react";
 import {
   PlusIcon,
@@ -18,6 +20,7 @@ import {
   BuildingIcon,
   LogOutIcon,
   CheckIcon,
+  MenuIcon,
 } from "lucide-react";
 import { cn } from "sigillo-app/src/lib/utils";
 import { Button } from "sigillo-app/src/components/ui/button";
@@ -44,19 +47,28 @@ import { createProjectAction } from "../actions.ts";
 import type { App } from "../app.tsx";
 import { authClient } from "../auth-client.ts";
 
-export function Sidebar({
-  orgs,
-  projects,
-  currentOrgId,
-  currentProjectId,
-  user,
-}: {
+export type SidebarProps = {
   orgs: { id: string; name: string; role: string }[];
   projects: { id: string; name: string; firstEnvId: string | null }[];
   currentOrgId: string | null;
   currentProjectId: string | null;
   user: { name: string; email: string; image?: string | null } | null;
-}) {
+};
+
+// ── Shared sidebar content ─────────────────────────────────────
+// Used by both the desktop aside and the mobile drawer so the org
+// switcher, project list, and user footer are defined once.
+// Accepts an optional onNavigate callback so the drawer can close
+// itself when the user taps a link.
+
+function SidebarContent({
+  orgs,
+  projects,
+  currentOrgId,
+  currentProjectId,
+  user,
+  onNavigate,
+}: SidebarProps & { onNavigate?: () => void }) {
   const router = getRouter<App>();
   const [showNewProject, setShowNewProject] = useState(false);
 
@@ -72,7 +84,7 @@ export function Sidebar({
     : "?";
 
   return (
-    <aside className="flex flex-col w-72 self-stretch min-h-0 border-r border-sidebar-border bg-background text-foreground p-6">
+    <>
       {/* ── Org switcher ─────────────────────────────────────── */}
       <DropdownMenu>
         <DropdownMenuTrigger
@@ -100,6 +112,7 @@ export function Sidebar({
             <DropdownMenuLinkItem
               key={org.id}
               href={router.href('/orgs/:orgId', { orgId: org.id })}
+              onClick={onNavigate}
             >
               <div className="flex size-6 items-center justify-center rounded-md border">
                 <BuildingIcon className="size-3.5 shrink-0" />
@@ -111,7 +124,7 @@ export function Sidebar({
             </DropdownMenuLinkItem>
           ))}
           <DropdownMenuSeparator />
-          <DropdownMenuLinkItem href={router.href('/new-org')}>
+          <DropdownMenuLinkItem href={router.href('/new-org')} onClick={onNavigate}>
             <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
               <PlusIcon className="size-4" />
             </div>
@@ -139,6 +152,7 @@ export function Sidebar({
                 href={project.firstEnvId
                   ? router.href('/orgs/:orgId/projects/:projectId/envs/:envId', { orgId: currentOrgId!, projectId: project.id, envId: project.firstEnvId })
                   : router.href('/orgs/:orgId/projects/:id', { orgId: currentOrgId!, id: project.id })}
+                onClick={onNavigate}
                 className={cn(
                   "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-sidebar-accent",
                   isActive && "bg-sidebar-accent text-primary font-medium",
@@ -243,7 +257,48 @@ export function Sidebar({
         onOpenChange={setShowNewProject}
         orgId={currentOrgId}
       />
+    </>
+  );
+}
+
+// ── Desktop sidebar ────────────────────────────────────────────
+
+export function Sidebar(props: SidebarProps) {
+  return (
+    <aside className="hidden md:flex flex-col w-72 self-stretch min-h-0 border-r border-sidebar-border bg-background text-foreground p-6">
+      <SidebarContent {...props} />
     </aside>
+  );
+}
+
+// ── Mobile drawer (vaul) ───────────────────────────────────────
+// Uses vaul for swipe-to-close gesture support. Opens from the left.
+// Listens for the "sigillo:toggle-drawer" custom event dispatched by
+// MobileMenuButton in the Navbar (which lives in a different layout level).
+
+export function MobileDrawer(props: SidebarProps) {
+  const [open, setOpen] = useState(false);
+
+  // Listen for toggle events from MobileMenuButton
+  useEffect(() => {
+    const handler = () => setOpen((prev) => !prev);
+    window.addEventListener("sigillo:toggle-drawer", handler);
+    return () => window.removeEventListener("sigillo:toggle-drawer", handler);
+  }, []);
+
+  return (
+    <Drawer.Root direction="left" open={open} onOpenChange={setOpen}>
+      <Drawer.Portal>
+        <Drawer.Overlay className="fixed inset-0 z-40 bg-black/40 md:hidden" />
+        <Drawer.Content
+          className="fixed inset-y-0 left-0 z-50 w-72 flex flex-col bg-background border-r border-sidebar-border p-6 md:hidden outline-none"
+          aria-describedby={undefined}
+        >
+          <Drawer.Title className="sr-only">Navigation</Drawer.Title>
+          <SidebarContent {...props} onNavigate={() => setOpen(false)} />
+        </Drawer.Content>
+      </Drawer.Portal>
+    </Drawer.Root>
   );
 }
 
@@ -306,6 +361,22 @@ export function NewProjectDialog({
         </ErrorBoundary>
       </DialogPopup>
     </Dialog>
+  );
+}
+
+// ── Mobile menu button ─────────────────────────────────────────
+// Rendered inside the Navbar on mobile. Dispatches a custom event that the
+// MobileDrawer listens for, since the two live in different layout levels.
+
+export function MobileMenuButton() {
+  return (
+    <button
+      className="md:hidden flex items-center justify-center size-9 rounded-md hover:bg-accent transition-colors cursor-pointer"
+      onClick={() => window.dispatchEvent(new CustomEvent("sigillo:toggle-drawer"))}
+      aria-label="Open menu"
+    >
+      <MenuIcon className="size-5" />
+    </button>
   );
 }
 
