@@ -76,9 +76,9 @@ export const app = new Spiceflow({
         <body className="relative flex flex-col min-h-screen bg-background font-sans antialiased">
           <ProgressBar color="var(--primary)" />
           <Navbar mobileMenuSlot={<MobileMenuButton />} />
-          <div className="border-t border-dashed border-border" />
+          <div className="border-t border-border" />
           {children ?? (
-            <div className="max-w-(--content-max-width) mx-auto w-full border-x border-dashed border-border flex items-center justify-center text-muted-foreground py-12">
+            <div className="max-w-(--content-max-width) mx-auto w-full border-x border-border flex items-center justify-center text-muted-foreground py-12">
               Page not found
             </div>
           )}
@@ -133,8 +133,8 @@ export const app = new Spiceflow({
           pathname={url.pathname}
           firstEnvId={currentProjectFirstEnvId}
         />
-        <div className="border-t border-dashed border-border" />
-        <div className="isolate grow relative flex max-w-(--content-max-width) mx-auto w-full border-x border-dashed border-border">
+        <div className="border-t border-border" />
+        <div className="isolate grow relative flex max-w-(--content-max-width) mx-auto w-full border-x border-border">
           <Sidebar
             orgs={orgs}
             projects={projects}
@@ -649,7 +649,7 @@ function TabBar({
   ] as const
 
   return (
-    <div className="max-w-(--content-max-width) mx-auto w-full border-x border-dashed border-border">
+    <div className="max-w-(--content-max-width) mx-auto w-full border-x border-border">
       <div className="flex h-10 items-stretch gap-6 px-6 overflow-x-auto scrollbar-hide">
         {tabs.map((tab) => (
           <Link
@@ -674,7 +674,7 @@ function TabBar({
 
 function ContentFrame({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`max-w-(--content-max-width) mx-auto w-full border-x border-dashed border-border ${className ?? ''}`}>
+    <div className={`max-w-(--content-max-width) mx-auto w-full border-x border-border ${className ?? ''}`}>
       {children}
     </div>
   )
@@ -683,7 +683,7 @@ function ContentFrame({ children, className }: { children: React.ReactNode; clas
 function Navbar({ mobileMenuSlot }: { mobileMenuSlot?: React.ReactNode }) {
   return (
     <nav className="sticky top-0 z-50 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="max-w-(--content-max-width) mx-auto border-x border-dashed border-border">
+      <div className="max-w-(--content-max-width) mx-auto border-x border-border">
         <div className="flex h-14 items-center justify-between px-6">
           <div className="flex items-center gap-2">
             {mobileMenuSlot}
@@ -726,8 +726,8 @@ function XIcon({ className }: { className?: string }) {
 function Footer() {
   return (
     <footer className="flex flex-col ">
-      <div className="border-t border-dashed border-border" />
-      <div className="max-w-(--content-max-width) grow mx-auto w-full border-x border-dashed border-border">
+      <div className="border-t border-border" />
+      <div className="max-w-(--content-max-width) grow mx-auto w-full border-x border-border">
         <div className="flex items-center justify-end gap-4 px-6 py-5">
           <FooterColo />
           <span className="text-xs text-muted-foreground">
