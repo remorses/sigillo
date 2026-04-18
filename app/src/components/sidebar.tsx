@@ -185,7 +185,7 @@ function SidebarContent({
       </div>
 
       {/* ── User footer ──────────────────────────────────────── */}
-      <div className="border-t border-sidebar-border pt-4">
+      <div className="border-t border-dashed border-sidebar-border pt-4">
         <DropdownMenu>
           <DropdownMenuTrigger
             className={cn(
@@ -265,7 +265,7 @@ function SidebarContent({
 
 export function Sidebar(props: SidebarProps) {
   return (
-    <aside className="hidden md:flex flex-col w-72 self-stretch min-h-0 border-r border-sidebar-border bg-background text-foreground p-6">
+    <aside className="hidden md:flex flex-col w-72 self-stretch min-h-0 border-r border-dashed border-sidebar-border bg-background text-foreground p-6">
       <SidebarContent {...props} />
     </aside>
   );
