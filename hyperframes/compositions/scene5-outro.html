@@ -1,0 +1,193 @@
+<template id="scene5-outro-template">
+  <div data-composition-id="scene5-outro" data-width="1920" data-height="1080" data-start="0" data-duration="5.5">
+
+    <!-- Background -->
+    <div class="s5-bg"></div>
+    <div class="s5-glow" id="s5Glow"></div>
+
+    <!-- Logo -->
+    <div class="s5-logo-wrap" id="s5Logo">
+      <svg viewBox="0 0 80 100" width="120" height="150" fill="none">
+        <rect x="5" y="40" width="70" height="55" rx="8" fill="#39FF14" opacity="0.9"/>
+        <path d="M20 40V28a20 20 0 0 1 40 0v12" stroke="#39FF14" stroke-width="5" fill="none" stroke-linecap="round"/>
+        <circle cx="40" cy="62" r="6" fill="#0a0a0f"/>
+        <rect x="37" y="65" width="6" height="12" rx="2" fill="#0a0a0f"/>
+      </svg>
+    </div>
+
+    <!-- Brand name -->
+    <div class="s5-brand" id="s5Brand">sigillo</div>
+
+    <!-- Tagline -->
+    <div class="s5-tagline" id="s5Tagline">Your secrets deserve better than .env files.</div>
+
+    <!-- CTA pill -->
+    <div class="s5-cta" id="s5Cta">
+      <span class="s5-cta-text">github.com/remorses/sigillo</span>
+    </div>
+
+    <!-- Install command -->
+    <div class="s5-install" id="s5Install">
+      <span class="s5-install-label">npm i -g</span>
+      <span class="s5-install-pkg">sigillo</span>
+    </div>
+
+    <style>
+      [data-composition-id="scene5-outro"] {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        font-family: "Inter", sans-serif;
+      }
+
+      [data-composition-id="scene5-outro"] .s5-bg {
+        position: absolute;
+        inset: 0;
+        background: #0a0a0f;
+      }
+
+      [data-composition-id="scene5-outro"] .s5-glow {
+        position: absolute;
+        width: 500px;
+        height: 500px;
+        top: 38%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: radial-gradient(circle, rgba(57, 255, 20, 0.12) 0%, transparent 70%);
+        border-radius: 50%;
+        opacity: 0;
+      }
+
+      [data-composition-id="scene5-outro"] .s5-logo-wrap {
+        position: absolute;
+        top: 300px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 2;
+      }
+
+      [data-composition-id="scene5-outro"] .s5-brand {
+        position: absolute;
+        top: 500px;
+        width: 100%;
+        text-align: center;
+        font-size: 80px;
+        font-weight: 800;
+        color: #e8e8ec;
+        letter-spacing: -0.03em;
+        z-index: 2;
+      }
+
+      [data-composition-id="scene5-outro"] .s5-tagline {
+        position: absolute;
+        top: 610px;
+        width: 100%;
+        text-align: center;
+        font-size: 32px;
+        font-weight: 400;
+        color: #3a3a44;
+        z-index: 2;
+      }
+
+      [data-composition-id="scene5-outro"] .s5-cta {
+        position: absolute;
+        top: 720px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #12121a;
+        border: 1px solid #1e1e2a;
+        border-radius: 100px;
+        padding: 12px 32px;
+        z-index: 2;
+      }
+
+      [data-composition-id="scene5-outro"] .s5-cta-text {
+        font-size: 20px;
+        font-weight: 500;
+        color: #39FF14;
+        letter-spacing: 0.02em;
+      }
+
+      [data-composition-id="scene5-outro"] .s5-install {
+        position: absolute;
+        top: 800px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-family: "JetBrains Mono", "Fira Code", monospace;
+        font-size: 18px;
+        z-index: 2;
+      }
+
+      [data-composition-id="scene5-outro"] .s5-install-label {
+        color: #3a3a44;
+      }
+
+      [data-composition-id="scene5-outro"] .s5-install-pkg {
+        color: #e8e8ec;
+        font-weight: 600;
+      }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      var S = '[data-composition-id="scene5-outro"] ';
+
+      /* Initial states */
+      gsap.set(S + "#s5Logo", { scale: 0.5, opacity: 0 });
+      gsap.set(S + "#s5Brand", { opacity: 0, y: 20 });
+      gsap.set(S + "#s5Tagline", { opacity: 0, y: 15 });
+      gsap.set(S + "#s5Cta", { opacity: 0, y: 15 });
+      gsap.set(S + "#s5Install", { opacity: 0, y: 10 });
+
+      /* Glow blooms */
+      tl.to(S + "#s5Glow", {
+        opacity: 1, scale: 1.3,
+        duration: 1.2, ease: "power2.out"
+      }, 0.1);
+
+      /* Logo drops in with spring */
+      tl.to(S + "#s5Logo", {
+        scale: 1, opacity: 1,
+        duration: 0.8, ease: "back.out(1.8)"
+      }, 0.3);
+
+      /* Brand name */
+      tl.to(S + "#s5Brand", {
+        opacity: 1, y: 0,
+        duration: 0.7, ease: "power3.out"
+      }, 0.8);
+
+      /* Tagline */
+      tl.to(S + "#s5Tagline", {
+        opacity: 1, y: 0,
+        duration: 0.6, ease: "power2.out"
+      }, 1.3);
+
+      /* CTA pill */
+      tl.to(S + "#s5Cta", {
+        opacity: 1, y: 0,
+        duration: 0.5, ease: "power2.out"
+      }, 1.8);
+
+      /* Install command */
+      tl.to(S + "#s5Install", {
+        opacity: 1, y: 0,
+        duration: 0.5, ease: "power2.out"
+      }, 2.1);
+
+      /* Final fade — only scene allowed to have exit animations */
+      tl.to(S + "#s5Logo", { opacity: 0, y: -20, duration: 0.8, ease: "power2.in" }, 4.5);
+      tl.to(S + "#s5Brand", { opacity: 0, duration: 0.6, ease: "power2.in" }, 4.6);
+      tl.to(S + "#s5Tagline", { opacity: 0, duration: 0.5, ease: "power2.in" }, 4.7);
+      tl.to(S + "#s5Cta", { opacity: 0, duration: 0.4, ease: "power2.in" }, 4.8);
+      tl.to(S + "#s5Install", { opacity: 0, duration: 0.4, ease: "power2.in" }, 4.9);
+      tl.to(S + "#s5Glow", { opacity: 0, duration: 1, ease: "power1.in" }, 4.5);
+
+      window.__timelines["scene5-outro"] = tl;
+    </script>
+  </div>
+</template>
