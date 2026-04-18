@@ -533,8 +533,10 @@ export const app = new Spiceflow({
     // User must be logged in to approve device codes
     const session = await getSession(request)
     if (!session) return redirect('/login')
+    const url = new URL(request.url)
+    const userCode = url.searchParams.get('user_code') ?? ''
     const { DeviceFlow } = await import('sigillo-app/src/components/device-flow')
-    return <ContentFrame><DeviceFlow /></ContentFrame>
+    return <ContentFrame><DeviceFlow initialCode={userCode} /></ContentFrame>
   })
 
   // ── Login page (standalone, no sidebar) ─────────────────────────

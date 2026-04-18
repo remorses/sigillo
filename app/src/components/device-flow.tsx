@@ -7,8 +7,8 @@
 import { useState } from "react"
 import { authClient } from "../auth-client.ts"
 
-export function DeviceFlow() {
-  const [userCode, setUserCode] = useState('')
+export function DeviceFlow({ initialCode = '' }: { initialCode?: string }) {
+  const [userCode, setUserCode] = useState(initialCode)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
