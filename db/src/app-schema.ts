@@ -97,7 +97,7 @@ export const orgInvitation = sqliteCore.sqliteTable('org_invitation', {
 
 // ── Secrets domain tables ───────────────────────────────────────────
 // Doppler-style hierarchy: org → project → environment → secretEvent
-// Each project gets default environments: development, preview, production
+// Each project gets default environments: dev, preview, prod
 //
 // Secrets use event sourcing: the secretEvent table is an append-only log.
 // Current secret values are derived by replaying events per (environmentId, name).
@@ -173,9 +173,9 @@ export const apiToken = sqliteCore.sqliteTable('api_token', {
 
 // Default environments created for every new project
 export const DEFAULT_ENVIRONMENTS = [
-  { name: 'Development', slug: 'development' },
+  { name: 'Dev', slug: 'dev' },
   { name: 'Preview', slug: 'preview' },
-  { name: 'Production', slug: 'production' },
+  { name: 'Prod', slug: 'prod' },
 ] as const
 
 // ── oauthDomain table ────────────────────────────────────────────────
