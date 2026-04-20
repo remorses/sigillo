@@ -153,7 +153,8 @@ export function ProjectPage({
             defaultValue={selectedEnvId || ""}
             onValueChange={(val: string | null) => {
               if (!val) return
-              router.push(router.href('/orgs/:orgId/projects/:projectId/envs/:envId', { orgId, projectId, envId: val }));
+              const env = environments.find((e) => e.id === val);
+              if (env) router.push(router.href('/orgs/:orgId/projects/:projectId/envs/:envSlug', { orgId, projectId, envSlug: env.slug }));
             }}
           >
             <SelectTrigger size="sm" className="w-auto min-w-40">

@@ -84,7 +84,7 @@ fn printAvailableEnvs(
     if (envs.len == 0) return;
     try stderr.writeAll("available envs:\n");
     for (envs) |env| {
-        try stderr.print("  - {s} ({s})\n", .{ env.name, env.id });
+        try stderr.print("  - {s} ({s})\n", .{ env.name, env.slug });
     }
 }
 
@@ -156,8 +156,8 @@ const Me = zeke.cmd("me", "Show current user info")
 
 const Setup = zeke.cmd("setup", "Save project and env for the current directory")
     .option("--project [id]", "Project ID")
-    .option("--env [id]", "Env ID")
-    .option("-c, --config [id]", "Env ID alias")
+    .option("--env [slug]", "Env slug (e.g. dev, prod)")
+    .option("-c, --config [slug]", "Env slug alias")
     .option("--token [token]", "Auth token override")
     .option("--api-url [url]", "API URL override (default: https://sigillo.dev)")
     .example("sigillo setup --project website --env dev");
@@ -168,8 +168,8 @@ const Run = zeke.cmd("run <...cmd>", "Run a command with secrets injected")
     .option("--mount-format [fmt]", "Format for mounted file: env, env-no-quotes, json, yaml, docker, dotnet-json (default: env)")
     .option("--disable-redaction", "Print child output without secret redaction")
     .option("--project [id]", "Project ID override")
-    .option("--env [id]", "Env ID override")
-    .option("-c, --config [id]", "Env ID override alias")
+    .option("--env [slug]", "Env slug override (e.g. dev, prod)")
+    .option("-c, --config [slug]", "Env slug override")
     .option("--token [token]", "Auth token override")
     .option("--api-url [url]", "API URL override (default: https://sigillo.dev)")
     .example("sigillo run -- env")
@@ -178,33 +178,33 @@ const Run = zeke.cmd("run <...cmd>", "Run a command with secrets injected")
     .example("sigillo run --command 'echo $MY_SECRET'");
 
 const Secrets = zeke.cmd("secrets", "List secrets for the configured env")
-    .option("--env [id]", "Env ID override")
-    .option("-c, --config [id]", "Env ID override alias")
+    .option("--env [slug]", "Env slug override (e.g. dev, prod)")
+    .option("-c, --config [slug]", "Env slug override")
     .option("--token [token]", "Auth token override")
     .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
 
 const SecretsGet = zeke.cmd("secrets get <name>", "Get a secret value")
-    .option("--env [id]", "Env ID override")
-    .option("-c, --config [id]", "Env ID override alias")
+    .option("--env [slug]", "Env slug override (e.g. dev, prod)")
+    .option("-c, --config [slug]", "Env slug override")
     .option("--token [token]", "Auth token override")
     .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
 
 const SecretsSet = zeke.cmd("secrets set <name> [value]", "Set a secret value (omit value to read from stdin)")
-    .option("--env [id]", "Env ID override")
-    .option("-c, --config [id]", "Env ID override alias")
+    .option("--env [slug]", "Env slug override (e.g. dev, prod)")
+    .option("-c, --config [slug]", "Env slug override")
     .option("--token [token]", "Auth token override")
     .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
 
 const SecretsDelete = zeke.cmd("secrets delete <name>", "Delete a secret")
-    .option("--env [id]", "Env ID override")
-    .option("-c, --config [id]", "Env ID override alias")
+    .option("--env [slug]", "Env slug override (e.g. dev, prod)")
+    .option("-c, --config [slug]", "Env slug override")
     .option("--token [token]", "Auth token override")
     .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
 
 const SecretsDownload = zeke.cmd("secrets download", "Download all secrets in a chosen format")
     .option("--format [fmt]", "Output format: json, env, env-no-quotes, xargs, yaml, docker, dotnet-json (default: yaml)")
-    .option("--env [id]", "Env ID override")
-    .option("-c, --config [id]", "Env ID override alias")
+    .option("--env [slug]", "Env slug override (e.g. dev, prod)")
+    .option("-c, --config [slug]", "Env slug override")
     .option("--token [token]", "Auth token override")
     .option("--api-url [url]", "API URL override (default: https://sigillo.dev)")
     .example("sigillo secrets download")
@@ -588,7 +588,7 @@ fn setupAction(_: Setup.Args, opts: Setup.Options) !void {
     } else {
         try color.err(stderr, "error");
             try stderr.print(": --project is required\n", .{});
-            try stderr.writeAll("  sigillo setup --project <PROJECT_ID> --env <ENV_ID>\n");
+            try stderr.writeAll("  sigillo setup --project <PROJECT_ID> --env <SLUG>\n");
         std.process.exit(1);
     };
 
@@ -619,12 +619,12 @@ fn setupAction(_: Setup.Args, opts: Setup.Options) !void {
     };
     const all_envs = envs.environments;
 
-    // ── Resolve environment ────────────────────────────────────────
+    // ── Resolve environment (by slug) ─────────────────────────────
     const environment: []const u8 = if (envOverride(opts.env, opts.config)) |e| env_val: {
-        // Validate the provided environment ID exists.
+        // Validate the provided environment slug exists.
         var found = false;
         for (all_envs) |env| {
-            if (std.mem.eql(u8, env.id, e)) { found = true; break; }
+            if (std.mem.eql(u8, env.slug, e)) { found = true; break; }
         }
         if (!found) {
             exitEnvNotFound(allocator, stderr, api_url, token, e, project);
@@ -638,18 +638,18 @@ fn setupAction(_: Setup.Args, opts: Setup.Options) !void {
         }
         const env_options = try allocator.alloc([]const u8, all_envs.len);
         for (all_envs, 0..) |e, i| {
-            env_options[i] = try std.fmt.allocPrint(allocator, "{s} ({s})", .{ e.name, e.id });
+            env_options[i] = try std.fmt.allocPrint(allocator, "{s} ({s})", .{ e.name, e.slug });
         }
         const env_choice = try prompt.select("Select env", env_options, 0) orelse {
             try color.err(stderr, "error");
             try stderr.print(": setup cancelled\n", .{});
             std.process.exit(1);
         };
-        break :env_sel all_envs[env_choice].id;
+        break :env_sel all_envs[env_choice].slug;
     } else {
         try color.err(stderr, "error");
         try stderr.print(": --env/--config is required\n", .{});
-        try stderr.print("  sigillo setup --project {s} --env <ENV_ID>\n", .{project});
+        try stderr.print("  sigillo setup --project {s} --env <SLUG>\n", .{project});
         std.process.exit(1);
     };
 
@@ -710,7 +710,7 @@ fn runAction(args: Run.Args, opts: Run.Options) !void {
     const environment = resolved.environment orelse {
         try color.err(stderr, "error");
         try stderr.print(": env not configured\n", .{});
-        try stderr.writeAll("  sigillo setup --project <PROJECT_ID> --env <ENV_ID>\n");
+        try stderr.writeAll("  sigillo setup\n");
         std.process.exit(1);
     };
 
@@ -1051,6 +1051,8 @@ fn resolveProjectContext(allocator: std.mem.Allocator, cwd: []const u8, flags: c
     };
 }
 
+// The API accepts both environment IDs and slugs directly, so the CLI
+// just passes the stored value (slug after setup, or legacy ID) as-is.
 fn resolveEnvironmentContext(allocator: std.mem.Allocator, cwd: []const u8, flags: config.ResolvedConfig) !EnvironmentContext {
     const resolved = try config.resolve(allocator, cwd, flags);
     return .{
@@ -1090,7 +1092,7 @@ fn requireProjectContext(allocator: std.mem.Allocator, stderr: Writer, cwd: []co
         error.ProjectNotConfigured => {
             try color.err(stderr, "error");
             try stderr.print(": project not configured\n", .{});
-            try stderr.writeAll("  sigillo setup --project <PROJECT_ID> --env <ENV_ID>\n");
+            try stderr.writeAll("  sigillo setup --project <PROJECT_ID> --env <SLUG>\n");
             std.process.exit(1);
         },
         else => return err,
@@ -1108,7 +1110,7 @@ fn requireEnvironmentContext(allocator: std.mem.Allocator, stderr: Writer, cwd: 
         error.EnvironmentNotConfigured => {
             try color.err(stderr, "error");
             try stderr.print(": env not configured\n", .{});
-            try stderr.writeAll("  sigillo setup --project <PROJECT_ID> --env <ENV_ID>\n");
+            try stderr.writeAll("  sigillo setup\n");
             std.process.exit(1);
         },
         else => return err,

@@ -557,13 +557,13 @@ export const apiApp = new Spiceflow()
     path: '/api/environments/:environmentId/secrets',
     response: secretListResponseSchema,
     async handler({ params, request }): Promise<any> {
-      await requireSecretsApiAuth(request, params.environmentId)
-      const derived = await deriveSecrets(params.environmentId)
+      const auth = await requireSecretsApiAuth(request, params.environmentId)
+      const derived = await deriveSecrets(auth.environmentId)
       const secrets = derived.map((d) => ({
         id: d.id, name: d.name,
         createdAt: d.createdAt, updatedAt: d.updatedAt,
       }))
-      return { environmentId: params.environmentId, secrets }
+      return { environmentId: auth.environmentId, secrets }
     },
   })
 
@@ -578,11 +578,11 @@ export const apiApp = new Spiceflow()
       const db = getDb()
       const { encrypted, iv } = await encrypt(body.value)
       const [row] = await db.insert(schema.secretEvent).values({
-        environmentId: params.environmentId, name: body.name,
+        environmentId: auth.environmentId, name: body.name,
         operation: 'set', valueEncrypted: encrypted, iv,
         userId: auth.userId, apiTokenId: auth.apiTokenId,
       }).returning({ id: schema.secretEvent.id, name: schema.secretEvent.name })
-      return { ok: true, environmentId: params.environmentId, id: row!.id, name: row!.name }
+      return { ok: true, environmentId: auth.environmentId, id: row!.id, name: row!.name }
     },
   })
 
@@ -591,12 +591,12 @@ export const apiApp = new Spiceflow()
     path: '/api/environments/:environmentId/secrets/:name',
     response: { 200: secretValueResponseSchema, 404: errorResponseSchema },
     async handler({ params, request }) {
-      await requireSecretsApiAuth(request, params.environmentId)
-      const derived = await deriveSecrets(params.environmentId)
+      const auth = await requireSecretsApiAuth(request, params.environmentId)
+      const derived = await deriveSecrets(auth.environmentId)
       const secret = derived.find((d) => d.name === params.name)
       if (!secret) return json({ error: 'not found' }, { status: 404 })
       const value = await decrypt(secret.valueEncrypted, secret.iv)
-      return { id: secret.id, name: secret.name, value, environmentId: params.environmentId, createdAt: secret.createdAt, updatedAt: secret.updatedAt }
+      return { id: secret.id, name: secret.name, value, environmentId: auth.environmentId, createdAt: secret.createdAt, updatedAt: secret.updatedAt }
     },
   })
 
@@ -608,7 +608,7 @@ export const apiApp = new Spiceflow()
       const auth = await requireSecretsApiAuth(request, params.environmentId)
       const db = getDb()
       await db.insert(schema.secretEvent).values({
-        environmentId: params.environmentId, name: params.name,
+        environmentId: auth.environmentId, name: params.name,
         operation: 'delete', userId: auth.userId, apiTokenId: auth.apiTokenId,
       })
       return { ok: true, name: params.name }
@@ -624,11 +624,11 @@ export const apiApp = new Spiceflow()
     path: '/api/environments/:environmentId/secrets/download',
     query: z.object({ format: downloadedSecretsFormatSchema.optional() }),
     async handler({ params, request, query }) {
-      await requireSecretsApiAuth(request, params.environmentId)
+      const auth = await requireSecretsApiAuth(request, params.environmentId)
 
       const format = query.format || 'json'
 
-      const derived = await deriveSecrets(params.environmentId)
+      const derived = await deriveSecrets(auth.environmentId)
       const entries: Record<string, string> = {}
       for (const d of derived) {
         entries[d.name] = await decrypt(d.valueEncrypted, d.iv)
@@ -659,13 +659,13 @@ export const apiApp = new Spiceflow()
       await db.batch(
         entries.map(([name], i) =>
           db.insert(schema.secretEvent).values({
-            environmentId: params.environmentId, name,
+            environmentId: auth.environmentId, name,
             operation: 'set', valueEncrypted: encrypted[i]!.encrypted, iv: encrypted[i]!.iv,
             userId: auth.userId, apiTokenId: auth.apiTokenId,
           }),
         ) as [any, ...any[]],
       )
-      return { ok: true, environmentId: params.environmentId, secrets: entries.map(([name]) => name) }
+      return { ok: true, environmentId: auth.environmentId, secrets: entries.map(([name]) => name) }
     },
   })
 

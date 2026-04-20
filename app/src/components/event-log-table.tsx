@@ -81,7 +81,8 @@ export function EventLogTable({
           defaultValue={selectedEnvId || ""}
           onValueChange={(val: string | null) => {
             if (!val) return
-            router.push(router.href('/orgs/:orgId/projects/:projectId/envs/:envId/event-log', { orgId, projectId, envId: val }));
+            const env = environments.find((e) => e.id === val);
+            if (env) router.push(router.href('/orgs/:orgId/projects/:projectId/envs/:envSlug/event-log', { orgId, projectId, envSlug: env.slug }));
           }}
         >
           <SelectTrigger size="sm" className="w-auto min-w-40">

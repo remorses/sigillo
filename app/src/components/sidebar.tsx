@@ -49,7 +49,7 @@ import { authClient } from "../auth-client.ts";
 
 export type SidebarProps = {
   orgs: { id: string; name: string; role: string }[];
-  projects: { id: string; name: string; firstEnvId: string | null }[];
+  projects: { id: string; name: string; firstEnvSlug: string | null }[];
   currentOrgId: string | null;
   currentProjectId: string | null;
   user: { name: string; email: string; image?: string | null } | null;
@@ -149,8 +149,8 @@ function SidebarContent({
             return (
               <Link
                 key={project.id}
-                href={project.firstEnvId
-                  ? router.href('/orgs/:orgId/projects/:projectId/envs/:envId', { orgId: currentOrgId!, projectId: project.id, envId: project.firstEnvId })
+                href={project.firstEnvSlug
+                  ? router.href('/orgs/:orgId/projects/:projectId/envs/:envSlug', { orgId: currentOrgId!, projectId: project.id, envSlug: project.firstEnvSlug })
                   : router.href('/orgs/:orgId/projects/:id', { orgId: currentOrgId!, id: project.id })}
                 onClick={onNavigate}
                 className={cn(

@@ -120,9 +120,9 @@ export const app = new Spiceflow({
     }))
     const projects = allProjects.map((p) => {
       const sortedEnvs = [...(p.environments || [])].sort((a, b) => a.createdAt - b.createdAt)
-      return { id: p.id, name: p.name, firstEnvId: sortedEnvs[0]?.id ?? null }
+      return { id: p.id, name: p.name, firstEnvSlug: sortedEnvs[0]?.slug ?? null }
     })
-    const currentProjectFirstEnvId = projects.find((project) => project.id === projectId)?.firstEnvId ?? null
+    const currentProjectFirstEnvSlug = projects.find((project) => project.id === projectId)?.firstEnvSlug ?? null
     const user = { name: session.user.name || 'User', email: session.user.email || '' }
 
     return (
@@ -131,7 +131,7 @@ export const app = new Spiceflow({
           orgId={orgId}
           projectId={projectId}
           pathname={url.pathname}
-          firstEnvId={currentProjectFirstEnvId}
+          firstEnvSlug={currentProjectFirstEnvSlug}
         />
         <div className="border-t border-border" />
         <div className="isolate grow relative flex max-w-(--content-max-width) mx-auto w-full border-x border-border">
@@ -190,7 +190,7 @@ export const app = new Spiceflow({
       })
       if (projects[0]) {
         const sortedEnvs = [...(projects[0].environments || [])].sort((a, b) => a.createdAt - b.createdAt)
-        const envSuffix = sortedEnvs[0] ? `/envs/${sortedEnvs[0].id}` : ''
+        const envSuffix = sortedEnvs[0] ? `/envs/${sortedEnvs[0].slug}` : ''
         return Response.redirect(new URL(`/orgs/${params.orgId}/projects/${projects[0].id}${envSuffix}`, base).toString(), 302)
       }
     } catch {}
@@ -266,14 +266,14 @@ export const app = new Spiceflow({
       where: { projectId: params.id },
       orderBy: { createdAt: 'asc' },
     })
-    const firstEnvId = environments[0]?.id || '_'
-    return redirect(`/orgs/${params.orgId}/projects/${params.id}/envs/${firstEnvId}`)
+    const firstEnvSlug = environments[0]?.slug || '_'
+    return redirect(`/orgs/${params.orgId}/projects/${params.id}/envs/${firstEnvSlug}`)
   })
 
   // ── Project detail with env ───────────────────────────────────
-  .page('/orgs/:orgId/projects/:projectId/envs/:envId', async ({ request, params }) => {
+  .page('/orgs/:orgId/projects/:projectId/envs/:envSlug', async ({ request, params }) => {
     const db = getDb()
-    const { orgId, projectId, envId } = params
+    const { orgId, projectId, envSlug } = params
 
     const [allProjects, environments] = await Promise.all([
       db.query.project.findMany({
@@ -297,9 +297,13 @@ export const app = new Spiceflow({
       )
     }
 
-    const selectedEnvId = environments.some((e) => e.id === envId)
-      ? envId
-      : environments[0]?.id || null
+    const matchedEnv = environments.find((e) => e.slug === envSlug)
+    const selectedEnvId = matchedEnv?.id ?? environments[0]?.id ?? null
+
+    // Redirect to canonical slug if the URL slug didn't match any environment
+    if (selectedEnvId && !matchedEnv && environments[0]) {
+      return redirect(`/orgs/${orgId}/projects/${projectId}/envs/${environments[0].slug}`)
+    }
 
     // Derive current secrets from the event log and decrypt values
     let secrets: { id: string; name: string; value: string; createdAt: number; updatedAt: number; createdBy: { id: string; name: string } | null }[] = []
@@ -414,25 +418,24 @@ export const app = new Spiceflow({
       where: { projectId: params.projectId },
       orderBy: { createdAt: 'asc' },
     })
-    const firstEnvId = environments[0]?.id || '_'
-    return redirect(`/orgs/${params.orgId}/projects/${params.projectId}/envs/${firstEnvId}/event-log`)
+    const firstEnvSlug = environments[0]?.slug || '_'
+    return redirect(`/orgs/${params.orgId}/projects/${params.projectId}/envs/${firstEnvSlug}/event-log`)
   })
 
-  .page('/orgs/:orgId/projects/:projectId/envs/:envId/event-log', async ({ params }) => {
+  .page('/orgs/:orgId/projects/:projectId/envs/:envSlug/event-log', async ({ params }) => {
     const db = getDb()
-    const { orgId, projectId, envId } = params
+    const { orgId, projectId, envSlug } = params
 
     const [project, environments] = await Promise.all([
       db.query.project.findFirst({ where: { id: projectId }, columns: { name: true } }),
       db.query.environment.findMany({ where: { projectId }, orderBy: { createdAt: 'asc' } }),
     ])
 
-    const selectedEnvId = environments.some((environment) => environment.id === envId)
-      ? envId
-      : environments[0]?.id || null
+    const matchedEnv = environments.find((e) => e.slug === envSlug)
+    const selectedEnvId = matchedEnv?.id ?? environments[0]?.id ?? null
 
-    if (selectedEnvId && selectedEnvId !== envId) {
-      return redirect(`/orgs/${orgId}/projects/${projectId}/envs/${selectedEnvId}/event-log`)
+    if (selectedEnvId && !matchedEnv && environments[0]) {
+      return redirect(`/orgs/${orgId}/projects/${projectId}/envs/${environments[0].slug}/event-log`)
     }
 
     // Load events for selected env, sorted by createdAt DESC
@@ -625,17 +628,17 @@ function TabBar({
   orgId,
   projectId,
   pathname,
-  firstEnvId,
+  firstEnvSlug,
 }: {
   orgId: string
   projectId: string
   pathname: string
-  firstEnvId: string | null
+  firstEnvSlug: string | null
 }) {
   const base = `/orgs/${orgId}/projects/${projectId}`
   const envMatch = pathname.match(new RegExp(`^${base}/envs/([^/]+)`))
   const currentEnvBase = envMatch ? `${base}/envs/${envMatch[1]}` : null
-  const secretsHref = currentEnvBase ?? (firstEnvId ? `${base}/envs/${firstEnvId}` : base)
+  const secretsHref = currentEnvBase ?? (firstEnvSlug ? `${base}/envs/${firstEnvSlug}` : base)
   const tabs = [
     { label: 'Secrets', href: secretsHref, active: pathname === base || (pathname.startsWith(`${base}/envs`) && !pathname.endsWith('/event-log')) },
     { label: 'Environments', href: `${base}/environments`, active: pathname === `${base}/environments` },

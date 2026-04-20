@@ -303,22 +303,39 @@ export async function getOrgIdForProject(projectId: string) {
   return row?.orgId ?? null
 }
 
-export async function getOrgIdForEnvironment(environmentId: string) {
+// Resolve an environment identifier that may be either a ULID or a slug.
+// Tries ID first (fast unique lookup), then falls back to slug within
+// the given project scope. Returns the full environment row or null.
+// Resolve an environment identifier that may be either a ULID or a slug.
+// Tries ID first (fast unique lookup), then falls back to slug within
+// the given project scope. Returns { id, projectId, slug, orgId } or null.
+export async function resolveEnvironment(identifier: string, projectId?: string | null) {
   const db = getDb()
-  const row = await db.query.environment.findFirst({
-    where: { id: environmentId },
+  // Try by ID first (globally unique)
+  const byId = await db.query.environment.findFirst({
+    where: { id: identifier },
     with: { project: { columns: { orgId: true } } },
   })
-  return row?.project?.orgId ?? null
+  if (byId) return { ...byId, orgId: byId.project?.orgId ?? null }
+  // Fall back to slug lookup — requires project context
+  if (projectId) {
+    const bySlug = await db.query.environment.findFirst({
+      where: { projectId, slug: identifier },
+      with: { project: { columns: { orgId: true } } },
+    })
+    if (bySlug) return { ...bySlug, orgId: bySlug.project?.orgId ?? null }
+  }
+  return null
+}
+
+export async function getOrgIdForEnvironment(environmentId: string) {
+  const env = await resolveEnvironment(environmentId)
+  return env?.orgId ?? null
 }
 
 export async function getProjectIdForEnvironment(environmentId: string) {
-  const db = getDb()
-  const row = await db.query.environment.findFirst({
-    where: { id: environmentId },
-    columns: { projectId: true },
-  })
-  return row?.projectId ?? null
+  const env = await resolveEnvironment(environmentId)
+  return env?.projectId ?? null
 }
 
 // ── Derive current secrets from event log ───────────────────────────
@@ -446,7 +463,11 @@ function forbiddenResponse(msg = 'forbidden'): Response {
 
 export type SecretsAuth = { userId: string; apiTokenId: null } | { userId: null; apiTokenId: string }
 
-export async function requireSecretsApiAuth(request: Request, environmentId: string): Promise<SecretsAuth> {
+// The environmentRef can be either a ULID or a slug. For token auth the
+// token's project scope is used to resolve slugs. For session auth we
+// try ID-only first, then fall back to project context if available.
+// Returns { auth, environmentId } where environmentId is the resolved ULID.
+export async function requireSecretsApiAuth(request: Request, environmentRef: string): Promise<SecretsAuth & { environmentId: string }> {
   const authHeader = request.headers.get('authorization')
   const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
 
@@ -461,32 +482,32 @@ export async function requireSecretsApiAuth(request: Request, environmentId: str
     })
     if (!token) throw unauthorizedResponse()
 
-    // Verify the requested environment belongs to the token's project
-    const envProjectId = await getProjectIdForEnvironment(environmentId)
-    if (envProjectId !== token.projectId) throw forbiddenResponse('token does not have access to this environment')
+    // Resolve the environment ref (ID or slug) using the token's project scope
+    const env = await resolveEnvironment(environmentRef, token.projectId)
+    if (!env || env.projectId !== token.projectId) throw forbiddenResponse('token does not have access to this environment')
 
     // If token is scoped to a specific environment, enforce it
-    if (token.environmentId && token.environmentId !== environmentId) {
+    if (token.environmentId && token.environmentId !== env.id) {
       throw forbiddenResponse('token is scoped to a different environment')
     }
 
-    return { userId: null, apiTokenId: token.id }
+    return { userId: null, apiTokenId: token.id, environmentId: env.id }
   }
 
   // Session auth path — works with both cookies and BetterAuth bearer tokens
   const session = await getSession(request)
   if (!session) throw unauthorizedResponse()
 
-  const orgId = await getOrgIdForEnvironment(environmentId)
-  if (!orgId) throw new Response(JSON.stringify({ error: 'not found' }), { status: 404, headers: { 'content-type': 'application/json' } })
+  const env = await resolveEnvironment(environmentRef)
+  if (!env?.orgId) throw new Response(JSON.stringify({ error: 'not found' }), { status: 404, headers: { 'content-type': 'application/json' } })
 
   try {
-    await requireOrgMember(session.userId, orgId)
+    await requireOrgMember(session.userId, env.orgId)
   } catch {
     throw forbiddenResponse()
   }
 
-  return { userId: session.userId, apiTokenId: null }
+  return { userId: session.userId, apiTokenId: null, environmentId: env.id }
 }
 
 // ── API token helpers ───────────────────────────────────────────────
