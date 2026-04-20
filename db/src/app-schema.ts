@@ -122,6 +122,7 @@ export const environment = sqliteCore.sqliteTable('environment', {
   updatedAt: sqliteCore.integer('updated_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
 }, (table) => [
   sqliteCore.index('environment_project_id_idx').on(table.projectId),
+  sqliteCore.uniqueIndex('environment_project_id_slug_unique').on(table.projectId, table.slug),
 ])
 
 // Append-only event log for secrets. Each row is an immutable event.
