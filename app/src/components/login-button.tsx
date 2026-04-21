@@ -4,6 +4,7 @@
 "use client"
 
 import { useState } from "react"
+import { Button } from "sigillo-app/src/components/ui/button"
 import { authClient } from "../auth-client.ts"
 
 export function LoginButton({ callbackURL = "/" }: { callbackURL?: string }) {
@@ -18,12 +19,12 @@ export function LoginButton({ callbackURL = "/" }: { callbackURL?: string }) {
   }
 
   return (
-    <button
+    <Button
       onClick={handleSignIn}
-      disabled={loading}
-      className="h-10 px-6 rounded-lg bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-50"
+      loading={loading}
+      size="lg"
     >
       {loading ? "Redirecting…" : "Sign in with Google"}
-    </button>
+    </Button>
   )
 }

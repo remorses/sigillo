@@ -5,6 +5,8 @@
 "use client"
 
 import { useState } from "react"
+import { Button } from "sigillo-app/src/components/ui/button"
+import { Input } from "sigillo-app/src/components/ui/input"
 import { authClient } from "../auth-client.ts"
 
 export function DeviceFlow({ initialCode = '' }: { initialCode?: string }) {
@@ -58,20 +60,21 @@ export function DeviceFlow({ initialCode = '' }: { initialCode?: string }) {
         <p className="text-muted-foreground mb-6">Enter the code shown on your CLI or agent:</p>
         {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
         <form onSubmit={handleVerify} className="flex flex-col gap-4">
-          <input
+          <Input
             value={userCode}
             onChange={(e) => setUserCode(e.target.value)}
             placeholder="ABCD-EFGH"
             maxLength={12}
-            className="h-12 rounded-lg border border-input bg-background px-4 text-center text-2xl font-mono tracking-[0.25em] uppercase focus:outline-none focus:ring-2 focus:ring-ring"
+            className="h-12 text-center text-2xl font-mono tracking-[0.25em] uppercase"
           />
-          <button
+          <Button
             type="submit"
             disabled={loading || !userCode.trim()}
-            className="h-10 rounded-lg bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-50"
+            size="lg"
+            loading={loading}
           >
             {loading ? 'Approving…' : 'Verify Code'}
-          </button>
+          </Button>
         </form>
       </div>
     </div>

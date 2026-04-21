@@ -22,6 +22,7 @@ import {
   decrypt,
 } from './db.ts'
 import { apiApp } from './api.ts'
+import { cn } from 'sigillo-app/src/lib/utils'
 import { Sidebar, MobileDrawer, MobileMenuButton, NewProjectButton, FooterColo } from 'sigillo-app/src/components/sidebar'
 import { ProjectPage } from 'sigillo-app/src/components/project-page'
 import { CreateOrgForm } from 'sigillo-app/src/components/create-org-form'
@@ -658,11 +659,12 @@ function TabBar({
           <Link
             key={tab.href}
             href={tab.href}
-            className={`relative flex items-center shrink-0 whitespace-nowrap text-sm no-underline transition-colors duration-150 ${
+            className={cn(
+              "relative flex items-center shrink-0 whitespace-nowrap text-sm no-underline transition-colors duration-150",
               tab.active
-                ? 'font-medium text-foreground'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
+                ? "font-medium text-foreground"
+                : "text-muted-foreground hover:text-foreground",
+            )}
           >
             {tab.label}
             {tab.active && (
@@ -677,7 +679,7 @@ function TabBar({
 
 function ContentFrame({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`max-w-(--content-max-width) mx-auto w-full border-x border-border ${className ?? ''}`}>
+    <div className={cn("max-w-(--content-max-width) mx-auto w-full border-x border-border", className)}>
       {children}
     </div>
   )

@@ -8,10 +8,12 @@
 "use client";
 
 import { EyeIcon, EyeOffIcon, TrashIcon, UploadIcon, PlusIcon, KeyIcon, CheckIcon, DownloadIcon, CopyIcon } from "lucide-react";
+import { EmptyState } from "sigillo-app/src/components/ui/empty-state";
 import { useState, useCallback } from "react";
 import { z } from "zod";
 import { parseFormData } from "spiceflow";
 import { ErrorBoundary } from "spiceflow/react";
+import { cn } from "sigillo-app/src/lib/utils";
 import { Button } from "sigillo-app/src/components/ui/button";
 import { Frame } from "sigillo-app/src/components/ui/frame";
 import { Input, Textarea } from "sigillo-app/src/components/ui/input";
@@ -50,21 +52,8 @@ type Secret = {
   createdBy: { id: string; name: string } | null;
 };
 
-const hiddenValueStyle: React.CSSProperties & {
-  WebkitTextSecurity: string;
-  textSecurity: string;
-} = {
-  WebkitTextSecurity: "disc",
-  textSecurity: "disc",
-};
-
-const maskedInputStyle: React.CSSProperties & {
-  WebkitTextSecurity: string;
-  textSecurity: string;
-} = {
-  WebkitTextSecurity: "disc",
-  textSecurity: "disc",
-};
+// Secret values use the .text-security-disc CSS class from globals.css
+// instead of inline style objects (eliminates duplication with event-log-table).
 
 function SecretValueCell({
   value,
@@ -102,8 +91,10 @@ function SecretValueCell({
             onToggle()
           }
         }}
-        style={!visible ? hiddenValueStyle : undefined}
-        className={`min-w-0 max-w-full flex-1 font-mono ${visible ? 'bg-muted/50' : 'border-transparent bg-muted/50 cursor-pointer select-none'}`}
+        className={cn(
+          "min-w-0 max-w-full flex-1 font-mono",
+          visible ? "bg-muted/50" : "text-security-disc border-transparent bg-muted/50 cursor-pointer select-none",
+        )}
       />
       <button
         onClick={onToggle}
@@ -238,14 +229,11 @@ export function SecretsTable({
   if (secrets.length === 0 && missingKeys.length === 0 && !showNewRow) {
     return (
       <>
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="flex size-12 items-center justify-center rounded-xl bg-muted mb-4">
-            <KeyIcon className="size-6 text-muted-foreground" />
-          </div>
-          <h3 className="text-base font-semibold mb-1">No secrets yet</h3>
-          <p className="text-sm text-muted-foreground mb-6 max-w-xs">
-            Add secrets manually or import them from a .env file to get started.
-          </p>
+        <EmptyState
+          icon={<KeyIcon className="size-6 text-muted-foreground" />}
+          title="No secrets yet"
+          description="Add secrets manually or import them from a .env file to get started."
+        >
           <div className="flex items-center gap-3">
             <Button size="sm" onClick={() => setShowNewRow(true)}>
               <PlusIcon className="size-4" />
@@ -260,7 +248,7 @@ export function SecretsTable({
               Import .env
             </Button>
           </div>
-        </div>
+        </EmptyState>
         <ImportEnvDialog open={importOpen} onOpenChange={setImportOpen} importing={importing} onImport={handleImportText} />
         {/* Inline add row for empty state */}
         {showNewRow && <AddSecretRow environmentId={environmentId} onDone={() => setShowNewRow(false)} />}
@@ -355,8 +343,10 @@ export function SecretsTable({
                       placeholder="Missing — add a value"
                       value={missingEdits[name] ?? ""}
                       onChange={(e) => setMissingEdits((prev) => ({ ...prev, [name]: e.target.value }))}
-                      style={!hasValue ? maskedInputStyle : undefined}
-                       className={`w-full min-w-0 font-mono border-destructive/40 ${hasValue ? "bg-amber-50/50 dark:bg-amber-950/20" : "bg-transparent"}`}
+                       className={cn(
+                         "w-full min-w-0 font-mono border-destructive/40",
+                         hasValue ? "bg-amber-50/50 dark:bg-amber-950/20" : "text-security-disc bg-transparent",
+                       )}
                      />
                    </TableCell>
                   <TableCell className="whitespace-nowrap">
@@ -560,10 +550,17 @@ function SaveToEnvsDialog({
             return (
               <label
                 key={env.id}
-                className={`flex items-center gap-3 rounded-md px-3 py-2 cursor-pointer transition-colors ${isChecked ? "bg-primary/5" : "hover:bg-muted/50"} ${isCurrent ? "opacity-80" : ""}`}
+                className={cn(
+                  "flex items-center gap-3 rounded-md px-3 py-2 cursor-pointer transition-colors",
+                  isChecked ? "bg-primary/5" : "hover:bg-muted/50",
+                  isCurrent && "opacity-80",
+                )}
               >
                 <span
-                  className={`flex items-center justify-center size-4 rounded border transition-colors ${isChecked ? "bg-primary border-primary text-primary-foreground" : "border-input"}`}
+                  className={cn(
+                    "flex items-center justify-center size-4 rounded border transition-colors",
+                    isChecked ? "bg-primary border-primary text-primary-foreground" : "border-input",
+                  )}
                   aria-hidden
                 >
                   {isChecked && <CheckIcon className="size-3" />}
@@ -634,12 +631,11 @@ function AddSecretRow({
           autoComplete="off"
           data-1p-ignore
           data-lpignore="true"
-          style={maskedInputStyle}
-          placeholder="secret value"
+      placeholder="secret value"
           required
-          className="flex-1 font-mono"
-        />
-        <div className="flex-1" />
+      className="flex-1 font-mono text-security-disc"
+    />
+    <div className="flex-1" />
         <Button size="sm" type="submit">
           Add
         </Button>

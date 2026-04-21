@@ -1,6 +1,6 @@
 @import 'tailwindcss';
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (prefers-color-scheme: dark);
 
 @theme inline {
   --font-sans: var(--font-sans);
@@ -161,6 +161,12 @@
   ::-webkit-scrollbar-thumb:hover {
     background-color: var(--muted-foreground);
   }
+}
+
+/* Masked text for secret values — replaces duplicate JS style objects */
+.text-security-disc {
+  -webkit-text-security: disc;
+  text-security: disc;
 }
 
 /* Hide scrollbar utility for horizontal tab scrolling on mobile */

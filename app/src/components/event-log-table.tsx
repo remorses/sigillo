@@ -4,7 +4,9 @@
 
 "use client";
 
-import { EyeIcon, EyeOffIcon } from "lucide-react";
+import { ClockIcon, EyeIcon, EyeOffIcon } from "lucide-react";
+import { cn } from "sigillo-app/src/lib/utils";
+import { EmptyState } from "sigillo-app/src/components/ui/empty-state";
 import { useState } from "react";
 import { router } from "spiceflow/react";
 import { Badge } from "sigillo-app/src/components/ui/badge";
@@ -36,13 +38,7 @@ type EventRow = {
   userName: string;
 };
 
-const hiddenValueStyle: React.CSSProperties & {
-  WebkitTextSecurity: string;
-  textSecurity: string;
-} = {
-  WebkitTextSecurity: "disc",
-  textSecurity: "disc",
-};
+// Secret values use the .text-security-disc CSS class from globals.css.
 
 export function EventLogTable({
   projectName,
@@ -99,18 +95,11 @@ export function EventLogTable({
       </div>
 
       {events.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="flex size-12 items-center justify-center rounded-xl bg-muted mb-4">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-6 text-muted-foreground">
-              <path d="M12 8v4l3 3" />
-              <circle cx="12" cy="12" r="10" />
-            </svg>
-          </div>
-          <h3 className="text-base font-semibold mb-1">No events yet</h3>
-          <p className="text-sm text-muted-foreground max-w-xs">
-            Secret changes will appear here as an audit trail.
-          </p>
-        </div>
+        <EmptyState
+          icon={<ClockIcon className="size-6 text-muted-foreground" />}
+          title="No events yet"
+          description="Secret changes will appear here as an audit trail."
+        />
       ) : (
         <Frame className="w-full">
           <Table className="table-fixed">
@@ -154,8 +143,10 @@ export function EventLogTable({
                       {hasValue ? (
                         <div className="flex items-center gap-1.5">
                           <span
-                            className="text-sm font-mono truncate min-w-0 flex-1"
-                            style={!isVisible ? hiddenValueStyle : undefined}
+                            className={cn(
+                              "text-sm font-mono truncate min-w-0 flex-1",
+                              !isVisible && "text-security-disc",
+                            )}
                           >
                             {isVisible ? evt.value : "••••••••••••"}
                           </span>

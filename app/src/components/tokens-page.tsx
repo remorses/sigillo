@@ -9,9 +9,11 @@ import { useState } from "react"
 import { z } from "zod"
 import { parseFormData } from "spiceflow"
 import { KeyIcon, TrashIcon, PlusIcon, CopyIcon, CheckIcon } from "lucide-react"
+import { EmptyState } from "sigillo-app/src/components/ui/empty-state"
 import { Button } from "sigillo-app/src/components/ui/button"
 import { Frame } from "sigillo-app/src/components/ui/frame"
 import { Input } from "sigillo-app/src/components/ui/input"
+import { NativeSelect } from "sigillo-app/src/components/ui/native-select"
 import {
   Dialog, DialogPopup, DialogHeader, DialogTitle,
   DialogDescription, DialogFooter, DialogClose,
@@ -61,19 +63,16 @@ export function TokensPage({
       </div>
 
       {tokens.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="flex size-12 items-center justify-center rounded-xl bg-muted mb-4">
-            <KeyIcon className="size-6 text-muted-foreground" />
-          </div>
-          <h3 className="text-base font-semibold mb-1">No API tokens yet</h3>
-          <p className="text-sm text-muted-foreground mb-6 max-w-xs">
-            Create a token to access secrets programmatically via the API.
-          </p>
+        <EmptyState
+          icon={<KeyIcon className="size-6 text-muted-foreground" />}
+          title="No API tokens yet"
+          description="Create a token to access secrets programmatically via the API."
+        >
           <Button size="sm" onClick={() => setCreateOpen(true)}>
             <PlusIcon className="size-4" />
             Create token
           </Button>
-        </div>
+        </EmptyState>
       ) : (
         <TokensTable tokens={tokens} projectId={projectId} />
       )}
@@ -279,16 +278,15 @@ function CreateTokenDialog({
             </div>
             <div>
               <label htmlFor="token-env" className="text-sm font-medium mb-1 block">Environment scope</label>
-              <select
+              <NativeSelect
                 id="token-env"
                 name={tokenFields.environmentId}
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
                 <option value="">All environments</option>
                 {environments.map((env) => (
                   <option key={env.id} value={env.id}>{env.name}</option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
           </div>
           <DialogFooter variant="bare" className="mt-4">

@@ -16,6 +16,7 @@ import { z } from "zod";
 import { parseFormData } from "spiceflow";
 import { ErrorBoundary } from "spiceflow/react";
 import { Badge } from "sigillo-app/src/components/ui/badge";
+import { cn } from "sigillo-app/src/lib/utils";
 import { Button } from "sigillo-app/src/components/ui/button";
 import { Frame } from "sigillo-app/src/components/ui/frame";
 import { Input } from "sigillo-app/src/components/ui/input";
@@ -83,7 +84,7 @@ function EditableEnvCell({ env, field }: { env: Environment; field: "name" | "sl
           onChange={(e) => setValue(e.target.value)}
           onBlur={save}
           autoFocus
-          className={`h-7 w-full ${field === "slug" ? "font-mono" : ""}`}
+          className={cn("h-7 w-full", field === "slug" && "font-mono")}
         />
       </form>
     );
@@ -97,7 +98,7 @@ function EditableEnvCell({ env, field }: { env: Environment; field: "name" | "sl
     >
       {field === "name" ? (
         <span className="flex items-center gap-2">
-          <span className={`size-2 rounded-full ${envColors[env.slug] || "bg-muted-foreground"}`} />
+          <span className={cn("size-2 rounded-full", envColors[env.slug] || "bg-muted-foreground")} />
           {env.name}
         </span>
       ) : (
