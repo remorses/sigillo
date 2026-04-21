@@ -6,7 +6,7 @@
 
 import { EyeIcon, EyeOffIcon } from "lucide-react";
 import { useState } from "react";
-import { getRouter } from "spiceflow/react";
+import { router } from "spiceflow/react";
 import { Badge } from "sigillo-app/src/components/ui/badge";
 import { Frame } from "sigillo-app/src/components/ui/frame";
 import {
@@ -25,7 +25,6 @@ import {
   TableRow,
 } from "sigillo-app/src/components/ui/table";
 import { formatTime } from "sigillo-app/src/lib/utils";
-import type { App } from "../app.tsx";
 
 type EventRow = {
   id: string;
@@ -66,7 +65,6 @@ export function EventLogTable({
   orgId: string;
   projectId: string;
 }) {
-  const router = getRouter<App>();
   const [visibleValues, setVisibleValues] = useState<Record<string, boolean>>({});
 
   const toggleValue = (id: string) => {

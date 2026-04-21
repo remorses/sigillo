@@ -6,9 +6,8 @@
 "use client"
 
 import { useState } from "react"
-import { getRouter } from "spiceflow/react"
+import { router } from "spiceflow/react"
 import { createInviteAction } from "../actions.ts"
-import type { App } from "../app.tsx"
 import { Button } from "sigillo-app/src/components/ui/button"
 import {
   Dialog, DialogPopup, DialogHeader, DialogTitle,
@@ -36,7 +35,6 @@ function InviteDialog({ open, onOpenChange, orgId }: {
   onOpenChange: (open: boolean) => void
   orgId: string
 }) {
-  const router = getRouter<App>()
   const [inviteUrl, setInviteUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)

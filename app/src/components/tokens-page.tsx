@@ -6,6 +6,8 @@
 "use client"
 
 import { useState } from "react"
+import { z } from "zod"
+import { parseFormData } from "spiceflow"
 import { KeyIcon, TrashIcon, PlusIcon, CopyIcon, CheckIcon } from "lucide-react"
 import { Button } from "sigillo-app/src/components/ui/button"
 import { Frame } from "sigillo-app/src/components/ui/frame"
@@ -152,6 +154,9 @@ function TokensTable({ tokens, projectId }: { tokens: Token[]; projectId: string
   )
 }
 
+const tokenSchema = z.object({ name: z.string().min(1, "Name is required"), environmentId: z.string().optional() })
+const tokenFields = tokenSchema.keyof().enum
+
 function CreateTokenDialog({
   open,
   onOpenChange,
@@ -241,9 +246,7 @@ function CreateTokenDialog({
         <form
           className="px-6 pb-2"
           action={async (formData: FormData) => {
-            const name = formData.get("name") as string
-            const environmentId = formData.get("environmentId") as string
-            if (!name?.trim()) return
+            const { name, environmentId } = parseFormData(tokenSchema, formData)
             setCreating(true)
             setError(null)
             try {
@@ -268,7 +271,7 @@ function CreateTokenDialog({
               <label htmlFor="token-name" className="text-sm font-medium mb-1 block">Name</label>
               <Input
                 id="token-name"
-                name="name"
+                name={tokenFields.name}
                 placeholder="e.g. CI/CD pipeline"
                 required
                 autoFocus
@@ -278,7 +281,7 @@ function CreateTokenDialog({
               <label htmlFor="token-env" className="text-sm font-medium mb-1 block">Environment scope</label>
               <select
                 id="token-env"
-                name="environmentId"
+                name={tokenFields.environmentId}
                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
                 <option value="">All environments</option>

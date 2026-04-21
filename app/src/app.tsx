@@ -760,6 +760,10 @@ function Footer() {
 
 export type App = typeof app
 
+declare module 'spiceflow/react' {
+  interface SpiceflowRegister { app: typeof app }
+}
+
 export default {
   async fetch(request: Request): Promise<Response> {
     return app.handle(request)

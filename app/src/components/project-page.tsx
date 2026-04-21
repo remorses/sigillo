@@ -16,8 +16,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "sigillo-app/src/components/ui/select";
-import { getRouter } from "spiceflow/react";
-import type { App } from "../app.tsx";
+import { router } from "spiceflow/react";
 
 const cliBannerCookieName = "sigillo-cli-banner-dismissed";
 const cliBannerCodeLines = [
@@ -135,7 +134,6 @@ export function ProjectPage({
   allSecretNames: string[];
   showBanner?: boolean;
 }) {
-  const router = getRouter<App>();
   const [allVisible, setAllVisible] = useState(false);
 
   return (

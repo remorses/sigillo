@@ -10,8 +10,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { z } from "zod";
 import { Drawer } from "vaul";
-import { getRouter, Link, ErrorBoundary } from "spiceflow/react";
+import { parseFormData } from "spiceflow";
+import { router, Link, ErrorBoundary } from "spiceflow/react";
 import {
   PlusIcon,
   FolderIcon,
@@ -44,7 +46,6 @@ import {
   DropdownMenuLabel,
 } from "sigillo-app/src/components/ui/dropdown-menu";
 import { createProjectAction } from "../actions.ts";
-import type { App } from "../app.tsx";
 import { authClient } from "../auth-client.ts";
 
 export type SidebarProps = {
@@ -69,7 +70,6 @@ function SidebarContent({
   user,
   onNavigate,
 }: SidebarProps & { onNavigate?: () => void }) {
-  const router = getRouter<App>();
   const [showNewProject, setShowNewProject] = useState(false);
 
   const currentOrg = orgs.find((o) => o.id === currentOrgId);
@@ -305,6 +305,9 @@ export function MobileDrawer(props: SidebarProps) {
 // ── Shared new project dialog ──────────────────────────────────
 // Used by both the Sidebar and the empty-state NewProjectButton.
 
+const projectSchema = z.object({ name: z.string().min(1, "Name is required") });
+const projectFields = projectSchema.keyof().enum;
+
 export function NewProjectDialog({
   open,
   onOpenChange,
@@ -314,8 +317,6 @@ export function NewProjectDialog({
   onOpenChange: (open: boolean) => void;
   orgId: string | null;
 }) {
-  const router = getRouter<App>();
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPopup>
@@ -340,12 +341,12 @@ export function NewProjectDialog({
             className="px-6 pb-2"
             action={async (formData: FormData) => {
               if (!orgId) return;
-              const name = formData.get("name") as string;
+              const { name } = parseFormData(projectSchema, formData);
               await createProjectAction({ name, orgId });
             }}
           >
             <Input
-              name="name"
+              name={projectFields.name}
               placeholder="Project name"
               required
               autoFocus

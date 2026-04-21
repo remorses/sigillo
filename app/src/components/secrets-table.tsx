@@ -9,6 +9,8 @@
 
 import { EyeIcon, EyeOffIcon, TrashIcon, UploadIcon, PlusIcon, KeyIcon, CheckIcon, DownloadIcon, CopyIcon } from "lucide-react";
 import { useState, useCallback } from "react";
+import { z } from "zod";
+import { parseFormData } from "spiceflow";
 import { ErrorBoundary } from "spiceflow/react";
 import { Button } from "sigillo-app/src/components/ui/button";
 import { Frame } from "sigillo-app/src/components/ui/frame";
@@ -462,6 +464,9 @@ export function SecretsTable({
   );
 }
 
+const importEnvSchema = z.object({ envText: z.string().min(1, "Paste your .env contents") });
+const importEnvFields = importEnvSchema.keyof().enum;
+
 function ImportEnvDialog({
   open,
   onOpenChange,
@@ -485,13 +490,12 @@ function ImportEnvDialog({
         <form
           className="px-6 pb-2"
           action={async (formData: FormData) => {
-            const textValue = formData.get("envText");
-            const text = typeof textValue === "string" ? textValue : "";
-            if (text.trim()) await onImport(text);
+            const { envText } = parseFormData(importEnvSchema, formData);
+            if (envText.trim()) await onImport(envText);
           }}
         >
           <Textarea
-            name="envText"
+            name={importEnvFields.envText}
             required
             autoFocus
             placeholder={"DATABASE_URL=postgres://...\nAPI_KEY=sk-...\nSECRET_TOKEN=abc123"}
@@ -588,6 +592,9 @@ function SaveToEnvsDialog({
   );
 }
 
+const addSecretSchema = z.object({ name: z.string().min(1, "Key is required"), value: z.string().min(1, "Value is required") });
+const addSecretFields = addSecretSchema.keyof().enum;
+
 function AddSecretRow({
   environmentId,
   onDone,
@@ -609,21 +616,20 @@ function AddSecretRow({
       <form
         className="flex items-center grow gap-2"
         action={async (formData: FormData) => {
-          const name = formData.get("name") as string;
-          const value = formData.get("value") as string;
+          const { name, value } = parseFormData(addSecretSchema, formData);
           await createSecretAction({ name, value, environmentId });
           onDone();
         }}
       >
         <Input
-          name="name"
+          name={addSecretFields.name}
           placeholder="SECRET_KEY"
           required
           autoFocus
           className="flex-1 font-mono"
         />
         <Input
-          name="value"
+          name={addSecretFields.value}
           type="text"
           autoComplete="off"
           data-1p-ignore

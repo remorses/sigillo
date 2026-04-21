@@ -12,6 +12,8 @@ import {
 } from "@tanstack/react-table";
 import { PencilIcon, TrashIcon } from "lucide-react";
 import { useState, useRef } from "react";
+import { z } from "zod";
+import { parseFormData } from "spiceflow";
 import { ErrorBoundary } from "spiceflow/react";
 import { Badge } from "sigillo-app/src/components/ui/badge";
 import { Button } from "sigillo-app/src/components/ui/button";
@@ -107,6 +109,9 @@ function EditableEnvCell({ env, field }: { env: Environment; field: "name" | "sl
     </button>
   );
 }
+
+const envSchema = z.object({ name: z.string().min(1, "Name is required"), slug: z.string().min(1, "Slug is required") });
+const envFields = envSchema.keyof().enum;
 
 export function EnvironmentsTable({
   environments,
@@ -238,21 +243,20 @@ export function EnvironmentsTable({
             <form
               className="flex items-center gap-2"
               action={async (formData: FormData) => {
-                const name = formData.get("name") as string;
-                const slug = formData.get("slug") as string;
+                const { name, slug } = parseFormData(envSchema, formData);
                 await createEnvAction({ name, slug, projectId });
                 setShowNewRow(false);
               }}
             >
               <Input
-                name="name"
+                name={envFields.name}
                 inputSize="sm"
                 placeholder="Environment name"
                 required
                 className="flex-1"
               />
               <Input
-                name="slug"
+                name={envFields.slug}
                 inputSize="sm"
                 placeholder="slug"
                 required
