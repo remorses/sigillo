@@ -186,7 +186,7 @@ pub fn getMe(args: GetMeArgs) !JsonResult(api.MeResponse) {
         .allocator = args.allocator,
         .method = .GET,
         .base_url = args.api_url,
-        .path = "/api/me",
+        .path = "/api/v0/me",
         .token = args.token,
     });
 }
@@ -199,7 +199,7 @@ pub const ListProjectsArgs = struct {
 };
 
 pub fn listProjects(args: ListProjectsArgs) !JsonResult(api.ProjectListResponse) {
-    const path = try std.fmt.allocPrint(args.allocator, "/api/projects?orgId={s}", .{args.org_id});
+    const path = try std.fmt.allocPrint(args.allocator, "/api/v0/projects?orgId={s}", .{args.org_id});
     return parseJsonResult(api.ProjectListResponse, .{
         .allocator = args.allocator,
         .method = .GET,
@@ -217,7 +217,7 @@ pub const GetProjectArgs = struct {
 };
 
 pub fn getProject(args: GetProjectArgs) !JsonResult(api.ProjectSummary) {
-    const path = try std.fmt.allocPrint(args.allocator, "/api/projects/{s}", .{args.project_id});
+    const path = try std.fmt.allocPrint(args.allocator, "/api/v0/projects/{s}", .{args.project_id});
     return parseJsonResult(api.ProjectSummary, .{
         .allocator = args.allocator,
         .method = .GET,
@@ -241,7 +241,7 @@ pub fn createProject(args: CreateProjectArgs) !JsonResult(api.ProjectMutationRes
         .allocator = args.allocator,
         .method = .POST,
         .base_url = args.api_url,
-        .path = "/api/projects",
+        .path = "/api/v0/projects",
         .token = args.token,
         .json_body = body,
     });
@@ -256,7 +256,7 @@ pub const UpdateProjectArgs = struct {
 };
 
 pub fn updateProject(args: UpdateProjectArgs) !JsonResult(api.ProjectMutationResponse) {
-    const path = try std.fmt.allocPrint(args.allocator, "/api/projects/{s}", .{args.project_id});
+    const path = try std.fmt.allocPrint(args.allocator, "/api/v0/projects/{s}", .{args.project_id});
     const body = try jsonBody(args.allocator, api.ProjectUpdateRequest{ .name = args.name });
     return parseJsonResult(api.ProjectMutationResponse, .{
         .allocator = args.allocator,
@@ -276,7 +276,7 @@ pub const DeleteProjectArgs = struct {
 };
 
 pub fn deleteProject(args: DeleteProjectArgs) !JsonResult(api.ProjectDeleteResponse) {
-    const path = try std.fmt.allocPrint(args.allocator, "/api/projects/{s}", .{args.project_id});
+    const path = try std.fmt.allocPrint(args.allocator, "/api/v0/projects/{s}", .{args.project_id});
     return parseJsonResult(api.ProjectDeleteResponse, .{
         .allocator = args.allocator,
         .method = .DELETE,
@@ -294,7 +294,7 @@ pub const ListEnvironmentsArgs = struct {
 };
 
 pub fn listEnvironments(args: ListEnvironmentsArgs) !JsonResult(api.EnvironmentListResponse) {
-    const path = try std.fmt.allocPrint(args.allocator, "/api/projects/{s}/environments", .{args.project_id});
+    const path = try std.fmt.allocPrint(args.allocator, "/api/v0/projects/{s}/environments", .{args.project_id});
     return parseJsonResult(api.EnvironmentListResponse, .{
         .allocator = args.allocator,
         .method = .GET,
@@ -308,11 +308,12 @@ pub const GetEnvironmentArgs = struct {
     allocator: std.mem.Allocator,
     api_url: []const u8,
     token: []const u8,
+    project_id: []const u8,
     environment_id: []const u8,
 };
 
 pub fn getEnvironment(args: GetEnvironmentArgs) !JsonResult(api.EnvironmentSummary) {
-    const path = try std.fmt.allocPrint(args.allocator, "/api/environments/{s}", .{args.environment_id});
+    const path = try std.fmt.allocPrint(args.allocator, "/api/v0/projects/{s}/environments/{s}", .{ args.project_id, args.environment_id });
     return parseJsonResult(api.EnvironmentSummary, .{
         .allocator = args.allocator,
         .method = .GET,
@@ -332,7 +333,7 @@ pub const CreateEnvironmentArgs = struct {
 };
 
 pub fn createEnvironment(args: CreateEnvironmentArgs) !JsonResult(api.EnvironmentMutationResponse) {
-    const path = try std.fmt.allocPrint(args.allocator, "/api/projects/{s}/environments", .{args.project_id});
+    const path = try std.fmt.allocPrint(args.allocator, "/api/v0/projects/{s}/environments", .{args.project_id});
     const body = try jsonBody(args.allocator, api.EnvironmentCreateRequest{ .name = args.name, .slug = args.slug });
     return parseJsonResult(api.EnvironmentMutationResponse, .{
         .allocator = args.allocator,
@@ -348,13 +349,14 @@ pub const UpdateEnvironmentArgs = struct {
     allocator: std.mem.Allocator,
     api_url: []const u8,
     token: []const u8,
+    project_id: []const u8,
     environment_id: []const u8,
     name: ?[]const u8 = null,
     slug: ?[]const u8 = null,
 };
 
 pub fn updateEnvironment(args: UpdateEnvironmentArgs) !JsonResult(api.EnvironmentMutationResponse) {
-    const path = try std.fmt.allocPrint(args.allocator, "/api/environments/{s}", .{args.environment_id});
+    const path = try std.fmt.allocPrint(args.allocator, "/api/v0/projects/{s}/environments/{s}", .{ args.project_id, args.environment_id });
     const body = try jsonBody(args.allocator, api.EnvironmentUpdateRequest{ .name = args.name, .slug = args.slug });
     return parseJsonResult(api.EnvironmentMutationResponse, .{
         .allocator = args.allocator,
@@ -370,11 +372,12 @@ pub const DeleteEnvironmentArgs = struct {
     allocator: std.mem.Allocator,
     api_url: []const u8,
     token: []const u8,
+    project_id: []const u8,
     environment_id: []const u8,
 };
 
 pub fn deleteEnvironment(args: DeleteEnvironmentArgs) !JsonResult(api.EnvironmentDeleteResponse) {
-    const path = try std.fmt.allocPrint(args.allocator, "/api/environments/{s}", .{args.environment_id});
+    const path = try std.fmt.allocPrint(args.allocator, "/api/v0/projects/{s}/environments/{s}", .{ args.project_id, args.environment_id });
     return parseJsonResult(api.EnvironmentDeleteResponse, .{
         .allocator = args.allocator,
         .method = .DELETE,
@@ -388,11 +391,12 @@ pub const ListSecretsArgs = struct {
     allocator: std.mem.Allocator,
     api_url: []const u8,
     token: []const u8,
+    project_id: []const u8,
     environment_id: []const u8,
 };
 
 pub fn listSecrets(args: ListSecretsArgs) !JsonResult(api.SecretListResponse) {
-    const path = try std.fmt.allocPrint(args.allocator, "/api/environments/{s}/secrets", .{args.environment_id});
+    const path = try std.fmt.allocPrint(args.allocator, "/api/v0/projects/{s}/environments/{s}/secrets", .{ args.project_id, args.environment_id });
     return parseJsonResult(api.SecretListResponse, .{
         .allocator = args.allocator,
         .method = .GET,
@@ -406,12 +410,13 @@ pub const GetSecretArgs = struct {
     allocator: std.mem.Allocator,
     api_url: []const u8,
     token: []const u8,
+    project_id: []const u8,
     environment_id: []const u8,
     name: []const u8,
 };
 
 pub fn getSecret(args: GetSecretArgs) !JsonResult(api.SecretValueResponse) {
-    const path = try std.fmt.allocPrint(args.allocator, "/api/environments/{s}/secrets/{s}", .{ args.environment_id, args.name });
+    const path = try std.fmt.allocPrint(args.allocator, "/api/v0/projects/{s}/environments/{s}/secrets/{s}", .{ args.project_id, args.environment_id, args.name });
     return parseJsonResult(api.SecretValueResponse, .{
         .allocator = args.allocator,
         .method = .GET,
@@ -425,13 +430,14 @@ pub const SetSecretArgs = struct {
     allocator: std.mem.Allocator,
     api_url: []const u8,
     token: []const u8,
+    project_id: []const u8,
     environment_id: []const u8,
     name: []const u8,
     value: []const u8,
 };
 
 pub fn setSecret(args: SetSecretArgs) !JsonResult(api.SecretMutationResponse) {
-    const path = try std.fmt.allocPrint(args.allocator, "/api/environments/{s}/secrets", .{args.environment_id});
+    const path = try std.fmt.allocPrint(args.allocator, "/api/v0/projects/{s}/environments/{s}/secrets", .{ args.project_id, args.environment_id });
     const body = try jsonBody(args.allocator, api.SecretSetRequest{ .name = args.name, .value = args.value });
     return parseJsonResult(api.SecretMutationResponse, .{
         .allocator = args.allocator,
@@ -447,12 +453,13 @@ pub const DeleteSecretArgs = struct {
     allocator: std.mem.Allocator,
     api_url: []const u8,
     token: []const u8,
+    project_id: []const u8,
     environment_id: []const u8,
     name: []const u8,
 };
 
 pub fn deleteSecret(args: DeleteSecretArgs) !JsonResult(api.SecretDeleteResponse) {
-    const path = try std.fmt.allocPrint(args.allocator, "/api/environments/{s}/secrets/{s}", .{ args.environment_id, args.name });
+    const path = try std.fmt.allocPrint(args.allocator, "/api/v0/projects/{s}/environments/{s}/secrets/{s}", .{ args.project_id, args.environment_id, args.name });
     return parseJsonResult(api.SecretDeleteResponse, .{
         .allocator = args.allocator,
         .method = .DELETE,
@@ -466,12 +473,13 @@ pub const DownloadSecretsArgs = struct {
     allocator: std.mem.Allocator,
     api_url: []const u8,
     token: []const u8,
+    project_id: []const u8,
     environment_id: []const u8,
     format: []const u8,
 };
 
 pub fn downloadSecrets(args: DownloadSecretsArgs) !ApiResult {
-    const path = try std.fmt.allocPrint(args.allocator, "/api/environments/{s}/secrets/download?format={s}", .{ args.environment_id, args.format });
+    const path = try std.fmt.allocPrint(args.allocator, "/api/v0/projects/{s}/environments/{s}/secrets/download?format={s}", .{ args.project_id, args.environment_id, args.format });
     return request(.{
         .allocator = args.allocator,
         .method = .GET,

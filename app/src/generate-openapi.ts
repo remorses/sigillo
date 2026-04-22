@@ -13,7 +13,7 @@ const vite = await createServer({ server: { port: 15188, strictPort: false } })
 const server = await vite.listen()
 const address = server.httpServer?.address()
 const port = typeof address === 'object' && address ? address.port : 15188
-const url = `http://localhost:${port}/api/openapi.json`
+const url = `http://localhost:${port}/api/v0/openapi.json`
 
 try {
   const res = await fetch(url)

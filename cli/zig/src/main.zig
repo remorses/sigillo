@@ -246,17 +246,17 @@ const EnvironmentsCreate = zeke.cmd("environments create", "Create an env")
     .option("--token [token]", "Auth token override")
     .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
 
-const EnvironmentsGet = zeke.cmd("environments get <id>", "Get env details")
+const EnvironmentsGet = zeke.cmd("environments get <id>", "Get env details by id or slug")
     .option("--token [token]", "Auth token override")
     .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
 
-const EnvironmentsRename = zeke.cmd("environments rename <id>", "Rename an env")
+const EnvironmentsRename = zeke.cmd("environments rename <id>", "Rename an env by id or slug")
     .option("--name [name]", "Updated env name")
     .option("--slug [slug]", "Updated env slug")
     .option("--token [token]", "Auth token override")
     .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
 
-const EnvironmentsDelete = zeke.cmd("environments delete <id>", "Delete an env")
+const EnvironmentsDelete = zeke.cmd("environments delete <id>", "Delete an env by id or slug")
     .option("--token [token]", "Auth token override")
     .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
 
@@ -454,13 +454,13 @@ fn meAction(_: Me.Args, opts: Me.Options) !void {
         .token = token,
     }) catch |err| {
         try color.err(stderr, "error");
-        try stderr.print(": failed to fetch /api/me: {s}\n", .{@errorName(err)});
+        try stderr.print(": failed to fetch /api/v0/me: {s}\n", .{@errorName(err)});
         std.process.exit(1);
     };
     if (res.status != 200) {
         const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
         try color.err(stderr, "error");
-        try stderr.print(": /api/me failed ({d}): {s}\n", .{ res.status, message });
+        try stderr.print(": /api/v0/me failed ({d}): {s}\n", .{ res.status, message });
         std.process.exit(1);
     }
 
@@ -706,7 +706,12 @@ fn runAction(args: Run.Args, opts: Run.Options) !void {
         std.process.exit(1);
     };
     const api_url = resolved.api_url.?; // always set — defaults to https://sigillo.dev
-    _ = resolved.project;
+    const project = resolved.project orelse {
+        try color.err(stderr, "error");
+        try stderr.print(": project not configured\n", .{});
+        try stderr.writeAll("  sigillo setup --project <PROJECT_ID> --env <SLUG>\n");
+        std.process.exit(1);
+    };
     const environment = resolved.environment orelse {
         try color.err(stderr, "error");
         try stderr.print(": env not configured\n", .{});
@@ -714,13 +719,13 @@ fn runAction(args: Run.Args, opts: Run.Options) !void {
         std.process.exit(1);
     };
 
-    const path = try std.fmt.allocPrint(allocator, "/api/environments/{s}/secrets/download?format=json", .{environment});
-    const res = client.request(.{
+    const res = client.downloadSecrets(.{
         .allocator = allocator,
-        .method = .GET,
-        .base_url = api_url,
-        .path = path,
+        .api_url = api_url,
         .token = token,
+        .project_id = project,
+        .environment_id = environment,
+        .format = "json",
     }) catch |err| {
         try color.err(stderr, "error");
         try stderr.print(": failed to fetch secrets: {s}\n", .{@errorName(err)});
@@ -764,13 +769,13 @@ fn runAction(args: Run.Args, opts: Run.Options) !void {
         const mount_body = if (std.mem.eql(u8, mount_format, "json"))
             res.body
         else blk: {
-            const mount_url = try std.fmt.allocPrint(allocator, "/api/environments/{s}/secrets/download?format={s}", .{ environment, mount_format });
-            const mount_res = client.request(.{
+            const mount_res = client.downloadSecrets(.{
                 .allocator = allocator,
-                .method = .GET,
-                .base_url = api_url,
-                .path = mount_url,
+                .api_url = api_url,
                 .token = token,
+                .project_id = project,
+                .environment_id = environment,
+                .format = mount_format,
             }) catch |err| {
                 try color.err(stderr, "error");
                 try stderr.print(": failed to fetch secrets for mount: {s}\n", .{@errorName(err)});
@@ -1028,7 +1033,7 @@ const ProjectContext = struct {
 
 const EnvironmentContext = struct {
     api: ApiContext,
-    project_id: ?[]const u8,
+    project_id: []const u8,
     environment_id: []const u8,
 };
 
@@ -1051,8 +1056,8 @@ fn resolveProjectContext(allocator: std.mem.Allocator, cwd: []const u8, flags: c
     };
 }
 
-// The API accepts both environment IDs and slugs directly, so the CLI
-// just passes the stored value (slug after setup, or legacy ID) as-is.
+// The CLI stores the chosen env reference as-is. New setups store slugs,
+// older configs may still store raw IDs, and the API resolves either form.
 fn resolveEnvironmentContext(allocator: std.mem.Allocator, cwd: []const u8, flags: config.ResolvedConfig) !EnvironmentContext {
     const resolved = try config.resolve(allocator, cwd, flags);
     return .{
@@ -1060,7 +1065,7 @@ fn resolveEnvironmentContext(allocator: std.mem.Allocator, cwd: []const u8, flag
             .api_url = resolved.api_url orelse "https://sigillo.dev",
             .token = resolved.token orelse return error.NotLoggedIn,
         },
-        .project_id = resolved.project,
+        .project_id = resolved.project orelse return error.ProjectNotConfigured,
         .environment_id = resolved.environment orelse return error.EnvironmentNotConfigured,
     };
 }
@@ -1113,6 +1118,12 @@ fn requireEnvironmentContext(allocator: std.mem.Allocator, stderr: Writer, cwd: 
             try stderr.writeAll("  sigillo setup\n");
             std.process.exit(1);
         },
+        error.ProjectNotConfigured => {
+            try color.err(stderr, "error");
+            try stderr.print(": project not configured\n", .{});
+            try stderr.writeAll("  sigillo setup --project <PROJECT_ID> --env <SLUG>\n");
+            std.process.exit(1);
+        },
         else => return err,
     };
 }
@@ -1137,6 +1148,7 @@ fn secretsAction(_: Secrets.Args, opts: Secrets.Options) !void {
         .api_url = ctx.api.api_url,
         .token = ctx.api.token,
         .environment_id = ctx.environment_id,
+        .project_id = ctx.project_id,
     });
     if (res.status != 200 or res.value == null) {
         if (res.status == 404) {
@@ -1178,6 +1190,7 @@ fn secretsGetAction(args: SecretsGet.Args, opts: SecretsGet.Options) !void {
         .api_url = ctx.api.api_url,
         .token = ctx.api.token,
         .environment_id = ctx.environment_id,
+        .project_id = ctx.project_id,
         .name = args.name,
     });
     if (res.status != 200 or res.value == null) {
@@ -1241,6 +1254,7 @@ fn secretsSetAction(args: SecretsSet.Args, opts: SecretsSet.Options) !void {
         .api_url = ctx.api.api_url,
         .token = ctx.api.token,
         .environment_id = ctx.environment_id,
+        .project_id = ctx.project_id,
         .name = args.name,
         .value = value,
     });
@@ -1282,6 +1296,7 @@ fn secretsDeleteAction(args: SecretsDelete.Args, opts: SecretsDelete.Options) !v
         .api_url = ctx.api.api_url,
         .token = ctx.api.token,
         .environment_id = ctx.environment_id,
+        .project_id = ctx.project_id,
         .name = args.name,
     });
     if (res.status != 200 or res.value == null) {
@@ -1321,6 +1336,7 @@ fn secretsDownloadAction(_: SecretsDownload.Args, opts: SecretsDownload.Options)
         .api_url = ctx.api.api_url,
         .token = ctx.api.token,
         .environment_id = ctx.environment_id,
+        .project_id = ctx.project_id,
         .format = format,
     });
     if (res.status != 200) {
@@ -1564,7 +1580,8 @@ fn environmentsGetAction(args: EnvironmentsGet.Args, opts: EnvironmentsGet.Optio
     const allocator = arena.allocator();
     const cwd = try config.getCwd(allocator);
     const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
-    const res = try client.getEnvironment(.{ .allocator = allocator, .api_url = api_ctx.api_url, .token = api_ctx.token, .environment_id = args.id });
+    const project_ctx = try requireProjectContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
+    const res = try client.getEnvironment(.{ .allocator = allocator, .api_url = api_ctx.api_url, .token = api_ctx.token, .project_id = project_ctx.project_id, .environment_id = args.id });
     if (res.status != 200 or res.value == null) {
         const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
         try color.err(stderr, "error");
@@ -1595,10 +1612,12 @@ fn environmentsRenameAction(args: EnvironmentsRename.Args, opts: EnvironmentsRen
         try stderr.print(": pass --name, --slug, or both\n", .{});
         std.process.exit(1);
     }
+    const project_ctx = try requireProjectContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
     const res = try client.updateEnvironment(.{
         .allocator = allocator,
         .api_url = api_ctx.api_url,
         .token = api_ctx.token,
+        .project_id = project_ctx.project_id,
         .environment_id = args.id,
         .name = opts.name,
         .slug = opts.slug,
@@ -1628,7 +1647,8 @@ fn environmentsDeleteAction(args: EnvironmentsDelete.Args, opts: EnvironmentsDel
     const allocator = arena.allocator();
     const cwd = try config.getCwd(allocator);
     const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
-    const res = try client.deleteEnvironment(.{ .allocator = allocator, .api_url = api_ctx.api_url, .token = api_ctx.token, .environment_id = args.id });
+    const project_ctx = try requireProjectContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
+    const res = try client.deleteEnvironment(.{ .allocator = allocator, .api_url = api_ctx.api_url, .token = api_ctx.token, .project_id = project_ctx.project_id, .environment_id = args.id });
     if (res.status != 200 or res.value == null) {
         const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
         try color.err(stderr, "error");

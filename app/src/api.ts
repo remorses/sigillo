@@ -20,6 +20,7 @@ import {
   requireSecretsApiAuth,
   getOrgIdForProject,
   getOrgIdForEnvironment,
+  resolveEnvironment,
   deriveSecrets,
   encrypt,
   decrypt,
@@ -284,12 +285,12 @@ function renderDownloadedSecrets(
 }
 
 export const apiApp = new Spiceflow()
-  .use(openapi({ path: '/api/openapi.json' }))
+  .use(openapi({ path: '/api/v0/openapi.json' }))
 
   // ── Orgs ────────────────────────────────────────────────────────
   .route({
     method: 'POST',
-    path: '/api/orgs',
+    path: '/api/v0/orgs',
     request: z.object({ name: z.string().min(1) }),
     async handler({ request }) {
       const body = await request.json()
@@ -305,7 +306,7 @@ export const apiApp = new Spiceflow()
 
   .route({
     method: 'GET',
-    path: '/api/orgs',
+    path: '/api/v0/orgs',
     response: orgListResponseSchema,
     async handler({ request }) {
       const session = await requireApiSession(request)
@@ -325,7 +326,7 @@ export const apiApp = new Spiceflow()
   // ── Projects ────────────────────────────────────────────────────
   .route({
     method: 'POST',
-    path: '/api/projects',
+    path: '/api/v0/projects',
     request: projectCreateRequestSchema,
     response: projectMutationResponseSchema,
     async handler({ request }) {
@@ -347,7 +348,7 @@ export const apiApp = new Spiceflow()
 
   .route({
     method: 'GET',
-    path: '/api/projects',
+    path: '/api/v0/projects',
     query: z.object({ orgId: z.string().min(1) }),
     response: projectListResponseSchema,
     async handler({ request, query }) {
@@ -376,7 +377,7 @@ export const apiApp = new Spiceflow()
 
   .route({
     method: 'GET',
-    path: '/api/projects/:id',
+    path: '/api/v0/projects/:id',
     response: { 200: projectListItemSchema, 404: errorResponseSchema },
     async handler({ params, request }) {
       const session = await requireApiSession(request)
@@ -409,7 +410,7 @@ export const apiApp = new Spiceflow()
 
   .route({
     method: 'PATCH',
-    path: '/api/projects/:id',
+    path: '/api/v0/projects/:id',
     request: projectCreateRequestSchema.pick({ name: true }),
     response: { 200: projectMutationResponseSchema, 404: errorResponseSchema },
     async handler({ params, request }) {
@@ -430,7 +431,7 @@ export const apiApp = new Spiceflow()
 
   .route({
     method: 'DELETE',
-    path: '/api/projects/:id',
+    path: '/api/v0/projects/:id',
     response: { 200: projectDeleteResponseSchema, 404: errorResponseSchema },
     async handler({ params, request }) {
       const session = await requireApiSession(request)
@@ -447,7 +448,7 @@ export const apiApp = new Spiceflow()
   // ── Environments ────────────────────────────────────────────────
   .route({
     method: 'GET',
-    path: '/api/projects/:projectId/environments',
+    path: '/api/v0/projects/:projectId/environments',
     response: { 200: environmentListResponseSchema, 404: errorResponseSchema },
     async handler({ params, request }) {
       const session = await requireApiSession(request)
@@ -469,7 +470,7 @@ export const apiApp = new Spiceflow()
 
   .route({
     method: 'POST',
-    path: '/api/projects/:projectId/environments',
+    path: '/api/v0/projects/:projectId/environments',
     request: environmentCreateRequestSchema,
     response: { 200: environmentMutationResponseSchema, 404: errorResponseSchema },
     async handler({ request, params }) {
@@ -487,15 +488,14 @@ export const apiApp = new Spiceflow()
 
   .route({
     method: 'GET',
-    path: '/api/environments/:id',
+    path: '/api/v0/projects/:projectId/environments/:id',
     response: { 200: environmentSummarySchema, 404: errorResponseSchema },
     async handler({ params, request }) {
       const session = await requireApiSession(request)
-      const orgId = await getOrgIdForEnvironment(params.id)
+      const environment = await resolveEnvironment(params.id, params.projectId)
+      const orgId = environment?.orgId ?? null
       if (!orgId) return json({ error: 'not found' }, { status: 404 })
       await requireApiOrgMember(session.userId, orgId)
-      const db = getDb()
-      const environment = await db.query.environment.findFirst({ where: { id: params.id } })
       if (!environment) return json({ error: 'not found' }, { status: 404 })
       return {
         id: environment.id,
@@ -510,15 +510,17 @@ export const apiApp = new Spiceflow()
 
   .route({
     method: 'DELETE',
-    path: '/api/environments/:id',
+    path: '/api/v0/projects/:projectId/environments/:id',
     response: { 200: environmentDeleteResponseSchema, 404: errorResponseSchema },
     async handler({ params, request }) {
       const session = await requireApiSession(request)
-      const orgId = await getOrgIdForEnvironment(params.id)
+      const environment = await resolveEnvironment(params.id, params.projectId)
+      const orgId = environment?.orgId ?? null
       if (!orgId) return json({ error: 'not found' }, { status: 404 })
       await requireApiOrgMember(session.userId, orgId)
+      if (!environment) return json({ error: 'not found' }, { status: 404 })
       const db = getDb()
-      const [deleted] = await db.delete(schema.environment).where(orm.eq(schema.environment.id, params.id)).returning({ id: schema.environment.id })
+      const [deleted] = await db.delete(schema.environment).where(orm.eq(schema.environment.id, environment.id)).returning({ id: schema.environment.id })
       if (!deleted) return json({ error: 'not found' }, { status: 404 })
       return { ok: true, id: deleted.id }
     },
@@ -526,7 +528,7 @@ export const apiApp = new Spiceflow()
 
   .route({
     method: 'PATCH',
-    path: '/api/environments/:id',
+    path: '/api/v0/projects/:projectId/environments/:id',
     request: environmentCreateRequestSchema.partial(),
     response: { 200: environmentMutationResponseSchema, 400: errorResponseSchema, 404: errorResponseSchema },
     async handler({ params, request }) {
@@ -535,14 +537,16 @@ export const apiApp = new Spiceflow()
         return json({ error: 'at least one of name or slug required' }, { status: 400 })
       }
       const session = await requireApiSession(request)
-      const orgId = await getOrgIdForEnvironment(params.id)
+      const environment = await resolveEnvironment(params.id, params.projectId)
+      const orgId = environment?.orgId ?? null
       if (!orgId) return json({ error: 'not found' }, { status: 404 })
       await requireApiOrgMember(session.userId, orgId)
+      if (!environment) return json({ error: 'not found' }, { status: 404 })
       const db = getDb()
       const updates: Partial<{ name: string; slug: string; updatedAt: number }> = { updatedAt: Date.now() }
       if (body.name) updates.name = body.name
       if (body.slug) updates.slug = body.slug
-      const [updated] = await db.update(schema.environment).set(updates).where(orm.eq(schema.environment.id, params.id))
+      const [updated] = await db.update(schema.environment).set(updates).where(orm.eq(schema.environment.id, environment.id))
         .returning({ id: schema.environment.id, projectId: schema.environment.projectId, name: schema.environment.name, slug: schema.environment.slug })
       if (!updated) return json({ error: 'not found' }, { status: 404 })
       return { ok: true, ...updated }
@@ -554,10 +558,10 @@ export const apiApp = new Spiceflow()
   // Token auth is scoped to a project (and optionally a single environment).
   .route({
     method: 'GET',
-    path: '/api/environments/:environmentId/secrets',
+    path: '/api/v0/projects/:projectId/environments/:environmentId/secrets',
     response: secretListResponseSchema,
     async handler({ params, request }): Promise<any> {
-      const auth = await requireSecretsApiAuth(request, params.environmentId)
+      const auth = await requireSecretsApiAuth({ request, environmentRef: params.environmentId, projectId: params.projectId })
       const derived = await deriveSecrets(auth.environmentId)
       const secrets = derived.map((d) => ({
         id: d.id, name: d.name,
@@ -569,12 +573,12 @@ export const apiApp = new Spiceflow()
 
   .route({
     method: 'POST',
-    path: '/api/environments/:environmentId/secrets',
+    path: '/api/v0/projects/:projectId/environments/:environmentId/secrets',
     request: z.object({ name: z.string().min(1), value: z.string().min(1) }),
     response: secretMutationResponseSchema,
     async handler({ request, params }) {
       const body = await request.json()
-      const auth = await requireSecretsApiAuth(request, params.environmentId)
+      const auth = await requireSecretsApiAuth({ request, environmentRef: params.environmentId, projectId: params.projectId })
       const db = getDb()
       const { encrypted, iv } = await encrypt(body.value)
       const [row] = await db.insert(schema.secretEvent).values({
@@ -588,10 +592,10 @@ export const apiApp = new Spiceflow()
 
   .route({
     method: 'GET',
-    path: '/api/environments/:environmentId/secrets/:name',
+    path: '/api/v0/projects/:projectId/environments/:environmentId/secrets/:name',
     response: { 200: secretValueResponseSchema, 404: errorResponseSchema },
     async handler({ params, request }) {
-      const auth = await requireSecretsApiAuth(request, params.environmentId)
+      const auth = await requireSecretsApiAuth({ request, environmentRef: params.environmentId, projectId: params.projectId })
       const derived = await deriveSecrets(auth.environmentId)
       const secret = derived.find((d) => d.name === params.name)
       if (!secret) return json({ error: 'not found' }, { status: 404 })
@@ -602,10 +606,10 @@ export const apiApp = new Spiceflow()
 
   .route({
     method: 'DELETE',
-    path: '/api/environments/:environmentId/secrets/:name',
+    path: '/api/v0/projects/:projectId/environments/:environmentId/secrets/:name',
     response: secretDeleteResponseSchema,
     async handler({ params, request }) {
-      const auth = await requireSecretsApiAuth(request, params.environmentId)
+      const auth = await requireSecretsApiAuth({ request, environmentRef: params.environmentId, projectId: params.projectId })
       const db = getDb()
       await db.insert(schema.secretEvent).values({
         environmentId: auth.environmentId, name: params.name,
@@ -621,10 +625,10 @@ export const apiApp = new Spiceflow()
   // xargs, yaml, docker, dotnet-json.
   .route({
     method: 'GET',
-    path: '/api/environments/:environmentId/secrets/download',
+    path: '/api/v0/projects/:projectId/environments/:environmentId/secrets/download',
     query: z.object({ format: downloadedSecretsFormatSchema.optional() }),
     async handler({ params, request, query }) {
-      const auth = await requireSecretsApiAuth(request, params.environmentId)
+      const auth = await requireSecretsApiAuth({ request, environmentRef: params.environmentId, projectId: params.projectId })
 
       const format = query.format || 'json'
 
@@ -646,12 +650,12 @@ export const apiApp = new Spiceflow()
   // Accepts { secrets: { KEY: "value", ... } } and sets all at once.
   .route({
     method: 'PUT',
-    path: '/api/environments/:environmentId/secrets',
+    path: '/api/v0/projects/:projectId/environments/:environmentId/secrets',
     request: z.object({ secrets: z.record(z.string(), z.string()) }),
     response: bulkSecretsResponseSchema,
     async handler({ request, params }) {
       const body = await request.json()
-      const auth = await requireSecretsApiAuth(request, params.environmentId)
+      const auth = await requireSecretsApiAuth({ request, environmentRef: params.environmentId, projectId: params.projectId })
       const db = getDb()
 
       const entries = Object.entries(body.secrets)
@@ -672,7 +676,7 @@ export const apiApp = new Spiceflow()
   // ── Me ───────────────────────────────────────────────────────────
   .route({
     method: 'GET',
-    path: '/api/me',
+    path: '/api/v0/me',
     response: meResponseSchema,
     async handler({ request }) {
       const session = await requireApiSession(request)

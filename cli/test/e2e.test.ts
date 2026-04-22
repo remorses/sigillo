@@ -19,6 +19,9 @@ type CliContext = {
   tmpDir: string
   projectId: string
   environmentId: string
+  environmentSlug: string
+  extraEnvironmentId: string
+  extraEnvironmentSlug: string
   secretName: string
   secretValue: string
   overlapShortName: string
@@ -40,18 +43,22 @@ describe('sigillo cli e2e', () => {
     expect(build.status, build.stderr).toBe(0)
 
     const resolved = resolveConfiguredAuth(currentCwd)
-    const me = await apiRequest({ method: 'GET', path: '/api/me', context: resolved })
+    const me = await apiRequest({ method: 'GET', path: '/api/v0/me', context: resolved })
     expect(Array.isArray(me.orgs)).toBe(true)
     expect(me.orgs.length).toBeGreaterThan(0)
 
     const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    const project = await apiRequest({ method: 'POST', path: '/api/projects', context: resolved, body: {
+    const project = await apiRequest({ method: 'POST', path: '/api/v0/projects', context: resolved, body: {
       orgId: me.orgs[0].id,
       name: `sigillo-cli-e2e-${runId}`,
     } })
-    const environment = await apiRequest({ method: 'POST', path: `/api/projects/${project.id}/environments`, context: resolved, body: {
+    const environment = await apiRequest({ method: 'POST', path: `/api/v0/projects/${project.id}/environments`, context: resolved, body: {
       name: 'E2E',
       slug: `e2e-${runId}`,
+    } })
+    const extraEnvironment = await apiRequest({ method: 'POST', path: `/api/v0/projects/${project.id}/environments`, context: resolved, body: {
+      name: 'Extra E2E',
+      slug: `extra-e2e-${runId}`,
     } })
 
     const secretName = 'E2E_SECRET'
@@ -61,15 +68,15 @@ describe('sigillo cli e2e', () => {
     const overlapLongName = 'E2E_OVERLAP_LONG'
     const overlapLongValue = 'abcd1234wxyzABCD9876wxyz'
 
-    await apiRequest({ method: 'POST', path: `/api/environments/${environment.id}/secrets`, context: resolved, body: {
+    await apiRequest({ method: 'POST', path: `/api/v0/projects/${project.id}/environments/${environment.id}/secrets`, context: resolved, body: {
       name: secretName,
       value: secretValue,
     } })
-    await apiRequest({ method: 'POST', path: `/api/environments/${environment.id}/secrets`, context: resolved, body: {
+    await apiRequest({ method: 'POST', path: `/api/v0/projects/${project.id}/environments/${environment.id}/secrets`, context: resolved, body: {
       name: overlapShortName,
       value: overlapShortValue,
     } })
-    await apiRequest({ method: 'POST', path: `/api/environments/${environment.id}/secrets`, context: resolved, body: {
+    await apiRequest({ method: 'POST', path: `/api/v0/projects/${project.id}/environments/${environment.id}/secrets`, context: resolved, body: {
       name: overlapLongName,
       value: overlapLongValue,
     } })
@@ -82,11 +89,14 @@ describe('sigillo cli e2e', () => {
         SIGILLO_API_URL: resolved.apiUrl,
         SIGILLO_TOKEN: resolved.token,
         SIGILLO_PROJECT: project.id,
-        SIGILLO_ENVIRONMENT: environment.id,
+        SIGILLO_ENVIRONMENT: environment.slug,
       },
       tmpDir,
       projectId: project.id,
       environmentId: environment.id,
+      environmentSlug: environment.slug,
+      extraEnvironmentId: extraEnvironment.id,
+      extraEnvironmentSlug: extraEnvironment.slug,
       secretName,
       secretValue,
       overlapShortName,
@@ -99,7 +109,7 @@ describe('sigillo cli e2e', () => {
   afterAll(async () => {
     if (!cliContext) return
     rmSync(cliContext.tmpDir, { recursive: true, force: true })
-    await apiRequest({ method: 'DELETE', path: `/api/projects/${cliContext.projectId}`, context: cliContext }).catch(() => undefined)
+    await apiRequest({ method: 'DELETE', path: `/api/v0/projects/${cliContext.projectId}`, context: cliContext }).catch(() => undefined)
   }, 60_000)
 
   test('lists and downloads secrets from the configured environment', async () => {
@@ -122,6 +132,26 @@ describe('sigillo cli e2e', () => {
       [cliContext.overlapShortName]: cliContext.overlapShortValue,
       [cliContext.overlapLongName]: cliContext.overlapLongValue,
     })
+  }, 60_000)
+
+  test('environment commands accept env slugs', async () => {
+    const get = await runCli({ args: ['environments', 'get', cliContext.extraEnvironmentSlug], context: cliContext })
+    expect(get.status).toBe(0)
+    expect(get.stdout).toContain(`id: "${cliContext.extraEnvironmentId}"`)
+    expect(get.stdout).toContain(`slug: "${cliContext.extraEnvironmentSlug}"`)
+
+    const renamedSlug = `${cliContext.extraEnvironmentSlug}-renamed`
+    const rename = await runCli({
+      args: ['environments', 'rename', cliContext.extraEnvironmentSlug, '--slug', renamedSlug],
+      context: cliContext,
+    })
+    expect(rename.status).toBe(0)
+    expect(rename.stdout).toContain(`id: "${cliContext.extraEnvironmentId}"`)
+    expect(rename.stdout).toContain(`slug: "${renamedSlug}"`)
+
+    const deleted = await runCli({ args: ['environments', 'delete', renamedSlug], context: cliContext })
+    expect(deleted.status).toBe(0)
+    expect(deleted.stdout).toContain(`id: "${cliContext.extraEnvironmentId}"`)
   }, 60_000)
 
   test('secrets set reads value from piped stdin and strips trailing newline', async () => {

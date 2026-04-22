@@ -295,13 +295,13 @@ export async function resolveEnvironment(identifier: string, projectId?: string 
   return null
 }
 
-export async function getOrgIdForEnvironment(environmentId: string) {
-  const env = await resolveEnvironment(environmentId)
+export async function getOrgIdForEnvironment(environmentId: string, projectId?: string | null) {
+  const env = await resolveEnvironment(environmentId, projectId)
   return env?.orgId ?? null
 }
 
-export async function getProjectIdForEnvironment(environmentId: string) {
-  const env = await resolveEnvironment(environmentId)
+export async function getProjectIdForEnvironment(environmentId: string, projectId?: string | null) {
+  const env = await resolveEnvironment(environmentId, projectId)
   return env?.projectId ?? null
 }
 
@@ -432,9 +432,19 @@ export type SecretsAuth = { userId: string; apiTokenId: null } | { userId: null;
 
 // The environmentRef can be either a ULID or a slug. For token auth the
 // token's project scope is used to resolve slugs. For session auth we
-// try ID-only first, then fall back to project context if available.
+// need the caller to pass projectId when using a slug.
 // Returns { auth, environmentId } where environmentId is the resolved ULID.
-export async function requireSecretsApiAuth(request: Request, environmentRef: string): Promise<SecretsAuth & { environmentId: string }> {
+export async function requireSecretsApiAuth(
+  {
+    request,
+    environmentRef,
+    projectId,
+  }: {
+    request: Request
+    environmentRef: string
+    projectId?: string | null
+  },
+): Promise<SecretsAuth & { environmentId: string }> {
   const authHeader = request.headers.get('authorization')
   const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
 
@@ -465,7 +475,7 @@ export async function requireSecretsApiAuth(request: Request, environmentRef: st
   const session = await getSession(request)
   if (!session) throw unauthorizedResponse()
 
-  const env = await resolveEnvironment(environmentRef)
+  const env = await resolveEnvironment(environmentRef, projectId)
   if (!env?.orgId) throw new Response(JSON.stringify({ error: 'not found' }), { status: 404, headers: { 'content-type': 'application/json' } })
 
   try {
