@@ -41,6 +41,14 @@ Secrets are **automatically redacted** from process output so they never leak in
 - **Don't let agents read your secrets** — Agents should never see your raw secret values. Instead of giving agents access to `.env` files, use `sigillo run` to inject secrets into processes without exposing them.
 - **Automatic output redaction** — `sigillo run` replaces secret values in stdout/stderr with `*`, so secrets never enter your chat context window. Even if an agent runs `printenv`, it won't see the real values in the output.
 
+## Install skill for AI agents
+
+```bash
+npx -y skills add remorses/sigillo
+```
+
+This installs [skills](https://skills.sh) for AI coding agents like Claude Code, Cursor, Windsurf, and others.
+
 ## Install
 
 **curl** (downloads the native binary to `~/.sigillo/bin`):
@@ -472,14 +480,6 @@ curl -X PUT -H "Authorization: Bearer sig_xxx" \
 ```
 
 </details>
-
-## Install skill for AI agents
-
-```bash
-npx -y skills add remorses/sigillo
-```
-
-This installs [skills](https://skills.sh) for AI coding agents like Claude Code, Cursor, Windsurf, and others.
 
 ## License
 
