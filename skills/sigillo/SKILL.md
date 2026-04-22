@@ -9,19 +9,21 @@ description: >
 
 # sigillo
 
-Before doing anything, run help to see available commands and exact flag names for the installed version:
+ALWAYS fetch the latest README before doing anything else. NEVER skip this:
+
+```bash
+curl -s https://raw.githubusercontent.com/remorses/sigillo/main/README.md
+```
+
+**NEVER pipe through `head`, `tail`, `sed -n`, or any truncating command.** Read the full output — agent rules and integration patterns are near the bottom and will be missed if truncated.
+
+ALWAYS also run help to see exact flag names for the installed version (flags can differ between versions):
 
 ```bash
 sigillo --help
 ```
 
-**Never pipe through `head`, `tail`, or any truncating command.** Read the full output — flag names and options may differ between versions.
-
-For full docs, also fetch the latest README:
-
-```bash
-curl -s https://raw.githubusercontent.com/remorses/sigillo/main/README.md
-```
+**NEVER truncate this either.**
 
 ## New project setup workflow
 
