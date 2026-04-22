@@ -1,5 +1,5 @@
 // Cross-target builder for sigillo CLI Zig binary.
-// Builds the standalone executable for each platform and copies it into dist/<platform>/sigillo.
+// Builds standalone executables into dist/<platform>/sigillo and refreshes the local wrapper.
 
 import childProcess from 'node:child_process'
 import fs from 'node:fs'
@@ -30,6 +30,57 @@ const targets: Target[] = [
   { name: 'win32-arm64', zigTarget: 'aarch64-windows-gnu' },
   { name: 'win32-x64', zigTarget: 'x86_64-windows-gnu' },
 ]
+
+function getHostBinaryPath(): string {
+  const binaryName = process.platform === 'win32' ? 'sigillo.exe' : 'sigillo'
+  return path.join(distDirectory, hostTarget, binaryName)
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`
+}
+
+function getWrapperDirectories(): string[] {
+  const directories = new Set<string>()
+  directories.add(path.join(os.homedir(), '.local', 'bin'))
+
+  try {
+    const pnpmBinDirectory = childProcess.execFileSync('pnpm', ['bin', '-g'], {
+      encoding: 'utf8',
+    }).trim()
+    if (pnpmBinDirectory.length > 0) {
+      directories.add(pnpmBinDirectory)
+    }
+  } catch {}
+
+  return [...directories]
+}
+
+function installLocalWrapper(): void {
+  const binaryPath = getHostBinaryPath()
+
+  if (!fs.existsSync(binaryPath)) {
+    throw new Error(`Host binary not found at ${binaryPath}`)
+  }
+
+  for (const directory of getWrapperDirectories()) {
+    fs.mkdirSync(directory, { recursive: true })
+
+    if (process.platform === 'win32') {
+      const wrapperPath = path.join(directory, 'sigillo.cmd')
+      const wrapper = `@echo off\r\n"${binaryPath}" %*\r\n`
+      fs.writeFileSync(wrapperPath, wrapper)
+      process.stdout.write(`Installed local sigillo wrapper at ${wrapperPath}\n`)
+      continue
+    }
+
+    const wrapperPath = path.join(directory, 'sigillo')
+    const wrapper = `#!/usr/bin/env bash\nexec ${shellQuote(binaryPath)} "$@"\n`
+    fs.writeFileSync(wrapperPath, wrapper)
+    fs.chmodSync(wrapperPath, 0o755)
+    process.stdout.write(`Installed local sigillo wrapper at ${wrapperPath}\n`)
+  }
+}
 
 function runCommand({ command, args, cwd }: { command: string; args: string[]; cwd: string }): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -107,6 +158,14 @@ async function main(): Promise<void> {
 
   for (const target of selectedTargets) {
     await buildTarget({ target })
+  }
+
+  const builtHostTarget = selectedTargets.some((target) => {
+    return target.name === hostTarget
+  })
+
+  if (builtHostTarget) {
+    installLocalWrapper()
   }
 }
 
