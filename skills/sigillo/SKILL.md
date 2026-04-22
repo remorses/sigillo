@@ -93,6 +93,15 @@ sigillo run -- next dev
 sigillo run -- printenv   # verify which vars are injected (values redacted)
 ```
 
+`sigillo run` uses the environment saved by `sigillo setup` for the current directory. Override per-command with `-c` or `--env` (check `sigillo --help` for the exact flag name in the installed version):
+
+```bash
+sigillo run -c dev -- next dev          # explicitly use dev
+sigillo run -c preview -- next build    # use preview
+sigillo run -c production -- next build # use production
+sigillo secrets get DATABASE_URL -c preview  # override for a single secrets command
+```
+
 ## Agent rules
 
 ### Never read `.env` files directly
@@ -107,30 +116,11 @@ source .env && next dev
 sigillo run -- next dev
 ```
 
-### Non-interactive auth
-
-`sigillo login` opens a browser. In agent sessions, use a token:
-
-```bash
-export SIGILLO_TOKEN="sig_xxx"
-# or
-sigillo login --token sig_xxx --scope .
-```
-
 ### Directory scoping
 
 `sigillo setup` binds the current directory to a project and environment via `~/.sigillo/config.json`. The CLI resolves config by **longest matching scope** — a deeper directory wins over a parent.
 
 After setup, `sigillo run` in any subdirectory uses that project + environment automatically.
-
-### Override environment per-command
-
-Pass `--env` (or `--environment` depending on installed version — check `sigillo --help`) to switch environments without changing the saved config:
-
-```bash
-sigillo run --env production -- node deploy.js
-sigillo secrets get DATABASE_URL --env preview
-```
 
 ### CI environment variables
 
