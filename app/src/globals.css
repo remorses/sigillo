@@ -1,7 +1,5 @@
 @import 'tailwindcss';
 
-@custom-variant dark (prefers-color-scheme: dark);
-
 @theme inline {
   --font-sans: var(--font-sans);
   --font-heading: var(--font-heading);
@@ -39,6 +37,10 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
   --animate-skeleton: skeleton 2s -1s infinite linear;
   @keyframes skeleton {
     to {
@@ -91,10 +93,8 @@
   --sidebar-accent-foreground: var(--color-neutral-800);
   --sidebar-border: --alpha(var(--color-black) / 10%);
   --sidebar-ring: var(--color-neutral-400);
-}
 
-@media (prefers-color-scheme: dark) {
-  :root {
+  @variant dark {
     --background: var(--color-neutral-950);
     --foreground: var(--color-neutral-100);
     --card: var(--color-neutral-900);
@@ -180,38 +180,36 @@
 
 .cli-banner-code {
   color: var(--muted-foreground);
-}
 
-.cli-banner-code .cli-token-command {
-  color: #db2777; /* pink-600 */
-}
+  .cli-token-command {
+    color: var(--color-pink-600);
 
-.cli-banner-code .cli-token-value {
-  color: #059669; /* emerald-600 */
-}
-
-.cli-banner-code .cli-token-operator {
-  color: #d97706; /* amber-600 */
-}
-
-.cli-banner-code .cli-token-plain {
-  color: #2563eb; /* blue-600 */
-}
-
-@media (prefers-color-scheme: dark) {
-  .cli-banner-code .cli-token-command {
-    color: #f472b6; /* pink-300 */
+    @variant dark {
+      color: var(--color-pink-300);
+    }
   }
 
-  .cli-banner-code .cli-token-value {
-    color: #34d399; /* emerald-300 */
+  .cli-token-value {
+    color: var(--color-emerald-600);
+
+    @variant dark {
+      color: var(--color-emerald-300);
+    }
   }
 
-  .cli-banner-code .cli-token-operator {
-    color: #facc15; /* yellow-400 */
+  .cli-token-operator {
+    color: var(--color-amber-600);
+
+    @variant dark {
+      color: var(--color-yellow-400);
+    }
   }
 
-  .cli-banner-code .cli-token-plain {
-    color: #93c5fd; /* blue-300 */
+  .cli-token-plain {
+    color: var(--color-blue-600);
+
+    @variant dark {
+      color: var(--color-blue-300);
+    }
   }
 }
