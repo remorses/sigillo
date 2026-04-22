@@ -47,10 +47,7 @@ function hasCookie(args: { cookieHeader: string; name: string }) {
     .some((part) => part.trim().startsWith(`${args.name}=`))
 }
 
-export const app = new Spiceflow({
-  // Allow tunnel origins for server actions (CSRF check)
-  allowedActionOrigins: [/\.kimaki\.dev$/],
-})
+export const app = new Spiceflow()
 
   // ── BetterAuth middleware ──────────────────────────────────────
   // BetterAuth runs in the worker, not the DO. Only SQL crosses the
