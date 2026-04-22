@@ -9,81 +9,128 @@ description: >
 
 # sigillo
 
-Every time you work with sigillo, you MUST fetch the latest README:
+Before doing anything, run help to see available commands and exact flag names for the installed version:
+
+```bash
+sigillo --help
+```
+
+**Never pipe through `head`, `tail`, or any truncating command.** Read the full output — flag names and options may differ between versions.
+
+For full docs, also fetch the latest README:
 
 ```bash
 curl -s https://raw.githubusercontent.com/remorses/sigillo/main/README.md
 ```
 
-**Never pipe through `head`, `tail`, `sed -n`, or any truncating command.** Read the full output.
+## New project setup workflow
 
-## Rules for agents
+This mirrors the Doppler workflow: check auth → link project → list secrets → run.
+
+**1. Check if already logged in:**
+
+```bash
+sigillo me
+```
+
+Shows current user and organizations. If it errors with "not logged in", run `sigillo login` first.
+
+**2. Login (opens browser device flow):**
+
+```bash
+sigillo login
+```
+
+For non-interactive/CI environments, save a token directly:
+
+```bash
+sigillo login --token sig_xxx --scope .
+```
+
+**3. Link the current directory to a project and environment:**
+
+```bash
+sigillo setup
+```
+
+Interactive — fetches your projects and environments and lets you pick from a list. **Default to `dev` for local development** unless the user specifies otherwise. Non-interactive:
+
+```bash
+sigillo setup --project proj_abc --env dev
+```
+
+Use `dev` for local work, `preview` for staging, `production` for prod. Only use `preview` or `production` if the user explicitly asks for it.
+
+Run `sigillo --help` to verify the exact flag name (`--env` vs `--environment`) for the installed version.
+
+**4. List secrets to verify the setup is working:**
+
+```bash
+sigillo secrets
+```
+
+Shows secret names for the configured environment (values are never shown). Example output:
+
+```
+environment_id: "env_abc"
+secrets:
+  - id: "sec_1"
+    name: "DATABASE_URL"
+  - id: "sec_2"
+    name: "API_KEY"
+```
+
+To read a specific value:
+
+```bash
+sigillo secrets get DATABASE_URL
+```
+
+**5. Run your app with secrets injected:**
+
+```bash
+sigillo run -- next dev
+sigillo run -- printenv   # verify which vars are injected (values redacted)
+```
+
+## Agent rules
 
 ### Never read `.env` files directly
 
-If a `.env` file exists, **do not source it or read its contents**. Use `sigillo run` instead so secrets are injected without being read by the agent:
+If a `.env` file exists, do not source it or read its contents. Use `sigillo run` instead:
 
 ```bash
-# BAD — exposes secrets to the agent context window
+# exposes secrets to the agent context window
 source .env && next dev
-cat .env
 
-# GOOD — secrets injected, never visible
+# secrets injected, never visible to the agent
 sigillo run -- next dev
 ```
 
 ### Non-interactive auth
 
-`sigillo login` opens a browser. In agent sessions, use a token instead:
+`sigillo login` opens a browser. In agent sessions, use a token:
 
 ```bash
-# Option A: env var (preferred in CI / agent sessions)
 export SIGILLO_TOKEN="sig_xxx"
-
-# Option B: save token scoped to the current directory
+# or
 sigillo login --token sig_xxx --scope .
 ```
 
-Token is stored in `~/.sigillo/config.json`. Subsequent commands in that directory pick it up without `--token`.
-
 ### Directory scoping
 
-`sigillo setup` binds the current directory to a project and environment. The CLI resolves config by **longest matching scope**.
+`sigillo setup` binds the current directory to a project and environment via `~/.sigillo/config.json`. The CLI resolves config by **longest matching scope** — a deeper directory wins over a parent.
+
+After setup, `sigillo run` in any subdirectory uses that project + environment automatically.
+
+### Override environment per-command
+
+Pass `--env` (or `--environment` depending on installed version — check `sigillo --help`) to switch environments without changing the saved config:
 
 ```bash
-# Non-interactive — use in agent sessions
-sigillo setup --project proj_abc --env production
+sigillo run --env production -- node deploy.js
+sigillo secrets get DATABASE_URL --env preview
 ```
-
-After this, `sigillo run` in any subdirectory uses that project + environment automatically.
-
-### Verify what is injected
-
-```bash
-# List injected variable names (values are redacted)
-sigillo run -- printenv
-
-# Get a single value
-sigillo secrets get DATABASE_URL
-```
-
-### Redaction details
-
-`sigillo run` replaces secret values in stdout/stderr with `*`. Threshold: **Shannon entropy ≥ 3.5 bits/char AND length ≥ 16 chars** — short or low-entropy values like `true`, `1`, `development` are not redacted. Use `--disable-redaction` only when explicitly verifying values.
-
-### Mount secrets to a file for tools that require it
-
-Some tools (wrangler, docker) read from files, not env vars:
-
-```bash
-# Write secrets to a temp file, deleted after the process exits
-sigillo run --mount .env.prod --mount-format env -- wrangler secret bulk .env.prod
-
-# Mount as JSON for config loaders
-sigillo run --mount config/secrets.json --mount-format json -- node server.js
-```
-
-The mounted file is **deleted** once the child process exits.
 
 ### CI environment variables
 
@@ -96,6 +143,10 @@ The mounted file is **deleted** once the child process exits.
   run: npx sigillo run -- pnpm build
 ```
 
+### Redaction details
+
+`sigillo run` replaces secret values in stdout/stderr with `*`. Threshold: **Shannon entropy ≥ 3.5 bits/char AND length ≥ 16 chars** — short values like `true`, `1`, `development` are not redacted.
+
 ### Prefer `sigillo run` over downloading secrets
 
-Avoid `sigillo secrets download` unless a specific tool requires a file format. Prefer injecting directly via `sigillo run --` so values never touch the filesystem.
+Avoid `sigillo secrets download` unless a specific tool requires a file. Prefer injecting directly via `sigillo run --` so values never touch the filesystem.
