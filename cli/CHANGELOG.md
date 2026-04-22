@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.5.0
+
+1. **Environment slugs replace IDs in all CLI commands** — `--env` and `-c` now accept slugs like `dev`, `prod`, `staging` instead of raw ULIDs. `sigillo setup` stores the slug, interactive prompts show `Name (slug)`, and error hints list available slugs. The API accepts both IDs and slugs, so existing configs continue working without changes:
+
+   ```bash
+   sigillo setup --project website --env dev
+   sigillo run --project website --env prod -- next start
+   ```
+
+2. **Pipe secret values via stdin** — `sigillo secrets set` now reads from stdin when the value argument is omitted. A single trailing newline from `echo` is stripped automatically:
+
+   ```bash
+   # pipe a value directly
+   echo "my-api-key" | sigillo secrets set API_KEY
+
+   # multiline values are preserved as-is
+   cat private-key.pem | sigillo secrets set SSH_KEY
+   ```
+
+   If stdin is a TTY and no value is given, the CLI prints a usage hint instead of hanging.
+
 ## 0.4.0
 
 1. **New file mount mode for `sigillo run`** — write secrets to a temporary file before launching your process, then clean it up automatically when the command exits:
