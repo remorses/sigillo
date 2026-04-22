@@ -113,11 +113,7 @@ Never read a secret value into the agent context window or pass it as plain text
 **Copying a secret from one env to another:**
 
 ```bash
-# BAD — secret value is visible in context and shell history
-VALUE=$(sigillo secrets get DATABASE_URL -c dev)
-sigillo secrets set DATABASE_URL "$VALUE" -c preview
-
-# GOOD — value flows through stdin, never seen by the agent
+# value flows through stdin, never seen by the agent
 sigillo secrets get DATABASE_URL -c dev | sigillo secrets set DATABASE_URL -c preview
 ```
 
