@@ -390,7 +390,7 @@ export function FooterColo() {
 
   useEffect(() => {
     fetch("/api/info")
-      .then((r) => r.json())
+      .then((r) => r.json() as Promise<{ colo?: string }>)
       .then((data) => setColo(data?.colo ?? null))
       .catch(() => {});
   }, []);
