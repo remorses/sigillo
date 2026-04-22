@@ -7,7 +7,7 @@
 
 "use client";
 
-import { EyeIcon, EyeOffIcon, TrashIcon, UploadIcon, PlusIcon, KeyIcon, CheckIcon, DownloadIcon, CopyIcon } from "lucide-react";
+import { EyeIcon, EyeOffIcon, TrashIcon, UploadIcon, PlusIcon, KeyIcon, CheckIcon, DownloadIcon, CopyIcon, ArrowDownToLineIcon } from "lucide-react";
 import { EmptyState } from "sigillo-app/src/components/ui/empty-state";
 import { useState, useCallback } from "react";
 import { z } from "zod";
@@ -17,6 +17,7 @@ import { cn } from "sigillo-app/src/lib/utils";
 import { Button } from "sigillo-app/src/components/ui/button";
 import { Frame } from "sigillo-app/src/components/ui/frame";
 import { Input, Textarea } from "sigillo-app/src/components/ui/input";
+import { NativeSelect } from "sigillo-app/src/components/ui/native-select";
 import {
   Dialog,
   DialogPopup,
@@ -40,6 +41,7 @@ import {
   createSecretAction,
   deleteSecretAction,
   saveSecretsAction,
+  syncMissingSecretsAction,
 } from "../actions.ts";
 
 
@@ -131,6 +133,7 @@ export function SecretsTable({
   const [importing, setImporting] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
+  const [syncOpen, setSyncOpen] = useState(false);
 
   // Per-row visibility overrides (only used when allVisible is false)
   const [rowVisible, setRowVisible] = useState<Record<string, boolean>>({});
@@ -362,7 +365,33 @@ export function SecretsTable({
         {/*<div className="border-t border-border"></div>*/}
         {/* Bottom bar: add secret + import */}
         <div className="flex items-center justify-between gap-2 px-1 pb-2">
-          {!showNewRow ? (
+          <div className="flex items-center gap-2">
+            {showNewRow ? (
+              <AddSecretRow environmentId={environmentId} onDone={() => setShowNewRow(false)} />
+            ) : (
+              <>
+                <Button
+                  onClick={() => setShowNewRow(true)}
+                  size="xs"
+                >
+                  <PlusIcon className="size-3" />
+                  Add Secret
+                </Button>
+                {missingKeys.length > 0 && (
+                  <Button
+                    onClick={() => setSyncOpen(true)}
+                    size="xs"
+                    variant="ghost"
+                  >
+                    <ArrowDownToLineIcon className="size-3" />
+                    Sync {missingKeys.length} missing
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
+
+          {!showNewRow && (
             <div className="flex items-center gap-1">
               <Button
                 onClick={() => setImportOpen(true)}
@@ -389,27 +418,19 @@ export function SecretsTable({
                 Copy as .env
               </Button>
             </div>
-          ) : (
-            <div />
           )}
-
-          <div className="flex grow justify-end items-center gap-2">
-            {showNewRow ? (
-              <AddSecretRow environmentId={environmentId} onDone={() => setShowNewRow(false)} />
-            ) : (
-              <Button
-                onClick={() => setShowNewRow(true)}
-                size="xs"
-              >
-                <PlusIcon className="size-3" />
-                Add Secret
-              </Button>
-            )}
-          </div>
         </div>
       </Frame>
 
       <ImportEnvDialog open={importOpen} onOpenChange={setImportOpen} importing={importing} onImport={handleImportText} />
+
+      <SyncMissingDialog
+        open={syncOpen}
+        onOpenChange={setSyncOpen}
+        missingKeys={missingKeys}
+        environments={environments}
+        currentEnvironmentId={environmentId}
+      />
 
       <SaveToEnvsDialog
         open={saveOpen}
@@ -644,5 +665,89 @@ function AddSecretRow({
         </Button>
       </form>
     </ErrorBoundary>
+  );
+}
+
+const syncSchema = z.object({ sourceEnvironmentId: z.string().min(1, "Select an environment") });
+const syncFields = syncSchema.keyof().enum;
+
+function SyncMissingDialog({
+  open,
+  onOpenChange,
+  missingKeys,
+  environments,
+  currentEnvironmentId,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  missingKeys: string[];
+  environments: Environment[];
+  currentEnvironmentId: string;
+}) {
+  const [syncing, setSyncing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function handleOpenChange(open: boolean) {
+    if (!open) setError(null);
+    onOpenChange(open);
+  }
+
+  const otherEnvironments = environments.filter((e) => e.id !== currentEnvironmentId);
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogPopup>
+        <DialogHeader>
+          <DialogTitle>Sync missing secrets</DialogTitle>
+          <DialogDescription>
+            Copy {missingKeys.length} missing secret{missingKeys.length > 1 ? "s" : ""} from another environment into this one.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="px-6 pb-2"
+          action={async (formData: FormData) => {
+            const { sourceEnvironmentId } = parseFormData(syncSchema, formData);
+            setSyncing(true);
+            setError(null);
+            try {
+              await syncMissingSecretsAction({
+                sourceEnvironmentId,
+                targetEnvironmentId: currentEnvironmentId,
+                names: missingKeys,
+              });
+              handleOpenChange(false);
+            } catch (e: any) {
+              setError(e?.message || "Failed to sync secrets");
+            } finally {
+              setSyncing(false);
+            }
+          }}
+        >
+          {error && <p className="text-sm text-destructive mb-3">{error}</p>}
+          <div>
+            <label htmlFor="sync-source-env" className="text-sm font-medium mb-1 block">
+              Source environment
+            </label>
+            <NativeSelect id="sync-source-env" name={syncFields.sourceEnvironmentId} required autoFocus>
+              <option value="">Select an environment…</option>
+              {otherEnvironments.map((env) => (
+                <option key={env.id} value={env.id}>{env.name}</option>
+              ))}
+            </NativeSelect>
+            <p className="text-xs text-muted-foreground mt-2">
+              Only the {missingKeys.length} missing key{missingKeys.length > 1 ? "s" : ""} will be copied. Existing secrets are not affected.
+            </p>
+          </div>
+          <DialogFooter variant="bare" className="mt-4">
+            <DialogClose render={<Button variant="outline" />}>
+              Cancel
+            </DialogClose>
+            <Button type="submit" loading={syncing}>
+              Add {missingKeys.length} missing secret{missingKeys.length > 1 ? "s" : ""}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogPopup>
+    </Dialog>
   );
 }

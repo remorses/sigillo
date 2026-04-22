@@ -21,6 +21,7 @@ import {
   getOrgIdForProject, getOrgIdForEnvironment,
   encrypt,
   generateApiToken,
+  deriveSecrets,
 } from './db.ts'
 
 async function requireSession() {
@@ -340,6 +341,47 @@ export async function deleteTokenAction({ tokenId }: { tokenId: string }) {
   if (!orgId) throw new Error('Project not found')
   await requireOrgMember(session.userId, orgId)
   await db.delete(schema.apiToken).where(orm.eq(schema.apiToken.id, tokenId))
+}
+
+export async function syncMissingSecretsAction({
+  sourceEnvironmentId,
+  targetEnvironmentId,
+  names,
+}: {
+  sourceEnvironmentId: string
+  targetEnvironmentId: string
+  names: string[]
+}) {
+  if (!sourceEnvironmentId || !targetEnvironmentId) throw new Error('Both environment IDs are required')
+  if (!names.length) throw new Error('No secret names provided')
+  const session = await requireSession()
+
+  const sourceOrgId = await getOrgIdForEnvironment(sourceEnvironmentId)
+  const targetOrgId = await getOrgIdForEnvironment(targetEnvironmentId)
+  if (!sourceOrgId || !targetOrgId) throw new Error('Environment not found')
+  if (sourceOrgId !== targetOrgId) throw new Error('Environments must belong to the same organization')
+  await requireOrgMember(session.userId, targetOrgId)
+
+  const sourceSecrets = await deriveSecrets(sourceEnvironmentId)
+  const nameSet = new Set(names)
+  const toSync = sourceSecrets.filter((s) => nameSet.has(s.name))
+
+  if (toSync.length === 0) return { count: 0 }
+
+  const db = getDb()
+  const queries: BatchItem<'sqlite'>[] = toSync.map((s) =>
+    db.insert(schema.secretEvent).values({
+      environmentId: targetEnvironmentId,
+      name: s.name,
+      operation: 'set',
+      valueEncrypted: s.valueEncrypted,
+      iv: s.iv,
+      userId: session.userId,
+    }),
+  )
+
+  await db.batch(queries as [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]])
+  return { count: toSync.length }
 }
 
 export async function createOrgAction({ name }: { name: string }) {
