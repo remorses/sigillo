@@ -73,6 +73,17 @@ function flattenMigrations(migrationsDir: string) {
 
     // Extract a slug from the subdirectory name (remove timestamp prefix)
     const slug = subdir.replace(/^\d+_/, '')
+
+    // Guard: if a flat file with the same slug exists but different content,
+    // the migration was edited after flattening. Fail loudly instead of
+    // creating a duplicate that wrangler would apply as a second migration.
+    const existingSameSlug = flatFiles.find((name) => name.replace(/^\d+_/, '').replace(/\.sql$/, '') === slug)
+    if (existingSameSlug) {
+      console.error(`Error: ${subdir}/migration.sql changed after flattening. Existing flat file: ${existingSameSlug}`)
+      console.error('Delete the stale flat file and re-run, or regenerate the migration.')
+      process.exit(1)
+    }
+
     const seqStr = String(nextSeq).padStart(4, '0')
     const flatName = `${seqStr}_${slug}.sql`
     const flatPath = path.join(absDir, flatName)
