@@ -212,20 +212,69 @@ Upload secrets to a Cloudflare Worker using `wrangler secret bulk`:
 sigillo run -c production --mount .env.prod --mount-format env -- wrangler secret bulk .env.prod
 ```
 
+Add these as `package.json` scripts so you can sync before each deploy:
+
+```json
+{
+  "scripts": {
+    "secrets:preview": "sigillo run -c preview --mount .env.preview --mount-format env -- wrangler secret bulk --env preview .env.preview",
+    "secrets:production": "sigillo run -c production --mount .env.prod --mount-format env -- wrangler secret bulk .env.prod"
+  }
+}
+```
+
 ### Vercel
 
 `vercel env add` only accepts one variable at a time. Use the `xargs` format to pipe them:
 
 ```bash
-sigillo secrets download --format xargs | \
+sigillo secrets download -c production --format xargs | \
   xargs -0 -n2 sh -c 'printf %s "$2" | vercel env add "$1" production --force' sh
 ```
 
 Add `--sensitive` to mark values as sensitive in Vercel:
 
 ```bash
-sigillo secrets download --format xargs | \
+sigillo secrets download -c production --format xargs | \
   xargs -0 -n2 sh -c 'printf %s "$2" | vercel env add "$1" production --sensitive --force' sh
+```
+
+As a `package.json` script:
+
+```json
+{
+  "scripts": {
+    "secrets:vercel": "sigillo secrets download -c production --format xargs | xargs -0 -n2 sh -c 'printf %s \"$2\" | vercel env add \"$1\" production --sensitive --force' sh"
+  }
+}
+```
+
+### Fly.io
+
+`fly secrets import` reads `NAME=VALUE` pairs from stdin — pipe `sigillo secrets download` directly, no temp file needed:
+
+```bash
+sigillo secrets download -c production --format env | fly secrets import --app my-app
+```
+
+By default `fly secrets import` triggers a machine restart once secrets are staged. Use `--stage` to skip the restart and deploy separately:
+
+```bash
+# stage without restarting
+sigillo secrets download -c production --format env | fly secrets import --app my-app --stage
+# then deploy when ready
+fly deploy --app my-app
+```
+
+Add as `package.json` scripts:
+
+```json
+{
+  "scripts": {
+    "secrets:fly:production": "sigillo secrets download -c production --format env | fly secrets import --app my-app",
+    "secrets:fly:preview": "sigillo secrets download -c preview --format env | fly secrets import --app my-app-staging"
+  }
+}
 ```
 
 ### Docker

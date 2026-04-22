@@ -106,6 +106,23 @@ sigillo secrets get DATABASE_URL -c preview  # override for a single secrets com
 
 ## Agent rules
 
+### Never read secret values into context
+
+Never read a secret value into the agent context window or pass it as plain text in a command. Instead, chain commands via stdin/pipes so the value flows directly between processes without being visible.
+
+**Copying a secret from one env to another:**
+
+```bash
+# BAD — secret value is visible in context and shell history
+VALUE=$(sigillo secrets get DATABASE_URL -c dev)
+sigillo secrets set DATABASE_URL "$VALUE" -c preview
+
+# GOOD — value flows through stdin, never seen by the agent
+sigillo secrets get DATABASE_URL -c dev | sigillo secrets set DATABASE_URL -c preview
+```
+
+The same pattern works for any secret copy — between environments, or when seeding a new environment from an existing one.
+
 ### Never read `.env` files directly
 
 If a `.env` file exists, do not source it or read its contents. Use `sigillo run` instead:
@@ -143,17 +160,4 @@ After setup, `sigillo run` in any subdirectory uses that project + environment a
 
 Avoid `sigillo secrets download` unless a specific tool requires a file. Prefer injecting directly via `sigillo run --` so values never touch the filesystem.
 
-### Syncing secrets to deployment platforms
 
-The README has the full commands for syncing to Cloudflare Workers, Vercel, Docker, and others. When setting up a project that deploys to one of these platforms, **add the sync commands as `package.json` scripts** so they're easy to run before each deploy:
-
-```json
-{
-  "scripts": {
-    "secrets:preview": "sigillo run -c preview --mount .env.preview --mount-format env -- wrangler secret bulk --env preview .env.preview",
-    "secrets:production": "sigillo run -c production --mount .env.prod --mount-format env -- wrangler secret bulk .env.prod"
-  }
-}
-```
-
-Use the exact commands from the README for each platform — the pattern is always `sigillo run -c <env> --mount <file> -- <platform-cli> <file>`.
