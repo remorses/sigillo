@@ -64,18 +64,29 @@ bunx sigillo run -- next dev
 
 ## Quick start
 
+**1. Add your secrets** at [sigillo.dev](https://sigillo.dev) (or your self-hosted instance). Create a project, add environments, and paste in your secrets from the web UI.
+
+**2. Login from the terminal** — opens a browser for device flow authentication:
+
 ```bash
-# 1. Login (opens browser for device flow)
 sigillo login
+```
 
-# 2. Link current directory to a project & environment
+**3. Link your project** — picks up the project and environment you created:
+
+```bash
 sigillo setup
+```
 
-# 3. Run your app with secrets injected
+This saves the project and environment for the current directory in `~/.sigillo/config.json`. Any subdirectory automatically resolves the right secrets from that point on.
+
+**4. Run your app** with secrets injected as environment variables:
+
+```bash
 sigillo run -- next dev
 ```
 
-`sigillo setup` saves the project and environment for the current directory in `~/.sigillo/config.json`, so subsequent commands in this folder automatically resolve the right secrets — like Doppler's directory-scoped config.
+That's it. No `.env` files, no copy-pasting keys. Go back to [sigillo.dev](https://sigillo.dev) any time to add, edit, or rotate secrets — the next `sigillo run` picks them up automatically.
 
 ## Features
 
@@ -121,12 +132,14 @@ sigillo setup --project proj_abc --env prod       # non-interactive (CI)
 Execute a command with secrets injected as environment variables.
 
 ```bash
-sigillo run -- next dev                                          # inject secrets as env vars
+sigillo run -- next dev                                          # inject secrets from the configured env
+sigillo run -c dev -- next dev                                   # use the dev environment
+sigillo run -c preview -- next dev                               # use the preview environment
+sigillo run -c production -- next build                          # use the production environment
 sigillo run -- printenv                                          # verify which vars are injected (values redacted)
 sigillo run --command 'echo $MY_SECRET'                          # shell string mode
 sigillo run --mount .env -- npm start                            # write to file, clean up after
 sigillo run --mount config.json --mount-format json -- next dev  # mount as JSON
-sigillo run -c production -- next build                          # use a specific environment
 sigillo run --disable-redaction -- ./my-script.sh                # opt out of output redaction
 ```
 
@@ -410,6 +423,14 @@ curl -X PUT -H "Authorization: Bearer sig_xxx" \
 ```
 
 </details>
+
+## Install skill for AI agents
+
+```bash
+npx -y skills add remorses/sigillo
+```
+
+This installs [skills](https://skills.sh) for AI coding agents like Claude Code, Cursor, Windsurf, and others.
 
 ## License
 
