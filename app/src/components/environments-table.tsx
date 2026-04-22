@@ -39,11 +39,39 @@ type Environment = {
   updatedAt: number;
 };
 
-const envColors: Record<string, string> = {
+const knownEnvColors: Record<string, string> = {
   development: "bg-blue-500",
+  dev: "bg-blue-500",
   preview: "bg-amber-500",
+  staging: "bg-amber-500",
   production: "bg-emerald-500",
+  prod: "bg-emerald-500",
 };
+
+// Deterministic color palette for custom env names not in the known list.
+const envColorPalette = [
+  "bg-violet-500",
+  "bg-pink-500",
+  "bg-cyan-500",
+  "bg-orange-500",
+  "bg-rose-500",
+  "bg-teal-500",
+  "bg-indigo-500",
+  "bg-lime-500",
+];
+
+function getEnvColor(name: string, slug: string): string {
+  const key = slug.toLowerCase();
+  const nameKey = name.toLowerCase();
+  if (knownEnvColors[key]) return knownEnvColors[key]!;
+  if (knownEnvColors[nameKey]) return knownEnvColors[nameKey]!;
+  // Deterministic hash of slug for consistent color across renders.
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  }
+  return envColorPalette[hash % envColorPalette.length]!;
+}
 
 // Inline editable name+slug cell for a single environment row.
 function EditableEnvCell({ env, field }: { env: Environment; field: "name" | "slug" }) {
@@ -98,7 +126,7 @@ function EditableEnvCell({ env, field }: { env: Environment; field: "name" | "sl
     >
       {field === "name" ? (
         <span className="flex items-center gap-2">
-          <span className={cn("size-2 rounded-full", envColors[env.slug] || "bg-muted-foreground")} />
+          <span className={cn("size-2 rounded-full", getEnvColor(env.name, env.slug))} />
           {env.name}
         </span>
       ) : (
