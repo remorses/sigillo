@@ -10,6 +10,19 @@ import { defineRelations } from 'drizzle-orm'
 import * as sqliteCore from 'drizzle-orm/sqlite-core'
 import { ulid } from 'ulid'
 
+// Integer column that stores epoch milliseconds as a plain number.
+// Unlike integer({ mode: 'number' }), this accepts Date objects in toDriver
+// so BetterAuth's internal Date params don't crash D1's .bind() which only
+// accepts string | number | null | ArrayBuffer. TypeScript type stays `number`.
+const epochMs = sqliteCore.customType<{ data: number; driverParam: number }>({
+  dataType() { return 'integer' },
+  toDriver(value: unknown): number {
+    if (value instanceof Date) return value.getTime()
+    return value as number
+  },
+  fromDriver(value: unknown): number { return value as number },
+})
+
 // ── BetterAuth core tables ──────────────────────────────────────────
 
 export const user = sqliteCore.sqliteTable('user', {
@@ -18,19 +31,19 @@ export const user = sqliteCore.sqliteTable('user', {
   email: sqliteCore.text('email').notNull().unique(),
   emailVerified: sqliteCore.integer('email_verified', { mode: 'boolean' }).notNull().default(false),
   image: sqliteCore.text('image'),
-  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
-  updatedAt: sqliteCore.integer('updated_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
+  createdAt: epochMs('created_at').notNull().$defaultFn(() => Date.now()),
+  updatedAt: epochMs('updated_at').notNull().$defaultFn(() => Date.now()),
 })
 
 export const session = sqliteCore.sqliteTable('session', {
   id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
   userId: sqliteCore.text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
   token: sqliteCore.text('token').notNull().unique(),
-  expiresAt: sqliteCore.integer('expires_at', { mode: 'number' }).notNull(),
+  expiresAt: epochMs('expires_at').notNull(),
   ipAddress: sqliteCore.text('ip_address'),
   userAgent: sqliteCore.text('user_agent'),
-  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
-  updatedAt: sqliteCore.integer('updated_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
+  createdAt: epochMs('created_at').notNull().$defaultFn(() => Date.now()),
+  updatedAt: epochMs('updated_at').notNull().$defaultFn(() => Date.now()),
 }, (table) => [
   sqliteCore.index('session_user_id_idx').on(table.userId),
 ])
@@ -42,13 +55,13 @@ export const account = sqliteCore.sqliteTable('account', {
   providerId: sqliteCore.text('provider_id').notNull(),
   accessToken: sqliteCore.text('access_token'),
   refreshToken: sqliteCore.text('refresh_token'),
-  accessTokenExpiresAt: sqliteCore.integer('access_token_expires_at', { mode: 'number' }),
-  refreshTokenExpiresAt: sqliteCore.integer('refresh_token_expires_at', { mode: 'number' }),
+  accessTokenExpiresAt: epochMs('access_token_expires_at'),
+  refreshTokenExpiresAt: epochMs('refresh_token_expires_at'),
   scope: sqliteCore.text('scope'),
   idToken: sqliteCore.text('id_token'),
   password: sqliteCore.text('password'),
-  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
-  updatedAt: sqliteCore.integer('updated_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
+  createdAt: epochMs('created_at').notNull().$defaultFn(() => Date.now()),
+  updatedAt: epochMs('updated_at').notNull().$defaultFn(() => Date.now()),
 }, (table) => [
   sqliteCore.index('account_user_id_idx').on(table.userId),
 ])
@@ -57,9 +70,9 @@ export const verification = sqliteCore.sqliteTable('verification', {
   id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
   identifier: sqliteCore.text('identifier').notNull(),
   value: sqliteCore.text('value').notNull(),
-  expiresAt: sqliteCore.integer('expires_at', { mode: 'number' }).notNull(),
-  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
-  updatedAt: sqliteCore.integer('updated_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
+  expiresAt: epochMs('expires_at').notNull(),
+  createdAt: epochMs('created_at').notNull().$defaultFn(() => Date.now()),
+  updatedAt: epochMs('updated_at').notNull().$defaultFn(() => Date.now()),
 })
 
 // ── oauthProvider plugin tables ─────────────────────────────────────
@@ -95,8 +108,8 @@ export const oauthClient = sqliteCore.sqliteTable('oauth_client', {
   userId: sqliteCore.text('user_id').references(() => user.id, { onDelete: 'cascade' }),
   referenceId: sqliteCore.text('reference_id'),
   metadata: sqliteCore.text('metadata'), // JSON
-  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).$defaultFn(() => Date.now()),
-  updatedAt: sqliteCore.integer('updated_at', { mode: 'number' }).$defaultFn(() => Date.now()),
+  createdAt: epochMs('created_at').$defaultFn(() => Date.now()),
+  updatedAt: epochMs('updated_at').$defaultFn(() => Date.now()),
 })
 
 export const oauthConsent = sqliteCore.sqliteTable('oauth_consent', {
@@ -105,8 +118,8 @@ export const oauthConsent = sqliteCore.sqliteTable('oauth_consent', {
   userId: sqliteCore.text('user_id').references(() => user.id, { onDelete: 'cascade' }),
   referenceId: sqliteCore.text('reference_id'),
   scopes: sqliteCore.text('scopes').notNull(), // JSON string[]
-  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).$defaultFn(() => Date.now()),
-  updatedAt: sqliteCore.integer('updated_at', { mode: 'number' }).$defaultFn(() => Date.now()),
+  createdAt: epochMs('created_at').$defaultFn(() => Date.now()),
+  updatedAt: epochMs('updated_at').$defaultFn(() => Date.now()),
 }, (table) => [
   sqliteCore.index('oauth_consent_user_id_idx').on(table.userId),
 ])
@@ -118,10 +131,10 @@ export const oauthRefreshToken = sqliteCore.sqliteTable('oauth_refresh_token', {
   sessionId: sqliteCore.text('session_id').references(() => session.id, { onDelete: 'set null' }),
   userId: sqliteCore.text('user_id').notNull().references(() => user.id),
   referenceId: sqliteCore.text('reference_id'),
-  expiresAt: sqliteCore.integer('expires_at', { mode: 'number' }).notNull(),
-  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).$defaultFn(() => Date.now()),
-  revoked: sqliteCore.integer('revoked', { mode: 'number' }),
-  authTime: sqliteCore.integer('auth_time', { mode: 'number' }),
+  expiresAt: epochMs('expires_at').notNull(),
+  createdAt: epochMs('created_at').$defaultFn(() => Date.now()),
+  revoked: epochMs('revoked'),
+  authTime: epochMs('auth_time'),
   scopes: sqliteCore.text('scopes').notNull(), // JSON string[]
 }, (table) => [
   sqliteCore.index('oauth_refresh_token_user_id_idx').on(table.userId),
@@ -135,8 +148,8 @@ export const oauthAccessToken = sqliteCore.sqliteTable('oauth_access_token', {
   userId: sqliteCore.text('user_id').references(() => user.id),
   referenceId: sqliteCore.text('reference_id'),
   refreshId: sqliteCore.text('refresh_id').references(() => oauthRefreshToken.id),
-  expiresAt: sqliteCore.integer('expires_at', { mode: 'number' }).notNull(),
-  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).$defaultFn(() => Date.now()),
+  expiresAt: epochMs('expires_at').notNull(),
+  createdAt: epochMs('created_at').$defaultFn(() => Date.now()),
   scopes: sqliteCore.text('scopes').notNull(), // JSON string[]
 }, (table) => [
   sqliteCore.index('oauth_access_token_user_id_idx').on(table.userId),
@@ -148,7 +161,7 @@ export const jwks = sqliteCore.sqliteTable('jwks', {
   id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
   publicKey: sqliteCore.text('public_key').notNull(),
   privateKey: sqliteCore.text('private_key').notNull(),
-  createdAt: sqliteCore.integer('created_at', { mode: 'number' }).notNull().$defaultFn(() => Date.now()),
+  createdAt: epochMs('created_at').notNull().$defaultFn(() => Date.now()),
 })
 
 // ── Relations (v2 API) ──────────────────────────────────────────────

@@ -6,6 +6,11 @@
 // contains a `migration.sql` but has no corresponding flat `.sql` file,
 // and copies it out with sequential numbering (0001_, 0002_, ...).
 //
+// Tracking issues:
+//   https://github.com/drizzle-team/drizzle-orm/issues/5266 (--flat flag request)
+//   https://github.com/cloudflare/workers-sdk/issues/13257 (wrangler subdirectory support)
+// TODO: Remove this script when drizzle-kit adds a --flat flag or wrangler supports subdirectories.
+//
 // Usage: tsx db/scripts/flatten-migrations.ts <migrations-dir>
 // Example: tsx db/scripts/flatten-migrations.ts db/drizzle-app
 

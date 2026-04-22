@@ -1,7 +1,8 @@
 // Worker-level database client and BetterAuth instance for the provider.
-// Uses D1 directly — no Durable Object proxy layer.
 //
-// getDb() creates a drizzle-orm/d1 client bound to env.DB.
+// getDb() creates a drizzle-orm/d1 client bound to env.DB. The schema uses
+// epochMs custom columns that accept both Date and number inputs, so
+// BetterAuth's Date params are converted to epoch ms before reaching D1.
 // getAuth() creates a BetterAuth instance backed by the same drizzle client
 // with oauthProvider + jwt + Google social.
 
@@ -15,40 +16,8 @@ import { drizzleAdapter } from '@better-auth/drizzle-adapter/relations-v2'
 
 // ── Drizzle client via D1 ───────────────────────────────────────────
 
-type D1BindValue = string | number | ArrayBuffer | ArrayBufferView | null | Date
-
-// D1 only accepts string | number | null | ArrayBuffer as bound params.
-// BetterAuth passes Date objects for timestamp columns. Wrap the D1
-// binding to auto-convert Date→epoch ms before they reach D1.
-
-function wrapD1(d1: D1Database): D1Database {
-  return new Proxy(d1, {
-    get(target, prop, receiver) {
-      if (prop === 'prepare') {
-        return (sql: string) => {
-          const stmt = target.prepare(sql)
-          return new Proxy(stmt, {
-            get(s, p, r) {
-              if (p === 'bind') {
-                return (...params: D1BindValue[]) => {
-                  const fixed = params.map((v) => (v instanceof Date ? v.getTime() : v))
-                  return s.bind(...fixed)
-                }
-              }
-              const val = Reflect.get(s, p, r)
-              return typeof val === 'function' ? val.bind(s) : val
-            },
-          })
-        }
-      }
-      const val = Reflect.get(target, prop, receiver)
-      return typeof val === 'function' ? val.bind(target) : val
-    },
-  })
-}
-
 export function getDb() {
-  return drizzle(wrapD1(env.DB), { schema, relations: schema.relations })
+  return drizzle(env.DB, { schema, relations: schema.relations })
 }
 
 // ── BetterAuth ──────────────────────────────────────────────────────

@@ -1,7 +1,8 @@
 // Worker-level database client, auth, encryption, and authorization guards.
-// Uses D1 directly — no Durable Object proxy layer.
 //
-// getDb() creates a drizzle-orm/d1 client bound to env.DB.
+// getDb() creates a drizzle-orm/d1 client bound to env.DB. The schema uses
+// epochMs custom columns that accept both Date and number inputs, so
+// BetterAuth's Date params are converted to epoch ms before reaching D1.
 // getAuth(request) creates a BetterAuth instance backed by the same drizzle
 // client for the current request host. encrypt()/decrypt() use ENCRYPTION_KEY
 // when set, otherwise derive a stable AES-256 key from BETTER_AUTH_SECRET.
@@ -17,42 +18,8 @@ import { redirect } from 'spiceflow'
 
 // ── Drizzle client via D1 ───────────────────────────────────────────
 
-type D1BindValue = string | number | ArrayBuffer | ArrayBufferView | null | Date
-
-// D1 only accepts string | number | null | ArrayBuffer as bound params.
-// BetterAuth passes Date objects for timestamp columns. Wrap the D1 binding
-// so auth queries keep working after the DO → D1 migration.
-
-function wrapD1(d1: D1Database): D1Database {
-  return new Proxy(d1, {
-    get(target, prop, receiver) {
-      if (prop === 'prepare') {
-        return (sql: string) => {
-          const stmt = target.prepare(sql)
-          return new Proxy(stmt, {
-            get(statement, statementProp, statementReceiver) {
-              if (statementProp === 'bind') {
-                return (...params: D1BindValue[]) => {
-                  const fixedParams = params.map((value) => (value instanceof Date ? value.getTime() : value))
-                  return statement.bind(...fixedParams)
-                }
-              }
-
-              const value = Reflect.get(statement, statementProp, statementReceiver)
-              return typeof value === 'function' ? value.bind(statement) : value
-            },
-          })
-        }
-      }
-
-      const value = Reflect.get(target, prop, receiver)
-      return typeof value === 'function' ? value.bind(target) : value
-    },
-  })
-}
-
 export function getDb() {
-  return drizzle(wrapD1(env.DB), { schema, relations: schema.relations })
+  return drizzle(env.DB, { schema, relations: schema.relations })
 }
 
 // ── OAuth client registration ───────────────────────────────────────
