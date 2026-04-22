@@ -710,12 +710,16 @@ function SyncMissingDialog({
             setSyncing(true);
             setError(null);
             try {
-              await syncMissingSecretsAction({
+              const result = await syncMissingSecretsAction({
                 sourceEnvironmentId,
                 targetEnvironmentId: currentEnvironmentId,
                 names: missingKeys,
               });
-              handleOpenChange(false);
+              if (result.count === 0) {
+                setError("That environment doesn't have any of the missing secrets.");
+              } else {
+                handleOpenChange(false);
+              }
             } catch (e: any) {
               setError(e?.message || "Failed to sync secrets");
             } finally {
@@ -743,7 +747,7 @@ function SyncMissingDialog({
               Cancel
             </DialogClose>
             <Button type="submit" loading={syncing}>
-              Add {missingKeys.length} missing secret{missingKeys.length > 1 ? "s" : ""}
+              Sync from environment
             </Button>
           </DialogFooter>
         </form>

@@ -353,6 +353,7 @@ export async function syncMissingSecretsAction({
   names: string[]
 }) {
   if (!sourceEnvironmentId || !targetEnvironmentId) throw new Error('Both environment IDs are required')
+  if (sourceEnvironmentId === targetEnvironmentId) throw new Error('Source and target environments must be different')
   if (!names.length) throw new Error('No secret names provided')
   const session = await requireSession()
 
@@ -362,9 +363,15 @@ export async function syncMissingSecretsAction({
   if (sourceOrgId !== targetOrgId) throw new Error('Environments must belong to the same organization')
   await requireOrgMember(session.userId, targetOrgId)
 
-  const sourceSecrets = await deriveSecrets(sourceEnvironmentId)
-  const nameSet = new Set(names)
-  const toSync = sourceSecrets.filter((s) => nameSet.has(s.name))
+  // Re-derive both sides server-side so we never overwrite a key that was
+  // added to the target after the client loaded (stale tab race condition).
+  const [sourceSecrets, targetSecrets] = await Promise.all([
+    deriveSecrets(sourceEnvironmentId),
+    deriveSecrets(targetEnvironmentId),
+  ])
+  const targetNames = new Set(targetSecrets.map((s) => s.name))
+  const stillMissing = new Set(names.filter((name) => !targetNames.has(name)))
+  const toSync = sourceSecrets.filter((s) => stillMissing.has(s.name))
 
   if (toSync.length === 0) return { count: 0 }
 
