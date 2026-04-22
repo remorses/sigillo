@@ -142,3 +142,18 @@ After setup, `sigillo run` in any subdirectory uses that project + environment a
 ### Prefer `sigillo run` over downloading secrets
 
 Avoid `sigillo secrets download` unless a specific tool requires a file. Prefer injecting directly via `sigillo run --` so values never touch the filesystem.
+
+### Syncing secrets to deployment platforms
+
+The README has the full commands for syncing to Cloudflare Workers, Vercel, Docker, and others. When setting up a project that deploys to one of these platforms, **add the sync commands as `package.json` scripts** so they're easy to run before each deploy:
+
+```json
+{
+  "scripts": {
+    "secrets:preview": "sigillo run -c preview --mount .env.preview --mount-format env -- wrangler secret bulk --env preview .env.preview",
+    "secrets:production": "sigillo run -c production --mount .env.prod --mount-format env -- wrangler secret bulk .env.prod"
+  }
+}
+```
+
+Use the exact commands from the README for each platform — the pattern is always `sigillo run -c <env> --mount <file> -- <platform-cli> <file>`.
