@@ -213,7 +213,7 @@ function CreateTokenDialog({
                 readOnly
                 value={createdKey}
                 className="w-full font-mono text-xs"
-                onClick={(e) => (e.target as HTMLInputElement).select()}
+                onClick={(e) => e.currentTarget.select()}
               />
               <Button variant="outline" size="icon" onClick={handleCopy}>
                 {copied ? <CheckIcon className="size-4" /> : <CopyIcon className="size-4" />}

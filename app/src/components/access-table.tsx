@@ -139,7 +139,7 @@ export function AccessTable({
                           disabled={isBusy}
                           value={currentRole}
                           onChange={(event) => {
-                            const nextRole = event.target.value as Member["role"]
+                            const nextRole = event.currentTarget.value as Member["role"]
                             if (nextRole === currentRole) {
                               return
                             }
