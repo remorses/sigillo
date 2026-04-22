@@ -160,7 +160,7 @@ export const apiToken = sqliteCore.sqliteTable('api_token', {
   // Project this token grants access to (always required)
   projectId: sqliteCore.text('project_id').notNull().references(() => project.id, { onDelete: 'cascade' }),
   // Optional: restrict to a single environment. Null = all envs in the project.
-  environmentId: sqliteCore.text('environment_id').references(() => environment.id, { onDelete: 'cascade' }),
+  environmentId: sqliteCore.text('environment_id').references(() => environment.id, { onDelete: 'set null' }),
   // First 12 chars after the "sig_" prefix, for display (e.g. "sig_a1b2c3d4e5f6...")
   prefix: sqliteCore.text('prefix').notNull(),
   // SHA-256 hex digest of the full key — used for verification lookups

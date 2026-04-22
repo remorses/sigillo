@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `environment_project_id_slug_unique` ON `environment` (`project_id`,`slug`);

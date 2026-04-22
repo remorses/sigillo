@@ -104,6 +104,48 @@ pnpm --dir app db:migrate:local
 
 If local dev crashes with `no such table`, assume the local D1 migrations were not applied to that worker's local database yet.
 
+## D1 migrations (remote)
+
+After generating a new migration with `pnpm --dir db run generate`, you must **flatten** the output. Drizzle-kit generates `<timestamp>_<name>/migration.sql` subdirectories, but wrangler D1 only recognizes flat `.sql` files in the migrations dir. Copy the generated `migration.sql` out as a numbered flat file:
+
+```bash
+# Example: drizzle-kit generated db/drizzle-app/20260422093421_curved_sauron/migration.sql
+cp db/drizzle-app/20260422093421_curved_sauron/migration.sql db/drizzle-app/0003_descriptive-name.sql
+```
+
+Use sequential numbering (`0001_`, `0002_`, ...) matching the existing files. Keep the subdirectories around for drizzle-kit's snapshot tracking.
+
+The `db/generate` and provider `db:generate` scripts already run the flatten step automatically via `db/scripts/flatten-migrations.ts`. You can also run it manually:
+
+```bash
+# Flatten app migrations
+pnpm --dir db run flatten
+
+# Flatten provider migrations
+pnpm --dir db run flatten -- ../provider/drizzle
+```
+
+The flatten script accepts a directory argument. When called via `pnpm --dir db run flatten -- <path>`, the path overrides the default `./drizzle-app`.
+
+Then apply to remote D1 databases:
+
+```bash
+# App — production
+pnpm --dir app exec wrangler d1 migrations apply DB --remote
+
+# App — preview
+pnpm --dir app exec wrangler d1 migrations apply DB --remote --env preview
+
+# Provider — production
+pnpm --dir provider exec wrangler d1 migrations apply DB --remote
+
+# Provider — preview
+pnpm --dir provider exec wrangler d1 migrations apply DB --remote --env preview
+```
+
+Wrangler tracks applied migrations in a `d1_migrations` metadata table inside each D1 database, so it only runs new ones. Always migrate **before** deploying the new worker code that depends on the schema change.
+
+Provider migrations are generated separately via `drizzle-kit generate --config drizzle.provider.config.ts` (if it exists) or manually placed in `provider/drizzle/`.
 
 ## REST API reference
 
