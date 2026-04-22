@@ -25,7 +25,7 @@ CREATE TABLE `api_token` (
 	`created_by` text NOT NULL,
 	`created_at` integer NOT NULL,
 	CONSTRAINT `fk_api_token_project_id_project_id_fk` FOREIGN KEY (`project_id`) REFERENCES `project`(`id`) ON DELETE CASCADE,
-	CONSTRAINT `fk_api_token_environment_id_environment_id_fk` FOREIGN KEY (`environment_id`) REFERENCES `environment`(`id`) ON DELETE CASCADE,
+	CONSTRAINT `fk_api_token_environment_id_environment_id_fk` FOREIGN KEY (`environment_id`) REFERENCES `environment`(`id`) ON DELETE SET NULL,
 	CONSTRAINT `fk_api_token_created_by_user_id_fk` FOREIGN KEY (`created_by`) REFERENCES `user`(`id`) ON DELETE CASCADE
 );
 --> statement-breakpoint
@@ -149,6 +149,7 @@ CREATE INDEX `api_token_project_id_idx` ON `api_token` (`project_id`);--> statem
 CREATE INDEX `api_token_hashed_key_idx` ON `api_token` (`hashed_key`);--> statement-breakpoint
 CREATE INDEX `device_code_user_id_idx` ON `device_code` (`user_id`);--> statement-breakpoint
 CREATE INDEX `environment_project_id_idx` ON `environment` (`project_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `environment_project_id_slug_unique` ON `environment` (`project_id`,`slug`);--> statement-breakpoint
 CREATE INDEX `org_invitation_org_id_idx` ON `org_invitation` (`org_id`);--> statement-breakpoint
 CREATE INDEX `org_member_org_id_idx` ON `org_member` (`org_id`);--> statement-breakpoint
 CREATE INDEX `org_member_user_id_idx` ON `org_member` (`user_id`);--> statement-breakpoint

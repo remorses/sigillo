@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "788db8b1-77b0-419a-a9ef-1e1462149568",
+  "id": "b6abdb5b-0114-47cf-876e-3d955cbcb106",
   "prevIds": [
-    "06cbbf54-af53-4197-98ee-8624221da4ef"
+    "00000000-0000-0000-0000-000000000000"
   ],
   "ddl": [
     {
@@ -1017,7 +1017,7 @@
         "id"
       ],
       "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
+      "onDelete": "SET NULL",
       "nameExplicit": false,
       "name": "fk_api_token_environment_id_environment_id_fk",
       "entityType": "fks",
