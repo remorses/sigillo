@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.6.0
+
+1. **Versioned `v0` API with project-scoped environment routes**. The CLI now talks to `/api/v0/...` and includes the project id on every environment-bound request. This makes env slug resolution consistent across `run`, `secrets`, and environment management commands on self-hosted installs:
+
+   ```bash
+   sigillo setup --project website --env dev
+   sigillo run --env prod -- next start
+   sigillo secrets download --format json
+   ```
+
+   Self-hosted app deployments now need to expose the new `v0` routes for the updated CLI.
+
+2. **`environments get|rename|delete` now accept env slugs**. Slug support now covers the full environment command set instead of only setup and secrets flows:
+
+   ```bash
+   sigillo environments get production
+   sigillo environments rename staging --slug preprod
+   sigillo environments delete preview
+   ```
+
+3. **Local wrapper refresh is automatic after native builds**. Building the host target now refreshes the local `sigillo` wrapper in both `~/.local/bin` and pnpm's global bin directory, so the command in your shell keeps pointing at the current checkout without a separate install step.
+
 ## 0.5.0
 
 1. **Environment slugs replace IDs in all CLI commands** — `--env` and `-c` now accept slugs like `dev`, `prod`, `staging` instead of raw ULIDs. `sigillo setup` stores the slug, interactive prompts show `Name (slug)`, and error hints list available slugs. The API accepts both IDs and slugs, so existing configs continue working without changes:
