@@ -44,6 +44,13 @@ fn envOverride(env: ?[]const u8, config_alias: ?[]const u8) ?[]const u8 {
     return env orelse config_alias;
 }
 
+const Global = zeke.globalOpts()
+    .option("--token [token]", "Auth token override")
+    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)")
+    .option("--project [id]", "Project ID override")
+    .option("--env [slug]", "Env slug override (e.g. dev, prod)")
+    .option("-c, --config [slug]", "Env slug override");
+
 fn printAvailableProjects(
     allocator: std.mem.Allocator,
     stderr: Writer,
@@ -138,8 +145,6 @@ fn exitEnvNotFound(
 }
 
 const Login = zeke.cmd("login", "Authenticate to Sigillo with device flow")
-    .option("--token [token]", "Save an existing bearer token instead of starting device flow")
-    .option("--api-url [url]", "Base URL of the Sigillo API (default: https://sigillo.dev)")
     .option("--scope [scope]", "Scope for saved auth (default: /)")
     .example("sigillo login")
     .example("SIGILLO_TOKEN=sig_xxx sigillo login --scope /")
@@ -150,16 +155,9 @@ const Logout = zeke.cmd("logout", "Remove saved auth for a scope")
     .option("--scope [scope]", "Directory scope to clear (default: /)");
 
 const Me = zeke.cmd("me", "Show current user info")
-    .option("--token [token]", "Auth token override")
-    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)")
     .option("--json", "Print raw JSON");
 
 const Setup = zeke.cmd("setup", "Save project and env for the current directory")
-    .option("--project [id]", "Project ID")
-    .option("--env [slug]", "Env slug (e.g. dev, prod)")
-    .option("-c, --config [slug]", "Env slug alias")
-    .option("--token [token]", "Auth token override")
-    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)")
     .example("sigillo setup --project website --env dev");
 
 const Run = zeke.cmd("run <...cmd>", "Run a command with secrets injected")
@@ -167,100 +165,53 @@ const Run = zeke.cmd("run <...cmd>", "Run a command with secrets injected")
     .option("--mount [path]", "Write secrets to a file before running")
     .option("--mount-format [fmt]", "Format for mounted file: env, env-no-quotes, json, yaml, docker, dotnet-json (default: env)")
     .option("--disable-redaction", "Print child output without secret redaction")
-    .option("--project [id]", "Project ID override")
-    .option("--env [slug]", "Env slug override (e.g. dev, prod)")
-    .option("-c, --config [slug]", "Env slug override")
-    .option("--token [token]", "Auth token override")
-    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)")
     .example("sigillo run -- env")
     .example("sigillo run --mount .env -- npm start")
     .example("sigillo run --mount config.json --mount-format json -- next dev")
     .example("sigillo run --command 'echo $MY_SECRET'");
 
-const Secrets = zeke.cmd("secrets", "List secrets for the configured env")
-    .option("--env [slug]", "Env slug override (e.g. dev, prod)")
-    .option("-c, --config [slug]", "Env slug override")
-    .option("--token [token]", "Auth token override")
-    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+const Secrets = zeke.cmd("secrets", "List secrets for the configured env");
 
-const SecretsGet = zeke.cmd("secrets get <name>", "Get a secret value")
-    .option("--env [slug]", "Env slug override (e.g. dev, prod)")
-    .option("-c, --config [slug]", "Env slug override")
-    .option("--token [token]", "Auth token override")
-    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+const SecretsGet = zeke.cmd("secrets get <name>", "Get a secret value");
 
-const SecretsSet = zeke.cmd("secrets set <name> [value]", "Set a secret value (omit value to read from stdin)")
-    .option("--env [slug]", "Env slug override (e.g. dev, prod)")
-    .option("-c, --config [slug]", "Env slug override")
-    .option("--token [token]", "Auth token override")
-    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+const SecretsSet = zeke.cmd("secrets set <name> [value]", "Set a secret value (omit value to read from stdin)");
 
-const SecretsDelete = zeke.cmd("secrets delete <name>", "Delete a secret")
-    .option("--env [slug]", "Env slug override (e.g. dev, prod)")
-    .option("-c, --config [slug]", "Env slug override")
-    .option("--token [token]", "Auth token override")
-    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+const SecretsDelete = zeke.cmd("secrets delete <name>", "Delete a secret");
 
 const SecretsDownload = zeke.cmd("secrets download", "Download all secrets in a chosen format")
     .option("--format [fmt]", "Output format: json, env, env-no-quotes, xargs, yaml, docker, dotnet-json (default: yaml)")
-    .option("--env [slug]", "Env slug override (e.g. dev, prod)")
-    .option("-c, --config [slug]", "Env slug override")
-    .option("--token [token]", "Auth token override")
-    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)")
     .example("sigillo secrets download")
     .example("sigillo secrets download --format json")
     .example("sigillo secrets download --format xargs | xargs -0 -n2 sh -c 'printf %s \"$2\" | vercel env add \"$1\" production --force' sh");
 
-const Projects = zeke.cmd("projects", "List projects across organizations")
-    .option("--token [token]", "Auth token override")
-    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+const Projects = zeke.cmd("projects", "List projects across organizations");
 
 const ProjectsCreate = zeke.cmd("projects create", "Create a project")
     .option("--org <id>", "Organization ID")
-    .option("--name <name>", "Project name")
-    .option("--token [token]", "Auth token override")
-    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+    .option("--name <name>", "Project name");
 
-const ProjectsGet = zeke.cmd("projects get <id>", "Get project details")
-    .option("--token [token]", "Auth token override")
-    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+const ProjectsGet = zeke.cmd("projects get <id>", "Get project details");
 
 const ProjectsUpdate = zeke.cmd("projects update <id>", "Update a project")
-    .option("--name <name>", "Project name")
-    .option("--token [token]", "Auth token override")
-    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+    .option("--name <name>", "Project name");
 
-const ProjectsDelete = zeke.cmd("projects delete <id>", "Delete a project")
-    .option("--token [token]", "Auth token override")
-    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+const ProjectsDelete = zeke.cmd("projects delete <id>", "Delete a project");
 
-const Environments = zeke.cmd("environments", "List envs for the configured project")
-    .option("--project [id]", "Project ID override")
-    .option("--token [token]", "Auth token override")
-    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+const Environments = zeke.cmd("environments", "List envs for the configured project");
 
 const EnvironmentsCreate = zeke.cmd("environments create", "Create an env")
-    .option("--project <id>", "Project ID")
     .option("--name <name>", "Env name")
-    .option("--slug <slug>", "Env slug")
-    .option("--token [token]", "Auth token override")
-    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+    .option("--slug <slug>", "Env slug");
 
-const EnvironmentsGet = zeke.cmd("environments get <id>", "Get env details by id or slug")
-    .option("--token [token]", "Auth token override")
-    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+const EnvironmentsGet = zeke.cmd("environments get <id>", "Get env details by id or slug");
 
 const EnvironmentsRename = zeke.cmd("environments rename <id>", "Rename an env by id or slug")
     .option("--name [name]", "Updated env name")
-    .option("--slug [slug]", "Updated env slug")
-    .option("--token [token]", "Auth token override")
-    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+    .option("--slug [slug]", "Updated env slug");
 
-const EnvironmentsDelete = zeke.cmd("environments delete <id>", "Delete an env by id or slug")
-    .option("--token [token]", "Auth token override")
-    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
+const EnvironmentsDelete = zeke.cmd("environments delete <id>", "Delete an env by id or slug");
 
-fn loginAction(_: Login.Args, opts: Login.Options) !void {
+fn loginAction(_: Login.Args, opts: Login.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -274,8 +225,8 @@ fn loginAction(_: Login.Args, opts: Login.Options) !void {
     const scope: []const u8 = opts.scope orelse "/";
 
     const resolved = try config.resolve(allocator, cwd, .{
-        .token = opts.token,
-        .api_url = opts.api_url,
+        .token = global.token,
+        .api_url = global.api_url,
     });
 
     const api_url = resolved.api_url.?; // always set — defaults to https://sigillo.dev
@@ -408,7 +359,7 @@ fn loginAction(_: Login.Args, opts: Login.Options) !void {
     std.process.exit(1);
 }
 
-fn logoutAction(_: Logout.Args, opts: Logout.Options) !void {
+fn logoutAction(_: Logout.Args, opts: Logout.Options, _: Global.Options) !void {
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -424,7 +375,7 @@ fn logoutAction(_: Logout.Args, opts: Logout.Options) !void {
     try stdout.writeAll("\n");
 }
 
-fn meAction(_: Me.Args, opts: Me.Options) !void {
+fn meAction(_: Me.Args, opts: Me.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -436,8 +387,8 @@ fn meAction(_: Me.Args, opts: Me.Options) !void {
     const cwd = try config.getCwd(allocator);
 
     const resolved = try config.resolve(allocator, cwd, .{
-        .token = opts.token,
-        .api_url = opts.api_url,
+        .token = global.token,
+        .api_url = global.api_url,
     });
 
     const token = resolved.token orelse {
@@ -492,7 +443,7 @@ fn meAction(_: Me.Args, opts: Me.Options) !void {
     }
 }
 
-fn setupAction(_: Setup.Args, opts: Setup.Options) !void {
+fn setupAction(_: Setup.Args, _: Setup.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -504,8 +455,8 @@ fn setupAction(_: Setup.Args, opts: Setup.Options) !void {
     const cwd = try config.getCwd(allocator);
 
     const resolved = try config.resolve(allocator, cwd, .{
-        .token = opts.token,
-        .api_url = opts.api_url,
+        .token = global.token,
+        .api_url = global.api_url,
     });
 
     const token = resolved.token orelse {
@@ -520,7 +471,7 @@ fn setupAction(_: Setup.Args, opts: Setup.Options) !void {
         std.posix.isatty(File.stdout().handle);
 
     // ── Resolve project ────────────────────────────────────────────
-    const project: []const u8 = if (opts.project) |p| p else if (is_tty) proj: {
+    const project: []const u8 = if (global.project) |p| p else if (is_tty) proj: {
         // Fetch orgs → projects and present an interactive select.
         const me_res = client.getMe(.{
             .allocator = allocator,
@@ -587,8 +538,8 @@ fn setupAction(_: Setup.Args, opts: Setup.Options) !void {
         break :proj all_projects.items[proj_choice].id;
     } else {
         try color.err(stderr, "error");
-            try stderr.print(": --project is required\n", .{});
-            try stderr.writeAll("  sigillo setup --project <PROJECT_ID> --env <SLUG>\n");
+        try stderr.print(": --project is required\n", .{});
+        try stderr.writeAll("  sigillo setup --project <PROJECT_ID> --env <SLUG>\n");
         std.process.exit(1);
     };
 
@@ -604,7 +555,7 @@ fn setupAction(_: Setup.Args, opts: Setup.Options) !void {
         std.process.exit(1);
     };
     if (env_res.status != 200) {
-        if (env_res.status == 404 and opts.project != null) {
+        if (env_res.status == 404 and global.project != null) {
             exitProjectNotFound(allocator, stderr, api_url, token, project);
         }
         const message = client.parseError(allocator, env_res.body) orelse try allocator.dupe(u8, "unknown error");
@@ -620,11 +571,14 @@ fn setupAction(_: Setup.Args, opts: Setup.Options) !void {
     const all_envs = envs.environments;
 
     // ── Resolve environment (by slug) ─────────────────────────────
-    const environment: []const u8 = if (envOverride(opts.env, opts.config)) |e| env_val: {
+    const environment: []const u8 = if (envOverride(global.env, global.config)) |e| env_val: {
         // Validate the provided environment slug exists.
         var found = false;
         for (all_envs) |env| {
-            if (std.mem.eql(u8, env.slug, e)) { found = true; break; }
+            if (std.mem.eql(u8, env.slug, e)) {
+                found = true;
+                break;
+            }
         }
         if (!found) {
             exitEnvNotFound(allocator, stderr, api_url, token, e, project);
@@ -668,7 +622,7 @@ fn setupAction(_: Setup.Args, opts: Setup.Options) !void {
     try stdout.print("{s}\n", .{environment});
 }
 
-fn runAction(args: Run.Args, opts: Run.Options) !void {
+fn runAction(args: Run.Args, opts: Run.Options, global: Global.Options) !void {
     const stderr = getStderr();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -693,10 +647,10 @@ fn runAction(args: Run.Args, opts: Run.Options) !void {
     const cwd = try config.getCwd(allocator);
 
     const resolved = try config.resolve(allocator, cwd, .{
-        .token = opts.token,
-        .api_url = opts.api_url,
-        .project = opts.project,
-        .environment = envOverride(opts.env, opts.config),
+        .token = global.token,
+        .api_url = global.api_url,
+        .project = global.project,
+        .environment = envOverride(global.env, global.config),
     });
 
     const token = resolved.token orelse {
@@ -1128,7 +1082,7 @@ fn requireEnvironmentContext(allocator: std.mem.Allocator, stderr: Writer, cwd: 
     };
 }
 
-fn secretsAction(_: Secrets.Args, opts: Secrets.Options) !void {
+fn secretsAction(_: Secrets.Args, _: Secrets.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -1138,9 +1092,9 @@ fn secretsAction(_: Secrets.Args, opts: Secrets.Options) !void {
     const allocator = arena.allocator();
     const cwd = try config.getCwd(allocator);
     const ctx = try requireEnvironmentContext(allocator, stderr, cwd, .{
-        .token = opts.token,
-        .api_url = opts.api_url,
-        .environment = envOverride(opts.env, opts.config),
+        .token = global.token,
+        .api_url = global.api_url,
+        .environment = envOverride(global.env, global.config),
     });
 
     const res = try client.listSecrets(.{
@@ -1170,7 +1124,7 @@ fn secretsAction(_: Secrets.Args, opts: Secrets.Options) !void {
     }
 }
 
-fn secretsGetAction(args: SecretsGet.Args, opts: SecretsGet.Options) !void {
+fn secretsGetAction(args: SecretsGet.Args, _: SecretsGet.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -1180,9 +1134,9 @@ fn secretsGetAction(args: SecretsGet.Args, opts: SecretsGet.Options) !void {
     const allocator = arena.allocator();
     const cwd = try config.getCwd(allocator);
     const ctx = try requireEnvironmentContext(allocator, stderr, cwd, .{
-        .token = opts.token,
-        .api_url = opts.api_url,
-        .environment = envOverride(opts.env, opts.config),
+        .token = global.token,
+        .api_url = global.api_url,
+        .environment = envOverride(global.env, global.config),
     });
 
     const res = try client.getSecret(.{
@@ -1211,7 +1165,7 @@ fn secretsGetAction(args: SecretsGet.Args, opts: SecretsGet.Options) !void {
     );
 }
 
-fn secretsSetAction(args: SecretsSet.Args, opts: SecretsSet.Options) !void {
+fn secretsSetAction(args: SecretsSet.Args, _: SecretsSet.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -1221,9 +1175,9 @@ fn secretsSetAction(args: SecretsSet.Args, opts: SecretsSet.Options) !void {
     const allocator = arena.allocator();
     const cwd = try config.getCwd(allocator);
     const ctx = try requireEnvironmentContext(allocator, stderr, cwd, .{
-        .token = opts.token,
-        .api_url = opts.api_url,
-        .environment = envOverride(opts.env, opts.config),
+        .token = global.token,
+        .api_url = global.api_url,
+        .environment = envOverride(global.env, global.config),
     });
 
     // Resolve secret value: use positional arg, or read from piped stdin.
@@ -1276,7 +1230,7 @@ fn secretsSetAction(args: SecretsSet.Args, opts: SecretsSet.Options) !void {
     );
 }
 
-fn secretsDeleteAction(args: SecretsDelete.Args, opts: SecretsDelete.Options) !void {
+fn secretsDeleteAction(args: SecretsDelete.Args, _: SecretsDelete.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -1286,9 +1240,9 @@ fn secretsDeleteAction(args: SecretsDelete.Args, opts: SecretsDelete.Options) !v
     const allocator = arena.allocator();
     const cwd = try config.getCwd(allocator);
     const ctx = try requireEnvironmentContext(allocator, stderr, cwd, .{
-        .token = opts.token,
-        .api_url = opts.api_url,
-        .environment = envOverride(opts.env, opts.config),
+        .token = global.token,
+        .api_url = global.api_url,
+        .environment = envOverride(global.env, global.config),
     });
 
     const res = try client.deleteSecret(.{
@@ -1309,7 +1263,7 @@ fn secretsDeleteAction(args: SecretsDelete.Args, opts: SecretsDelete.Options) !v
     try stdout.print("ok: true\nname: {s}\n", .{try quoteString(allocator, res.value.?.name)});
 }
 
-fn secretsDownloadAction(_: SecretsDownload.Args, opts: SecretsDownload.Options) !void {
+fn secretsDownloadAction(_: SecretsDownload.Args, opts: SecretsDownload.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -1319,9 +1273,9 @@ fn secretsDownloadAction(_: SecretsDownload.Args, opts: SecretsDownload.Options)
     const allocator = arena.allocator();
     const cwd = try config.getCwd(allocator);
     const ctx = try requireEnvironmentContext(allocator, stderr, cwd, .{
-        .token = opts.token,
-        .api_url = opts.api_url,
-        .environment = envOverride(opts.env, opts.config),
+        .token = global.token,
+        .api_url = global.api_url,
+        .environment = envOverride(global.env, global.config),
     });
 
     const format = opts.format orelse "yaml";
@@ -1357,7 +1311,7 @@ fn secretsDownloadAction(_: SecretsDownload.Args, opts: SecretsDownload.Options)
     try stdout.print("{s}\n", .{std.mem.trimRight(u8, res.body, "\n")});
 }
 
-fn projectsAction(_: Projects.Args, opts: Projects.Options) !void {
+fn projectsAction(_: Projects.Args, _: Projects.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -1366,7 +1320,7 @@ fn projectsAction(_: Projects.Args, opts: Projects.Options) !void {
     defer arena.deinit();
     const allocator = arena.allocator();
     const cwd = try config.getCwd(allocator);
-    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
+    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url });
     const me = try client.getMe(.{ .allocator = allocator, .api_url = api_ctx.api_url, .token = api_ctx.token });
     if (me.status != 200 or me.value == null) {
         const message = client.parseError(allocator, me.body) orelse try allocator.dupe(u8, "unknown error");
@@ -1398,7 +1352,7 @@ fn projectsAction(_: Projects.Args, opts: Projects.Options) !void {
     }
 }
 
-fn projectsCreateAction(_: ProjectsCreate.Args, opts: ProjectsCreate.Options) !void {
+fn projectsCreateAction(_: ProjectsCreate.Args, opts: ProjectsCreate.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -1407,7 +1361,7 @@ fn projectsCreateAction(_: ProjectsCreate.Args, opts: ProjectsCreate.Options) !v
     defer arena.deinit();
     const allocator = arena.allocator();
     const cwd = try config.getCwd(allocator);
-    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
+    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url });
     const res = try client.createProject(.{
         .allocator = allocator,
         .api_url = api_ctx.api_url,
@@ -1429,7 +1383,7 @@ fn projectsCreateAction(_: ProjectsCreate.Args, opts: ProjectsCreate.Options) !v
     });
 }
 
-fn projectsGetAction(args: ProjectsGet.Args, opts: ProjectsGet.Options) !void {
+fn projectsGetAction(args: ProjectsGet.Args, _: ProjectsGet.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -1438,7 +1392,7 @@ fn projectsGetAction(args: ProjectsGet.Args, opts: ProjectsGet.Options) !void {
     defer arena.deinit();
     const allocator = arena.allocator();
     const cwd = try config.getCwd(allocator);
-    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
+    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url });
     const res = try client.getProject(.{ .allocator = allocator, .api_url = api_ctx.api_url, .token = api_ctx.token, .project_id = args.id });
     if (res.status != 200 or res.value == null) {
         const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
@@ -1461,7 +1415,7 @@ fn projectsGetAction(args: ProjectsGet.Args, opts: ProjectsGet.Options) !void {
     }
 }
 
-fn projectsUpdateAction(args: ProjectsUpdate.Args, opts: ProjectsUpdate.Options) !void {
+fn projectsUpdateAction(args: ProjectsUpdate.Args, opts: ProjectsUpdate.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -1470,7 +1424,7 @@ fn projectsUpdateAction(args: ProjectsUpdate.Args, opts: ProjectsUpdate.Options)
     defer arena.deinit();
     const allocator = arena.allocator();
     const cwd = try config.getCwd(allocator);
-    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
+    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url });
     const res = try client.updateProject(.{ .allocator = allocator, .api_url = api_ctx.api_url, .token = api_ctx.token, .project_id = args.id, .name = opts.name });
     if (res.status != 200 or res.value == null) {
         const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
@@ -1486,7 +1440,7 @@ fn projectsUpdateAction(args: ProjectsUpdate.Args, opts: ProjectsUpdate.Options)
     });
 }
 
-fn projectsDeleteAction(args: ProjectsDelete.Args, opts: ProjectsDelete.Options) !void {
+fn projectsDeleteAction(args: ProjectsDelete.Args, _: ProjectsDelete.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -1495,7 +1449,7 @@ fn projectsDeleteAction(args: ProjectsDelete.Args, opts: ProjectsDelete.Options)
     defer arena.deinit();
     const allocator = arena.allocator();
     const cwd = try config.getCwd(allocator);
-    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
+    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url });
     const res = try client.deleteProject(.{ .allocator = allocator, .api_url = api_ctx.api_url, .token = api_ctx.token, .project_id = args.id });
     if (res.status != 200 or res.value == null) {
         const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
@@ -1506,7 +1460,7 @@ fn projectsDeleteAction(args: ProjectsDelete.Args, opts: ProjectsDelete.Options)
     try stdout.print("ok: true\nid: {s}\n", .{try quoteString(allocator, res.value.?.id)});
 }
 
-fn environmentsAction(_: Environments.Args, opts: Environments.Options) !void {
+fn environmentsAction(_: Environments.Args, _: Environments.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -1516,9 +1470,9 @@ fn environmentsAction(_: Environments.Args, opts: Environments.Options) !void {
     const allocator = arena.allocator();
     const cwd = try config.getCwd(allocator);
     const ctx = try requireProjectContext(allocator, stderr, cwd, .{
-        .token = opts.token,
-        .api_url = opts.api_url,
-        .project = opts.project,
+        .token = global.token,
+        .api_url = global.api_url,
+        .project = global.project,
     });
     const res = try client.listEnvironments(.{ .allocator = allocator, .api_url = ctx.api.api_url, .token = ctx.api.token, .project_id = ctx.project_id });
     if (res.status != 200 or res.value == null) {
@@ -1537,7 +1491,7 @@ fn environmentsAction(_: Environments.Args, opts: Environments.Options) !void {
     }
 }
 
-fn environmentsCreateAction(_: EnvironmentsCreate.Args, opts: EnvironmentsCreate.Options) !void {
+fn environmentsCreateAction(_: EnvironmentsCreate.Args, opts: EnvironmentsCreate.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -1546,12 +1500,16 @@ fn environmentsCreateAction(_: EnvironmentsCreate.Args, opts: EnvironmentsCreate
     defer arena.deinit();
     const allocator = arena.allocator();
     const cwd = try config.getCwd(allocator);
-    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
+    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url });
     const res = try client.createEnvironment(.{
         .allocator = allocator,
         .api_url = api_ctx.api_url,
         .token = api_ctx.token,
-        .project_id = opts.project,
+        .project_id = global.project orelse {
+            try color.err(stderr, "error");
+            try stderr.print(": --project is required\n", .{});
+            std.process.exit(1);
+        },
         .name = opts.name,
         .slug = opts.slug,
     });
@@ -1570,7 +1528,7 @@ fn environmentsCreateAction(_: EnvironmentsCreate.Args, opts: EnvironmentsCreate
     });
 }
 
-fn environmentsGetAction(args: EnvironmentsGet.Args, opts: EnvironmentsGet.Options) !void {
+fn environmentsGetAction(args: EnvironmentsGet.Args, _: EnvironmentsGet.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -1579,8 +1537,8 @@ fn environmentsGetAction(args: EnvironmentsGet.Args, opts: EnvironmentsGet.Optio
     defer arena.deinit();
     const allocator = arena.allocator();
     const cwd = try config.getCwd(allocator);
-    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
-    const project_ctx = try requireProjectContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
+    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url });
+    const project_ctx = try requireProjectContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url, .project = global.project });
     const res = try client.getEnvironment(.{ .allocator = allocator, .api_url = api_ctx.api_url, .token = api_ctx.token, .project_id = project_ctx.project_id, .environment_id = args.id });
     if (res.status != 200 or res.value == null) {
         const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
@@ -1597,7 +1555,7 @@ fn environmentsGetAction(args: EnvironmentsGet.Args, opts: EnvironmentsGet.Optio
     });
 }
 
-fn environmentsRenameAction(args: EnvironmentsRename.Args, opts: EnvironmentsRename.Options) !void {
+fn environmentsRenameAction(args: EnvironmentsRename.Args, opts: EnvironmentsRename.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -1606,13 +1564,13 @@ fn environmentsRenameAction(args: EnvironmentsRename.Args, opts: EnvironmentsRen
     defer arena.deinit();
     const allocator = arena.allocator();
     const cwd = try config.getCwd(allocator);
-    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
+    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url });
     if (opts.name == null and opts.slug == null) {
         try color.err(stderr, "error");
         try stderr.print(": pass --name, --slug, or both\n", .{});
         std.process.exit(1);
     }
-    const project_ctx = try requireProjectContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
+    const project_ctx = try requireProjectContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url, .project = global.project });
     const res = try client.updateEnvironment(.{
         .allocator = allocator,
         .api_url = api_ctx.api_url,
@@ -1637,7 +1595,7 @@ fn environmentsRenameAction(args: EnvironmentsRename.Args, opts: EnvironmentsRen
     });
 }
 
-fn environmentsDeleteAction(args: EnvironmentsDelete.Args, opts: EnvironmentsDelete.Options) !void {
+fn environmentsDeleteAction(args: EnvironmentsDelete.Args, _: EnvironmentsDelete.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -1646,8 +1604,8 @@ fn environmentsDeleteAction(args: EnvironmentsDelete.Args, opts: EnvironmentsDel
     defer arena.deinit();
     const allocator = arena.allocator();
     const cwd = try config.getCwd(allocator);
-    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
-    const project_ctx = try requireProjectContext(allocator, stderr, cwd, .{ .token = opts.token, .api_url = opts.api_url });
+    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url });
+    const project_ctx = try requireProjectContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url, .project = global.project });
     const res = try client.deleteEnvironment(.{ .allocator = allocator, .api_url = api_ctx.api_url, .token = api_ctx.token, .project_id = project_ctx.project_id, .environment_id = args.id });
     if (res.status != 200 or res.value == null) {
         const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
@@ -1857,11 +1815,7 @@ test "redaction leaves non secret values visible" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const output = try redactOutputAlloc(
-        allocator,
-        "url=https://example.com env=development",
-        &.{}
-    );
+    const output = try redactOutputAlloc(allocator, "url=https://example.com env=development", &.{});
 
     try std.testing.expectEqualStrings("url=https://example.com env=development", output);
 }
@@ -2011,7 +1965,7 @@ test "run command keeps argv after double dash as positional command" {
         var used_disable_redaction = false;
         var used_command: ?[]const u8 = null;
 
-        fn action(args: Run.Args, opts: Run.Options) !void {
+        fn action(args: Run.Args, opts: Run.Options, _: Global.Options) !void {
             captured_cmd = try std.testing.allocator.dupe([]const u8, args.cmd);
             used_disable_redaction = opts.disable_redaction;
             used_command = opts.command;
@@ -2020,9 +1974,9 @@ test "run command keeps argv after double dash as positional command" {
 
     defer if (State.captured_cmd.len > 0) std.testing.allocator.free(State.captured_cmd);
 
-    const TestRun = Run.bind(State.action);
+    const TestRun = Run.bindWith(Global, State.action);
 
-    var app = zeke.App(.{TestRun}).init(std.testing.allocator, "sigillo");
+    var app = zeke.AppWith(.{TestRun}, Global).init(std.testing.allocator, "sigillo");
     try app.dispatch(&.{ "run", "--", "next", "dev" });
 
     try std.testing.expectEqual(@as(usize, 2), State.captured_cmd.len);
@@ -2037,7 +1991,7 @@ test "run command still parses flags before double dash" {
         var captured_cmd: []const []const u8 = &.{};
         var used_disable_redaction = false;
 
-        fn action(args: Run.Args, opts: Run.Options) !void {
+        fn action(args: Run.Args, opts: Run.Options, _: Global.Options) !void {
             captured_cmd = try std.testing.allocator.dupe([]const u8, args.cmd);
             used_disable_redaction = opts.disable_redaction;
         }
@@ -2045,9 +1999,9 @@ test "run command still parses flags before double dash" {
 
     defer if (State.captured_cmd.len > 0) std.testing.allocator.free(State.captured_cmd);
 
-    const TestRun = Run.bind(State.action);
+    const TestRun = Run.bindWith(Global, State.action);
 
-    var app = zeke.App(.{TestRun}).init(std.testing.allocator, "sigillo");
+    var app = zeke.AppWith(.{TestRun}, Global).init(std.testing.allocator, "sigillo");
     try app.dispatch(&.{ "run", "--disable-redaction", "--", "next", "dev" });
 
     try std.testing.expectEqual(@as(usize, 2), State.captured_cmd.len);
@@ -2062,7 +2016,7 @@ test "run command parses --mount and --mount-format" {
         var mount_format: ?[]const u8 = null;
         var captured_cmd: []const []const u8 = &.{};
 
-        fn action(args: Run.Args, opts: Run.Options) !void {
+        fn action(args: Run.Args, opts: Run.Options, _: Global.Options) !void {
             mount = opts.mount;
             mount_format = opts.mount_format;
             captured_cmd = try std.testing.allocator.dupe([]const u8, args.cmd);
@@ -2071,9 +2025,9 @@ test "run command parses --mount and --mount-format" {
 
     defer if (State.captured_cmd.len > 0) std.testing.allocator.free(State.captured_cmd);
 
-    const TestRun = Run.bind(State.action);
+    const TestRun = Run.bindWith(Global, State.action);
 
-    var app = zeke.App(.{TestRun}).init(std.testing.allocator, "sigillo");
+    var app = zeke.AppWith(.{TestRun}, Global).init(std.testing.allocator, "sigillo");
     try app.dispatch(&.{ "run", "--mount", ".env", "--", "npm", "start" });
 
     try std.testing.expectEqualStrings(".env", State.mount.?);
@@ -2088,15 +2042,15 @@ test "run command parses --mount with explicit --mount-format" {
         var mount: ?[]const u8 = null;
         var mount_format: ?[]const u8 = null;
 
-        fn action(_: Run.Args, opts: Run.Options) !void {
+        fn action(_: Run.Args, opts: Run.Options, _: Global.Options) !void {
             mount = opts.mount;
             mount_format = opts.mount_format;
         }
     };
 
-    const TestRun = Run.bind(State.action);
+    const TestRun = Run.bindWith(Global, State.action);
 
-    var app = zeke.App(.{TestRun}).init(std.testing.allocator, "sigillo");
+    var app = zeke.AppWith(.{TestRun}, Global).init(std.testing.allocator, "sigillo");
     try app.dispatch(&.{ "run", "--mount", "config.json", "--mount-format", "json", "--", "next", "dev" });
 
     try std.testing.expectEqualStrings("config.json", State.mount.?);
@@ -2108,15 +2062,15 @@ test "run command leaves mount unset when flag is omitted" {
         var mount: ?[]const u8 = null;
         var mount_format: ?[]const u8 = null;
 
-        fn action(_: Run.Args, opts: Run.Options) !void {
+        fn action(_: Run.Args, opts: Run.Options, _: Global.Options) !void {
             mount = opts.mount;
             mount_format = opts.mount_format;
         }
     };
 
-    const TestRun = Run.bind(State.action);
+    const TestRun = Run.bindWith(Global, State.action);
 
-    var app = zeke.App(.{TestRun}).init(std.testing.allocator, "sigillo");
+    var app = zeke.AppWith(.{TestRun}, Global).init(std.testing.allocator, "sigillo");
     try app.dispatch(&.{ "run", "--", "env" });
 
     try std.testing.expect(State.mount == null);
@@ -2143,13 +2097,13 @@ test "secrets download parses explicit format" {
     const State = struct {
         var format: ?[]const u8 = null;
 
-        fn action(_: SecretsDownload.Args, opts: SecretsDownload.Options) !void {
+        fn action(_: SecretsDownload.Args, opts: SecretsDownload.Options, _: Global.Options) !void {
             format = opts.format;
         }
     };
 
-    const TestSecretsDownload = SecretsDownload.bind(State.action);
-    var app = zeke.App(.{TestSecretsDownload}).init(std.testing.allocator, "sigillo");
+    const TestSecretsDownload = SecretsDownload.bindWith(Global, State.action);
+    var app = zeke.AppWith(.{TestSecretsDownload}, Global).init(std.testing.allocator, "sigillo");
     try app.dispatch(&.{ "secrets", "download", "--format", "xargs" });
 
     try std.testing.expectEqualStrings("xargs", State.format.?);
@@ -2159,13 +2113,13 @@ test "secrets download leaves format unset when omitted" {
     const State = struct {
         var format: ?[]const u8 = null;
 
-        fn action(_: SecretsDownload.Args, opts: SecretsDownload.Options) !void {
+        fn action(_: SecretsDownload.Args, opts: SecretsDownload.Options, _: Global.Options) !void {
             format = opts.format;
         }
     };
 
-    const TestSecretsDownload = SecretsDownload.bind(State.action);
-    var app = zeke.App(.{TestSecretsDownload}).init(std.testing.allocator, "sigillo");
+    const TestSecretsDownload = SecretsDownload.bindWith(Global, State.action);
+    var app = zeke.AppWith(.{TestSecretsDownload}, Global).init(std.testing.allocator, "sigillo");
     try app.dispatch(&.{ "secrets", "download" });
 
     try std.testing.expect(State.format == null);
@@ -2175,13 +2129,13 @@ test "secrets command parses env override" {
     const State = struct {
         var environment: ?[]const u8 = null;
 
-        fn action(_: Secrets.Args, opts: Secrets.Options) !void {
-            environment = envOverride(opts.env, opts.config);
+        fn action(_: Secrets.Args, _: Secrets.Options, global: Global.Options) !void {
+            environment = envOverride(global.env, global.config);
         }
     };
 
-    const TestSecrets = Secrets.bind(State.action);
-    var app = zeke.App(.{TestSecrets}).init(std.testing.allocator, "sigillo");
+    const TestSecrets = Secrets.bindWith(Global, State.action);
+    var app = zeke.AppWith(.{TestSecrets}, Global).init(std.testing.allocator, "sigillo");
     try app.dispatch(&.{ "secrets", "--env", "env_123" });
 
     try std.testing.expectEqualStrings("env_123", State.environment.?);
@@ -2191,13 +2145,13 @@ test "secrets command parses config alias" {
     const State = struct {
         var environment: ?[]const u8 = null;
 
-        fn action(_: Secrets.Args, opts: Secrets.Options) !void {
-            environment = envOverride(opts.env, opts.config);
+        fn action(_: Secrets.Args, _: Secrets.Options, global: Global.Options) !void {
+            environment = envOverride(global.env, global.config);
         }
     };
 
-    const TestSecrets = Secrets.bind(State.action);
-    var app = zeke.App(.{TestSecrets}).init(std.testing.allocator, "sigillo");
+    const TestSecrets = Secrets.bindWith(Global, State.action);
+    var app = zeke.AppWith(.{TestSecrets}, Global).init(std.testing.allocator, "sigillo");
     try app.dispatch(&.{ "secrets", "--config", "env_123" });
 
     try std.testing.expectEqualStrings("env_123", State.environment.?);
@@ -2207,13 +2161,13 @@ test "run command parses short config alias" {
     const State = struct {
         var environment: ?[]const u8 = null;
 
-        fn action(_: Run.Args, opts: Run.Options) !void {
-            environment = envOverride(opts.env, opts.config);
+        fn action(_: Run.Args, _: Run.Options, global: Global.Options) !void {
+            environment = envOverride(global.env, global.config);
         }
     };
 
-    const TestRun = Run.bind(State.action);
-    var app = zeke.App(.{TestRun}).init(std.testing.allocator, "sigillo");
+    const TestRun = Run.bindWith(Global, State.action);
+    var app = zeke.AppWith(.{TestRun}, Global).init(std.testing.allocator, "sigillo");
     try app.dispatch(&.{ "run", "-c", "env_123", "--", "next", "dev" });
 
     try std.testing.expectEqualStrings("env_123", State.environment.?);
@@ -2265,14 +2219,14 @@ test "login parses token option" {
         var token: ?[]const u8 = null;
         var scope: ?[]const u8 = null;
 
-        fn action(_: Login.Args, opts: Login.Options) !void {
-            token = opts.token;
+        fn action(_: Login.Args, opts: Login.Options, global: Global.Options) !void {
+            token = global.token;
             scope = opts.scope;
         }
     };
 
-    const TestLogin = Login.bind(State.action);
-    var app = zeke.App(.{TestLogin}).init(std.testing.allocator, "sigillo");
+    const TestLogin = Login.bindWith(Global, State.action);
+    var app = zeke.AppWith(.{TestLogin}, Global).init(std.testing.allocator, "sigillo");
     try app.dispatch(&.{ "login", "--token", "sig_test_123", "--scope", "/" });
 
     try std.testing.expectEqualStrings("sig_test_123", State.token.?);
@@ -2284,14 +2238,14 @@ test "login leaves scope unset when flag is omitted" {
         var token: ?[]const u8 = null;
         var scope: ?[]const u8 = null;
 
-        fn action(_: Login.Args, opts: Login.Options) !void {
-            token = opts.token;
+        fn action(_: Login.Args, opts: Login.Options, global: Global.Options) !void {
+            token = global.token;
             scope = opts.scope;
         }
     };
 
-    const TestLogin = Login.bind(State.action);
-    var app = zeke.App(.{TestLogin}).init(std.testing.allocator, "sigillo");
+    const TestLogin = Login.bindWith(Global, State.action);
+    var app = zeke.AppWith(.{TestLogin}, Global).init(std.testing.allocator, "sigillo");
     try app.dispatch(&.{ "login", "--token", "sig_test_123" });
 
     try std.testing.expectEqualStrings("sig_test_123", State.token.?);
@@ -2329,28 +2283,28 @@ pub fn main() !void {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var app = zeke.App(.{
-        Login.bind(loginAction),
-        Logout.bind(logoutAction),
-        Me.bind(meAction),
-        Setup.bind(setupAction),
-        Run.bind(runAction),
-        Secrets.bind(secretsAction),
-        SecretsGet.bind(secretsGetAction),
-        SecretsSet.bind(secretsSetAction),
-        SecretsDelete.bind(secretsDeleteAction),
-        SecretsDownload.bind(secretsDownloadAction),
-        Projects.bind(projectsAction),
-        ProjectsCreate.bind(projectsCreateAction),
-        ProjectsGet.bind(projectsGetAction),
-        ProjectsUpdate.bind(projectsUpdateAction),
-        ProjectsDelete.bind(projectsDeleteAction),
-        Environments.bind(environmentsAction),
-        EnvironmentsCreate.bind(environmentsCreateAction),
-        EnvironmentsGet.bind(environmentsGetAction),
-        EnvironmentsRename.bind(environmentsRenameAction),
-        EnvironmentsDelete.bind(environmentsDeleteAction),
-    }).init(allocator, "sigillo");
+    var app = zeke.AppWith(.{
+        Login.bindWith(Global, loginAction),
+        Logout.bindWith(Global, logoutAction),
+        Me.bindWith(Global, meAction),
+        Setup.bindWith(Global, setupAction),
+        Run.bindWith(Global, runAction),
+        Secrets.bindWith(Global, secretsAction),
+        SecretsGet.bindWith(Global, secretsGetAction),
+        SecretsSet.bindWith(Global, secretsSetAction),
+        SecretsDelete.bindWith(Global, secretsDeleteAction),
+        SecretsDownload.bindWith(Global, secretsDownloadAction),
+        Projects.bindWith(Global, projectsAction),
+        ProjectsCreate.bindWith(Global, projectsCreateAction),
+        ProjectsGet.bindWith(Global, projectsGetAction),
+        ProjectsUpdate.bindWith(Global, projectsUpdateAction),
+        ProjectsDelete.bindWith(Global, projectsDeleteAction),
+        Environments.bindWith(Global, environmentsAction),
+        EnvironmentsCreate.bindWith(Global, environmentsCreateAction),
+        EnvironmentsGet.bindWith(Global, environmentsGetAction),
+        EnvironmentsRename.bindWith(Global, environmentsRenameAction),
+        EnvironmentsDelete.bindWith(Global, environmentsDeleteAction),
+    }, Global).init(allocator, "sigillo");
 
     const build_options = @import("build_options");
     app.setVersion(build_options.version);
