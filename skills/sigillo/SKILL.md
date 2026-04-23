@@ -156,4 +156,82 @@ After setup, `sigillo run` in any subdirectory uses that project + environment a
 
 Avoid `sigillo secrets download` unless a specific tool requires a file. Prefer injecting directly via `sigillo run --` so values never touch the filesystem.
 
+## Bootstrapping a project for a new codebase
+
+When a codebase needs Sigillo for the first time, the agent creates the org, project, and placeholder secrets. The user fills in real values later via the web UI.
+
+### 1. Check existing orgs
+
+```bash
+sigillo me
+```
+
+Ask the user if they want to use an existing org or create a new one.
+
+### 2. Create an org (if needed)
+
+```bash
+sigillo orgs create --name my-org
+```
+
+Run `sigillo me` after to get the new org ID.
+
+### 3. Create a project
+
+```bash
+sigillo projects create --org <ORG_ID> --name <project-name>
+```
+
+Three default environments are auto-created: `dev`, `preview`, `prod`.
+
+### 4. Link the directory
+
+Run from the directory that will use secrets (usually the app or website folder):
+
+```bash
+sigillo setup --project <PROJECT_ID> --env dev
+```
+
+### 5. Add placeholder secrets
+
+Set empty values for each secret. The user fills in real values later via the web UI:
+
+```bash
+for secret in DATABASE_URL API_KEY AUTH_SECRET; do
+  sigillo secrets set "$secret" "" -c dev
+  sigillo secrets set "$secret" "" -c preview
+  sigillo secrets set "$secret" "" -c prod
+done
+```
+
+For `BETTER_AUTH_SECRET` or encryption keys, generate a real random value immediately:
+
+```bash
+sigillo secrets set BETTER_AUTH_SECRET "$(openssl rand -base64 32)" -c dev
+sigillo secrets set BETTER_AUTH_SECRET "$(openssl rand -base64 32)" -c preview
+sigillo secrets set BETTER_AUTH_SECRET "$(openssl rand -base64 32)" -c prod
+```
+
+### 6. Print the web UI URLs
+
+After setup, tell the user to open the Sigillo web UI to fill in empty secrets. The URL pattern is:
+
+```
+https://sigillo.dev/orgs/<ORG_ID>/projects/<PROJECT_ID>/envs/<ENV_SLUG>
+```
+
+Always print the actual URLs with real IDs so the user can click them:
+
+```
+https://sigillo.dev/orgs/01ABC.../projects/01DEF.../envs/dev
+https://sigillo.dev/orgs/01ABC.../projects/01DEF.../envs/preview
+https://sigillo.dev/orgs/01ABC.../projects/01DEF.../envs/prod
+```
+
+### 7. Verify
+
+```bash
+sigillo secrets -c dev
+sigillo run -c dev -- pnpm dev
+```
 

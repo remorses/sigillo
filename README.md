@@ -96,6 +96,78 @@ sigillo run -- next dev
 
 That's it. No `.env` files, no copy-pasting keys. Go back to [sigillo.dev](https://sigillo.dev) any time to add, edit, or rotate secrets — the next `sigillo run` picks them up automatically.
 
+## Setting up a new project
+
+The Quick Start above assumes you already have a project with secrets. This section walks through creating everything from scratch, either from the CLI or the [dashboard](https://sigillo.dev).
+
+### Create an organization
+
+Organizations group projects and team members together. You need one before creating any project.
+
+**CLI:**
+
+```bash
+sigillo orgs create --name my-company
+```
+
+**Dashboard:** Go to [sigillo.dev](https://sigillo.dev) and click "Create Organization" from the sidebar.
+
+### Create a project
+
+A project holds secrets for one app or service. Creating a project automatically gives you three environments: **dev**, **preview**, and **prod**.
+
+```bash
+sigillo orgs   # find your org ID
+sigillo projects create --org <ORG_ID> --name my-app
+```
+
+**Dashboard:** Open your org, click "New Project", and give it a name. The three default environments are created for you.
+
+### Link a directory
+
+`sigillo setup` saves the project and environment for the current directory in `~/.sigillo/config.json`. After this, every `sigillo run` in that directory (or any subdirectory) automatically resolves the right secrets without extra flags.
+
+```bash
+cd my-app
+sigillo setup --project <PROJECT_ID> --env dev
+```
+
+Without flags, `sigillo setup` shows an interactive picker. Use `--project` and `--env` for non-interactive/CI workflows.
+
+### Add secrets
+
+Add the secrets your app needs. You can set real values now, or leave them empty and fill them in later from the dashboard.
+
+```bash
+sigillo secrets set DATABASE_URL "postgres://localhost:5432/mydb" -c dev
+sigillo secrets set API_KEY "" -c dev
+sigillo secrets set AUTH_SECRET "" -c dev
+```
+
+Repeat for other environments:
+
+```bash
+sigillo secrets set DATABASE_URL "" -c preview
+sigillo secrets set DATABASE_URL "" -c prod
+```
+
+For encryption keys or auth secrets, generate a real random value right away:
+
+```bash
+sigillo secrets set AUTH_SECRET "$(openssl rand -base64 32)" -c dev
+sigillo secrets set AUTH_SECRET "$(openssl rand -base64 32)" -c preview
+sigillo secrets set AUTH_SECRET "$(openssl rand -base64 32)" -c prod
+```
+
+**Dashboard:** Open your project at `sigillo.dev/orgs/<ORG_ID>/projects/<PROJECT_ID>/envs/dev` to add or edit secrets from the web UI. You can toggle between environments using the tabs.
+
+### Verify and run
+
+```bash
+sigillo secrets -c dev   # list secret names (values hidden)
+sigillo run -c dev -- pnpm dev
+```
+
 ## Features
 
 | Feature | Description |
