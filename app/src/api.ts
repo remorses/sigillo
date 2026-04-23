@@ -11,7 +11,7 @@ import { openapi } from 'spiceflow/openapi'
 import * as orm from 'drizzle-orm'
 import { createInsertSchema, createSelectSchema } from 'drizzle-orm/zod'
 import { z } from 'zod'
-import * as schema from 'db/src/app-schema.ts'
+import { schema } from 'db'
 import {
   getDb,
   getDataCenter,

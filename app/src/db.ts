@@ -8,19 +8,15 @@
 // when set, otherwise derive a stable AES-256 key from BETTER_AUTH_SECRET.
 
 import { env } from 'cloudflare:workers'
-import { drizzle } from 'drizzle-orm/d1'
 import * as orm from 'drizzle-orm'
-import * as schema from 'db/src/app-schema.ts'
+import { getDb, schema } from 'db'
 import { betterAuth } from 'better-auth'
 import { genericOAuth, deviceAuthorization, bearer } from 'better-auth/plugins'
 import { drizzleAdapter } from '@better-auth/drizzle-adapter/relations-v2'
 import { redirect } from 'spiceflow'
 
 // ── Drizzle client via D1 ───────────────────────────────────────────
-
-export function getDb() {
-  return drizzle(env.DB, { schema, relations: schema.relations })
-}
+export { getDb }
 
 // ── OAuth client registration ───────────────────────────────────────
 // Registers this instance with the provider via RFC 7591 dynamic client

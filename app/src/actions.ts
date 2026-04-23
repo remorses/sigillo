@@ -13,7 +13,7 @@
 import { ulid } from 'ulid'
 import * as orm from 'drizzle-orm'
 import type { BatchItem } from 'drizzle-orm/batch'
-import * as schema from 'db/src/app-schema.ts'
+import { schema } from 'db'
 import { getActionRequest, redirect } from 'spiceflow'
 import {
   getDb, getSession,
