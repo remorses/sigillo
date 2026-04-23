@@ -100,15 +100,34 @@
         }
       }
     },
-    "/api/orgs": {
+    "/api/v0/orgs": {
       "post": {
         "parameters": [],
         "responses": {
           "200": {
             "description": "",
             "content": {
-              "*/*": {
-                "schema": {}
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "id",
+                    "name"
+                  ]
+                }
               }
             }
           },
@@ -161,16 +180,8 @@
                           "name": {
                             "type": "string"
                           },
-                          "createdAt": {
-                            "type": "integer",
-                            "minimum": -9007199254740991,
-                            "maximum": 9007199254740991
-                          },
-                          "updatedAt": {
-                            "type": "integer",
-                            "minimum": -9007199254740991,
-                            "maximum": 9007199254740991
-                          },
+                          "createdAt": {},
+                          "updatedAt": {},
                           "role": {
                             "type": "string",
                             "enum": [
@@ -207,7 +218,7 @@
         }
       }
     },
-    "/api/projects": {
+    "/api/v0/projects": {
       "post": {
         "parameters": [],
         "responses": {
@@ -308,16 +319,8 @@
                           "name": {
                             "type": "string"
                           },
-                          "createdAt": {
-                            "type": "integer",
-                            "minimum": -9007199254740991,
-                            "maximum": 9007199254740991
-                          },
-                          "updatedAt": {
-                            "type": "integer",
-                            "minimum": -9007199254740991,
-                            "maximum": 9007199254740991
-                          },
+                          "createdAt": {},
+                          "updatedAt": {},
                           "environments": {
                             "type": "array",
                             "items": {
@@ -335,16 +338,8 @@
                                 "slug": {
                                   "type": "string"
                                 },
-                                "createdAt": {
-                                  "type": "integer",
-                                  "minimum": -9007199254740991,
-                                  "maximum": 9007199254740991
-                                },
-                                "updatedAt": {
-                                  "type": "integer",
-                                  "minimum": -9007199254740991,
-                                  "maximum": 9007199254740991
-                                }
+                                "createdAt": {},
+                                "updatedAt": {}
                               },
                               "required": [
                                 "id",
@@ -386,7 +381,7 @@
         }
       }
     },
-    "/api/projects/{id}": {
+    "/api/v0/projects/{id}": {
       "get": {
         "parameters": [
           {
@@ -415,16 +410,8 @@
                     "name": {
                       "type": "string"
                     },
-                    "createdAt": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991
-                    },
-                    "updatedAt": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991
-                    },
+                    "createdAt": {},
+                    "updatedAt": {},
                     "environments": {
                       "type": "array",
                       "items": {
@@ -442,16 +429,8 @@
                           "slug": {
                             "type": "string"
                           },
-                          "createdAt": {
-                            "type": "integer",
-                            "minimum": -9007199254740991,
-                            "maximum": 9007199254740991
-                          },
-                          "updatedAt": {
-                            "type": "integer",
-                            "minimum": -9007199254740991,
-                            "maximum": 9007199254740991
-                          }
+                          "createdAt": {},
+                          "updatedAt": {}
                         },
                         "required": [
                           "id",
@@ -657,7 +636,7 @@
         }
       }
     },
-    "/api/projects/{projectId}/environments": {
+    "/api/v0/projects/{projectId}/environments": {
       "get": {
         "parameters": [
           {
@@ -697,16 +676,8 @@
                           "slug": {
                             "type": "string"
                           },
-                          "createdAt": {
-                            "type": "integer",
-                            "minimum": -9007199254740991,
-                            "maximum": 9007199254740991
-                          },
-                          "updatedAt": {
-                            "type": "integer",
-                            "minimum": -9007199254740991,
-                            "maximum": 9007199254740991
-                          }
+                          "createdAt": {},
+                          "updatedAt": {}
                         },
                         "required": [
                           "id",
@@ -853,9 +824,17 @@
         }
       }
     },
-    "/api/environments/{id}": {
+    "/api/v0/projects/{projectId}/environments/{id}": {
       "get": {
         "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          },
           {
             "schema": {
               "type": "string"
@@ -885,16 +864,8 @@
                     "slug": {
                       "type": "string"
                     },
-                    "createdAt": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991
-                    },
-                    "updatedAt": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991
-                    }
+                    "createdAt": {},
+                    "updatedAt": {}
                   },
                   "required": [
                     "id",
@@ -938,6 +909,14 @@
       },
       "delete": {
         "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          },
           {
             "schema": {
               "type": "string"
@@ -1001,6 +980,14 @@
       },
       "patch": {
         "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          },
           {
             "schema": {
               "type": "string"
@@ -1111,9 +1098,17 @@
         }
       }
     },
-    "/api/environments/{environmentId}/secrets": {
+    "/api/v0/projects/{projectId}/environments/{environmentId}/secrets": {
       "get": {
         "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          },
           {
             "schema": {
               "type": "string"
@@ -1145,11 +1140,7 @@
                           "name": {
                             "type": "string"
                           },
-                          "createdAt": {
-                            "type": "integer",
-                            "minimum": -9007199254740991,
-                            "maximum": 9007199254740991
-                          },
+                          "createdAt": {},
                           "updatedAt": {
                             "type": "number"
                           }
@@ -1183,6 +1174,14 @@
       },
       "post": {
         "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          },
           {
             "schema": {
               "type": "string"
@@ -1245,8 +1244,7 @@
                     "minLength": 1
                   },
                   "value": {
-                    "type": "string",
-                    "minLength": 1
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -1260,6 +1258,14 @@
       },
       "put": {
         "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          },
           {
             "schema": {
               "type": "string"
@@ -1335,9 +1341,17 @@
         }
       }
     },
-    "/api/environments/{environmentId}/secrets/{name}": {
+    "/api/v0/projects/{projectId}/environments/{environmentId}/secrets/{name}": {
       "get": {
         "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          },
           {
             "schema": {
               "type": "string"
@@ -1369,11 +1383,7 @@
                     "name": {
                       "type": "string"
                     },
-                    "createdAt": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991
-                    },
+                    "createdAt": {},
                     "updatedAt": {
                       "type": "number"
                     },
@@ -1431,6 +1441,14 @@
               "type": "string"
             },
             "in": "path",
+            "name": "projectId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
             "name": "environmentId",
             "required": true
           },
@@ -1478,9 +1496,17 @@
         }
       }
     },
-    "/api/environments/{environmentId}/secrets/download": {
+    "/api/v0/projects/{projectId}/environments/{environmentId}/secrets/download": {
       "get": {
         "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          },
           {
             "schema": {
               "type": "string"
@@ -1495,7 +1521,11 @@
               "enum": [
                 "json",
                 "env",
-                "yaml"
+                "env-no-quotes",
+                "xargs",
+                "yaml",
+                "docker",
+                "dotnet-json"
               ]
             },
             "in": "query",
@@ -1523,7 +1553,7 @@
         }
       }
     },
-    "/api/me": {
+    "/api/v0/me": {
       "get": {
         "responses": {
           "200": {
@@ -1642,7 +1672,7 @@
         }
       }
     },
-    "/api/openapi.json": {
+    "/api/v0/openapi.json": {
       "get": {
         "responses": {
           "200": {

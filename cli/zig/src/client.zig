@@ -191,6 +191,41 @@ pub fn getMe(args: GetMeArgs) !JsonResult(api.MeResponse) {
     });
 }
 
+pub const ListOrgsArgs = struct {
+    allocator: std.mem.Allocator,
+    api_url: []const u8,
+    token: []const u8,
+};
+
+pub fn listOrgs(args: ListOrgsArgs) !JsonResult(api.OrgListResponse) {
+    return parseJsonResult(api.OrgListResponse, .{
+        .allocator = args.allocator,
+        .method = .GET,
+        .base_url = args.api_url,
+        .path = "/api/v0/orgs",
+        .token = args.token,
+    });
+}
+
+pub const CreateOrgArgs = struct {
+    allocator: std.mem.Allocator,
+    api_url: []const u8,
+    token: []const u8,
+    name: []const u8,
+};
+
+pub fn createOrg(args: CreateOrgArgs) !JsonResult(api.OrgMutationResponse) {
+    const body = try jsonBody(args.allocator, api.OrgCreateRequest{ .name = args.name });
+    return parseJsonResult(api.OrgMutationResponse, .{
+        .allocator = args.allocator,
+        .method = .POST,
+        .base_url = args.api_url,
+        .path = "/api/v0/orgs",
+        .token = args.token,
+        .json_body = body,
+    });
+}
+
 pub const ListProjectsArgs = struct {
     allocator: std.mem.Allocator,
     api_url: []const u8,

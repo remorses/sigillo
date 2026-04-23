@@ -53,6 +53,12 @@ const orgListResponseSchema = z.object({
   orgs: z.array(orgSummarySchema),
 })
 
+const orgMutationResponseSchema = z.object({
+  ok: z.literal(true),
+  id: z.string(),
+  name: z.string(),
+})
+
 const meUserSchema = userSelectSchema.pick({ id: true, name: true, email: true })
 
 const meOrgSchema = orgSelectSchema
@@ -292,6 +298,7 @@ export const apiApp = new Spiceflow()
     method: 'POST',
     path: '/api/v0/orgs',
     request: z.object({ name: z.string().min(1) }),
+    response: orgMutationResponseSchema,
     async handler({ request }) {
       const body = await request.json()
       const session = await requireApiSession(request)
@@ -301,6 +308,7 @@ export const apiApp = new Spiceflow()
         db.insert(schema.org).values({ id: orgId, name: body.name }).returning({ id: schema.org.id, name: schema.org.name }),
         db.insert(schema.orgMember).values({ orgId, userId: session.userId, role: 'admin' }),
       ] as const)
+      return { ok: true as const, id: org!.id!, name: org!.name! }
     },
   })
 

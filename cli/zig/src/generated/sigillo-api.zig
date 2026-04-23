@@ -18,27 +18,35 @@ pub const MeResponse = struct {
 pub const OrgListResponseOrgsItem = struct {
     id: []const u8,
     name: []const u8,
-    createdAt: i64,
-    updatedAt: i64,
+    createdAt: std.json.Value,
+    updatedAt: std.json.Value,
     role: []const u8,
 };
 pub const OrgListResponse = struct {
     orgs: []const OrgListResponseOrgsItem,
+};
+pub const OrgMutationResponse = struct {
+    ok: bool,
+    id: []const u8,
+    name: []const u8,
+};
+pub const OrgCreateRequest = struct {
+    name: []const u8,
 };
 pub const ProjectListResponseProjectsItemEnvironmentsItem = struct {
     id: []const u8,
     projectId: []const u8,
     name: []const u8,
     slug: []const u8,
-    createdAt: i64,
-    updatedAt: i64,
+    createdAt: std.json.Value,
+    updatedAt: std.json.Value,
 };
 pub const ProjectListResponseProjectsItem = struct {
     id: []const u8,
     orgId: []const u8,
     name: []const u8,
-    createdAt: i64,
-    updatedAt: i64,
+    createdAt: std.json.Value,
+    updatedAt: std.json.Value,
     environments: []const ProjectListResponseProjectsItemEnvironmentsItem,
 };
 pub const ProjectListResponse = struct {
@@ -49,15 +57,15 @@ pub const ProjectSummaryEnvironmentsItem = struct {
     projectId: []const u8,
     name: []const u8,
     slug: []const u8,
-    createdAt: i64,
-    updatedAt: i64,
+    createdAt: std.json.Value,
+    updatedAt: std.json.Value,
 };
 pub const ProjectSummary = struct {
     id: []const u8,
     orgId: []const u8,
     name: []const u8,
-    createdAt: i64,
-    updatedAt: i64,
+    createdAt: std.json.Value,
+    updatedAt: std.json.Value,
     environments: []const ProjectSummaryEnvironmentsItem,
 };
 pub const ProjectMutationResponse = struct {
@@ -82,8 +90,8 @@ pub const EnvironmentListResponseEnvironmentsItem = struct {
     projectId: []const u8,
     name: []const u8,
     slug: []const u8,
-    createdAt: i64,
-    updatedAt: i64,
+    createdAt: std.json.Value,
+    updatedAt: std.json.Value,
 };
 pub const EnvironmentListResponse = struct {
     projectId: []const u8,
@@ -94,8 +102,8 @@ pub const EnvironmentSummary = struct {
     projectId: []const u8,
     name: []const u8,
     slug: []const u8,
-    createdAt: i64,
-    updatedAt: i64,
+    createdAt: std.json.Value,
+    updatedAt: std.json.Value,
 };
 pub const EnvironmentMutationResponse = struct {
     ok: bool,
@@ -119,7 +127,7 @@ pub const EnvironmentDeleteResponse = struct {
 pub const SecretListResponseSecretsItem = struct {
     id: []const u8,
     name: []const u8,
-    createdAt: i64,
+    createdAt: std.json.Value,
     updatedAt: f64,
 };
 pub const SecretListResponse = struct {
@@ -129,7 +137,7 @@ pub const SecretListResponse = struct {
 pub const SecretValueResponse = struct {
     id: []const u8,
     name: []const u8,
-    createdAt: i64,
+    createdAt: std.json.Value,
     updatedAt: f64,
     value: []const u8,
     environmentId: []const u8,

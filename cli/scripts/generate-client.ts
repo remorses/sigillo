@@ -24,6 +24,8 @@ const doc = JSON.parse(readFileSync(openapiPath, 'utf8')) as {
 const operations = [
   { name: 'MeResponse', path: '/api/v0/me', method: 'get', source: 'response' },
   { name: 'OrgListResponse', path: '/api/v0/orgs', method: 'get', source: 'response' },
+  { name: 'OrgMutationResponse', path: '/api/v0/orgs', method: 'post', source: 'response' },
+  { name: 'OrgCreateRequest', path: '/api/v0/orgs', method: 'post', source: 'request' },
   { name: 'ProjectListResponse', path: '/api/v0/projects', method: 'get', source: 'response' },
   { name: 'ProjectSummary', path: '/api/v0/projects/{id}', method: 'get', source: 'response' },
   { name: 'ProjectMutationResponse', path: '/api/v0/projects', method: 'post', source: 'response' },

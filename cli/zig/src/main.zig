@@ -197,6 +197,11 @@ const SecretsDownload = zeke.cmd("secrets download", "Download all secrets in a 
     .example("sigillo secrets download --format json")
     .example("sigillo secrets download --format xargs | xargs -0 -n2 sh -c 'printf %s \"$2\" | vercel env add \"$1\" production --force' sh");
 
+const Orgs = zeke.cmd("orgs", "List organizations");
+
+const OrgsCreate = zeke.cmd("orgs create", "Create an organization")
+    .option("--name <name>", "Organization name");
+
 const Projects = zeke.cmd("projects", "List projects across organizations");
 
 const ProjectsCreate = zeke.cmd("projects create", "Create a project")
@@ -1326,6 +1331,62 @@ fn secretsDownloadAction(_: SecretsDownload.Args, opts: SecretsDownload.Options,
     try stdout.print("{s}\n", .{std.mem.trimRight(u8, res.body, "\n")});
 }
 
+fn orgsAction(_: Orgs.Args, _: Orgs.Options, global: Global.Options) !void {
+    const stderr = getStderr();
+    const stdout = getStdout();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const cwd = try config.getCwd(allocator);
+    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url });
+    const res = try client.listOrgs(.{ .allocator = allocator, .api_url = api_ctx.api_url, .token = api_ctx.token });
+    if (res.status != 200 or res.value == null) {
+        const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
+        try color.err(stderr, "error");
+        try stderr.print(": failed to list orgs ({d}): {s}\n", .{ res.status, message });
+        std.process.exit(1);
+    }
+    try stdout.writeAll("orgs:\n");
+    for (res.value.?.orgs) |org| {
+        try stdout.print("  - id: {s}\n    name: {s}\n    role: {s}\n", .{
+            try quoteString(allocator, org.id),
+            try quoteString(allocator, org.name),
+            try quoteString(allocator, org.role),
+        });
+    }
+}
+
+fn orgsCreateAction(_: OrgsCreate.Args, opts: OrgsCreate.Options, global: Global.Options) !void {
+    const stderr = getStderr();
+    const stdout = getStdout();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const cwd = try config.getCwd(allocator);
+    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url });
+    const res = try client.createOrg(.{
+        .allocator = allocator,
+        .api_url = api_ctx.api_url,
+        .token = api_ctx.token,
+        .name = opts.name,
+    });
+    if (res.status != 200 or res.value == null) {
+        const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
+        try color.err(stderr, "error");
+        try stderr.print(": failed to create org ({d}): {s}\n", .{ res.status, message });
+        std.process.exit(1);
+    }
+    const org = res.value.?;
+    try stdout.print("ok: true\nid: {s}\nname: {s}\n", .{
+        try quoteString(allocator, org.id),
+        try quoteString(allocator, org.name),
+    });
+}
+
 fn projectsAction(_: Projects.Args, _: Projects.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
@@ -2184,6 +2245,22 @@ test "run command parses short config alias" {
     try std.testing.expectEqualStrings("env_123", State.environment.?);
 }
 
+test "orgs create parses required options" {
+    const State = struct {
+        var name: ?[]const u8 = null;
+
+        fn action(_: OrgsCreate.Args, opts: OrgsCreate.Options, _: Global.Options) !void {
+            name = opts.name;
+        }
+    };
+
+    const TestOrgsCreate = OrgsCreate.bindWith(Global, State.action);
+    var app = zeke.AppWith(.{TestOrgsCreate}, Global).init(std.testing.allocator, "sigillo");
+    try app.dispatch(&.{ "orgs", "create", "--name", "holocron" });
+
+    try std.testing.expectEqualStrings("holocron", State.name.?);
+}
+
 test "projects create parses required options" {
     const State = struct {
         var org: ?[]const u8 = null;
@@ -2305,6 +2382,8 @@ pub fn main() !void {
         SecretsSet.bindWith(Global, secretsSetAction),
         SecretsDelete.bindWith(Global, secretsDeleteAction),
         SecretsDownload.bindWith(Global, secretsDownloadAction),
+        Orgs.bindWith(Global, orgsAction),
+        OrgsCreate.bindWith(Global, orgsCreateAction),
         Projects.bindWith(Global, projectsAction),
         ProjectsCreate.bindWith(Global, projectsCreateAction),
         ProjectsGet.bindWith(Global, projectsGetAction),
