@@ -574,7 +574,7 @@ export const apiApp = new Spiceflow()
   .route({
     method: 'POST',
     path: '/api/v0/projects/:projectId/environments/:environmentId/secrets',
-    request: z.object({ name: z.string().min(1), value: z.string().min(1) }),
+    request: z.object({ name: z.string().min(1), value: z.string() }),
     response: secretMutationResponseSchema,
     async handler({ request, params }) {
       const body = await request.json()
