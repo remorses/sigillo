@@ -46,10 +46,7 @@ fn envOverride(env: ?[]const u8, config_alias: ?[]const u8) ?[]const u8 {
 
 const Global = zeke.globalOpts()
     .option("--token [token]", "Auth token override")
-    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)")
-    .option("--project [id]", "Project ID override")
-    .option("--env [slug]", "Env slug override (e.g. dev, prod)")
-    .option("-c, --config [slug]", "Env slug override");
+    .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
 
 fn printAvailableProjects(
     allocator: std.mem.Allocator,
@@ -158,6 +155,9 @@ const Me = zeke.cmd("me", "Show current user info")
     .option("--json", "Print raw JSON");
 
 const Setup = zeke.cmd("setup", "Save project and env for the current directory")
+    .option("--project [id]", "Project ID")
+    .option("--env [slug]", "Env slug (e.g. dev, prod)")
+    .option("-c, --config [slug]", "Env slug alias")
     .example("sigillo setup --project website --env dev");
 
 const Run = zeke.cmd("run <...cmd>", "Run a command with secrets injected")
@@ -165,21 +165,34 @@ const Run = zeke.cmd("run <...cmd>", "Run a command with secrets injected")
     .option("--mount [path]", "Write secrets to a file before running")
     .option("--mount-format [fmt]", "Format for mounted file: env, env-no-quotes, json, yaml, docker, dotnet-json (default: env)")
     .option("--disable-redaction", "Print child output without secret redaction")
+    .option("--project [id]", "Project ID override")
+    .option("--env [slug]", "Env slug override (e.g. dev, prod)")
+    .option("-c, --config [slug]", "Env slug override")
     .example("sigillo run -- env")
     .example("sigillo run --mount .env -- npm start")
     .example("sigillo run --mount config.json --mount-format json -- next dev")
     .example("sigillo run --command 'echo $MY_SECRET'");
 
-const Secrets = zeke.cmd("secrets", "List secrets for the configured env");
+const Secrets = zeke.cmd("secrets", "List secrets for the configured env")
+    .option("--env [slug]", "Env slug override (e.g. dev, prod)")
+    .option("-c, --config [slug]", "Env slug override");
 
-const SecretsGet = zeke.cmd("secrets get <name>", "Get a secret value");
+const SecretsGet = zeke.cmd("secrets get <name>", "Get a secret value")
+    .option("--env [slug]", "Env slug override (e.g. dev, prod)")
+    .option("-c, --config [slug]", "Env slug override");
 
-const SecretsSet = zeke.cmd("secrets set <name> [value]", "Set a secret value (omit value to read from stdin)");
+const SecretsSet = zeke.cmd("secrets set <name> [value]", "Set a secret value (omit value to read from stdin)")
+    .option("--env [slug]", "Env slug override (e.g. dev, prod)")
+    .option("-c, --config [slug]", "Env slug override");
 
-const SecretsDelete = zeke.cmd("secrets delete <name>", "Delete a secret");
+const SecretsDelete = zeke.cmd("secrets delete <name>", "Delete a secret")
+    .option("--env [slug]", "Env slug override (e.g. dev, prod)")
+    .option("-c, --config [slug]", "Env slug override");
 
 const SecretsDownload = zeke.cmd("secrets download", "Download all secrets in a chosen format")
     .option("--format [fmt]", "Output format: json, env, env-no-quotes, xargs, yaml, docker, dotnet-json (default: yaml)")
+    .option("--env [slug]", "Env slug override (e.g. dev, prod)")
+    .option("-c, --config [slug]", "Env slug override")
     .example("sigillo secrets download")
     .example("sigillo secrets download --format json")
     .example("sigillo secrets download --format xargs | xargs -0 -n2 sh -c 'printf %s \"$2\" | vercel env add \"$1\" production --force' sh");
@@ -197,9 +210,11 @@ const ProjectsUpdate = zeke.cmd("projects update <id>", "Update a project")
 
 const ProjectsDelete = zeke.cmd("projects delete <id>", "Delete a project");
 
-const Environments = zeke.cmd("environments", "List envs for the configured project");
+const Environments = zeke.cmd("environments", "List envs for the configured project")
+    .option("--project [id]", "Project ID override");
 
 const EnvironmentsCreate = zeke.cmd("environments create", "Create an env")
+    .option("--project <id>", "Project ID")
     .option("--name <name>", "Env name")
     .option("--slug <slug>", "Env slug");
 
@@ -443,7 +458,7 @@ fn meAction(_: Me.Args, opts: Me.Options, global: Global.Options) !void {
     }
 }
 
-fn setupAction(_: Setup.Args, _: Setup.Options, global: Global.Options) !void {
+fn setupAction(_: Setup.Args, opts: Setup.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -471,7 +486,7 @@ fn setupAction(_: Setup.Args, _: Setup.Options, global: Global.Options) !void {
         std.posix.isatty(File.stdout().handle);
 
     // ── Resolve project ────────────────────────────────────────────
-    const project: []const u8 = if (global.project) |p| p else if (is_tty) proj: {
+    const project: []const u8 = if (opts.project) |p| p else if (is_tty) proj: {
         // Fetch orgs → projects and present an interactive select.
         const me_res = client.getMe(.{
             .allocator = allocator,
@@ -555,7 +570,7 @@ fn setupAction(_: Setup.Args, _: Setup.Options, global: Global.Options) !void {
         std.process.exit(1);
     };
     if (env_res.status != 200) {
-        if (env_res.status == 404 and global.project != null) {
+        if (env_res.status == 404 and opts.project != null) {
             exitProjectNotFound(allocator, stderr, api_url, token, project);
         }
         const message = client.parseError(allocator, env_res.body) orelse try allocator.dupe(u8, "unknown error");
@@ -571,7 +586,7 @@ fn setupAction(_: Setup.Args, _: Setup.Options, global: Global.Options) !void {
     const all_envs = envs.environments;
 
     // ── Resolve environment (by slug) ─────────────────────────────
-    const environment: []const u8 = if (envOverride(global.env, global.config)) |e| env_val: {
+    const environment: []const u8 = if (envOverride(opts.env, opts.config)) |e| env_val: {
         // Validate the provided environment slug exists.
         var found = false;
         for (all_envs) |env| {
@@ -649,8 +664,8 @@ fn runAction(args: Run.Args, opts: Run.Options, global: Global.Options) !void {
     const resolved = try config.resolve(allocator, cwd, .{
         .token = global.token,
         .api_url = global.api_url,
-        .project = global.project,
-        .environment = envOverride(global.env, global.config),
+        .project = opts.project,
+        .environment = envOverride(opts.env, opts.config),
     });
 
     const token = resolved.token orelse {
@@ -1082,7 +1097,7 @@ fn requireEnvironmentContext(allocator: std.mem.Allocator, stderr: Writer, cwd: 
     };
 }
 
-fn secretsAction(_: Secrets.Args, _: Secrets.Options, global: Global.Options) !void {
+fn secretsAction(_: Secrets.Args, opts: Secrets.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -1094,7 +1109,7 @@ fn secretsAction(_: Secrets.Args, _: Secrets.Options, global: Global.Options) !v
     const ctx = try requireEnvironmentContext(allocator, stderr, cwd, .{
         .token = global.token,
         .api_url = global.api_url,
-        .environment = envOverride(global.env, global.config),
+        .environment = envOverride(opts.env, opts.config),
     });
 
     const res = try client.listSecrets(.{
@@ -1124,7 +1139,7 @@ fn secretsAction(_: Secrets.Args, _: Secrets.Options, global: Global.Options) !v
     }
 }
 
-fn secretsGetAction(args: SecretsGet.Args, _: SecretsGet.Options, global: Global.Options) !void {
+fn secretsGetAction(args: SecretsGet.Args, opts: SecretsGet.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -1136,7 +1151,7 @@ fn secretsGetAction(args: SecretsGet.Args, _: SecretsGet.Options, global: Global
     const ctx = try requireEnvironmentContext(allocator, stderr, cwd, .{
         .token = global.token,
         .api_url = global.api_url,
-        .environment = envOverride(global.env, global.config),
+        .environment = envOverride(opts.env, opts.config),
     });
 
     const res = try client.getSecret(.{
@@ -1165,7 +1180,7 @@ fn secretsGetAction(args: SecretsGet.Args, _: SecretsGet.Options, global: Global
     );
 }
 
-fn secretsSetAction(args: SecretsSet.Args, _: SecretsSet.Options, global: Global.Options) !void {
+fn secretsSetAction(args: SecretsSet.Args, opts: SecretsSet.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -1177,7 +1192,7 @@ fn secretsSetAction(args: SecretsSet.Args, _: SecretsSet.Options, global: Global
     const ctx = try requireEnvironmentContext(allocator, stderr, cwd, .{
         .token = global.token,
         .api_url = global.api_url,
-        .environment = envOverride(global.env, global.config),
+        .environment = envOverride(opts.env, opts.config),
     });
 
     // Resolve secret value: use positional arg, or read from piped stdin.
@@ -1230,7 +1245,7 @@ fn secretsSetAction(args: SecretsSet.Args, _: SecretsSet.Options, global: Global
     );
 }
 
-fn secretsDeleteAction(args: SecretsDelete.Args, _: SecretsDelete.Options, global: Global.Options) !void {
+fn secretsDeleteAction(args: SecretsDelete.Args, opts: SecretsDelete.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -1242,7 +1257,7 @@ fn secretsDeleteAction(args: SecretsDelete.Args, _: SecretsDelete.Options, globa
     const ctx = try requireEnvironmentContext(allocator, stderr, cwd, .{
         .token = global.token,
         .api_url = global.api_url,
-        .environment = envOverride(global.env, global.config),
+        .environment = envOverride(opts.env, opts.config),
     });
 
     const res = try client.deleteSecret(.{
@@ -1275,7 +1290,7 @@ fn secretsDownloadAction(_: SecretsDownload.Args, opts: SecretsDownload.Options,
     const ctx = try requireEnvironmentContext(allocator, stderr, cwd, .{
         .token = global.token,
         .api_url = global.api_url,
-        .environment = envOverride(global.env, global.config),
+        .environment = envOverride(opts.env, opts.config),
     });
 
     const format = opts.format orelse "yaml";
@@ -1460,7 +1475,7 @@ fn projectsDeleteAction(args: ProjectsDelete.Args, _: ProjectsDelete.Options, gl
     try stdout.print("ok: true\nid: {s}\n", .{try quoteString(allocator, res.value.?.id)});
 }
 
-fn environmentsAction(_: Environments.Args, _: Environments.Options, global: Global.Options) !void {
+fn environmentsAction(_: Environments.Args, opts: Environments.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -1472,7 +1487,7 @@ fn environmentsAction(_: Environments.Args, _: Environments.Options, global: Glo
     const ctx = try requireProjectContext(allocator, stderr, cwd, .{
         .token = global.token,
         .api_url = global.api_url,
-        .project = global.project,
+        .project = opts.project,
     });
     const res = try client.listEnvironments(.{ .allocator = allocator, .api_url = ctx.api.api_url, .token = ctx.api.token, .project_id = ctx.project_id });
     if (res.status != 200 or res.value == null) {
@@ -1505,11 +1520,7 @@ fn environmentsCreateAction(_: EnvironmentsCreate.Args, opts: EnvironmentsCreate
         .allocator = allocator,
         .api_url = api_ctx.api_url,
         .token = api_ctx.token,
-        .project_id = global.project orelse {
-            try color.err(stderr, "error");
-            try stderr.print(": --project is required\n", .{});
-            std.process.exit(1);
-        },
+        .project_id = opts.project,
         .name = opts.name,
         .slug = opts.slug,
     });
@@ -1538,7 +1549,7 @@ fn environmentsGetAction(args: EnvironmentsGet.Args, _: EnvironmentsGet.Options,
     const allocator = arena.allocator();
     const cwd = try config.getCwd(allocator);
     const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url });
-    const project_ctx = try requireProjectContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url, .project = global.project });
+    const project_ctx = try requireProjectContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url });
     const res = try client.getEnvironment(.{ .allocator = allocator, .api_url = api_ctx.api_url, .token = api_ctx.token, .project_id = project_ctx.project_id, .environment_id = args.id });
     if (res.status != 200 or res.value == null) {
         const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
@@ -1570,7 +1581,7 @@ fn environmentsRenameAction(args: EnvironmentsRename.Args, opts: EnvironmentsRen
         try stderr.print(": pass --name, --slug, or both\n", .{});
         std.process.exit(1);
     }
-    const project_ctx = try requireProjectContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url, .project = global.project });
+    const project_ctx = try requireProjectContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url });
     const res = try client.updateEnvironment(.{
         .allocator = allocator,
         .api_url = api_ctx.api_url,
@@ -1605,7 +1616,7 @@ fn environmentsDeleteAction(args: EnvironmentsDelete.Args, _: EnvironmentsDelete
     const allocator = arena.allocator();
     const cwd = try config.getCwd(allocator);
     const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url });
-    const project_ctx = try requireProjectContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url, .project = global.project });
+    const project_ctx = try requireProjectContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url });
     const res = try client.deleteEnvironment(.{ .allocator = allocator, .api_url = api_ctx.api_url, .token = api_ctx.token, .project_id = project_ctx.project_id, .environment_id = args.id });
     if (res.status != 200 or res.value == null) {
         const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
@@ -2129,8 +2140,8 @@ test "secrets command parses env override" {
     const State = struct {
         var environment: ?[]const u8 = null;
 
-        fn action(_: Secrets.Args, _: Secrets.Options, global: Global.Options) !void {
-            environment = envOverride(global.env, global.config);
+        fn action(_: Secrets.Args, opts: Secrets.Options, _: Global.Options) !void {
+            environment = envOverride(opts.env, opts.config);
         }
     };
 
@@ -2145,8 +2156,8 @@ test "secrets command parses config alias" {
     const State = struct {
         var environment: ?[]const u8 = null;
 
-        fn action(_: Secrets.Args, _: Secrets.Options, global: Global.Options) !void {
-            environment = envOverride(global.env, global.config);
+        fn action(_: Secrets.Args, opts: Secrets.Options, _: Global.Options) !void {
+            environment = envOverride(opts.env, opts.config);
         }
     };
 
@@ -2161,8 +2172,8 @@ test "run command parses short config alias" {
     const State = struct {
         var environment: ?[]const u8 = null;
 
-        fn action(_: Run.Args, _: Run.Options, global: Global.Options) !void {
-            environment = envOverride(global.env, global.config);
+        fn action(_: Run.Args, opts: Run.Options, _: Global.Options) !void {
+            environment = envOverride(opts.env, opts.config);
         }
     };
 
@@ -2178,14 +2189,14 @@ test "projects create parses required options" {
         var org: ?[]const u8 = null;
         var name: ?[]const u8 = null;
 
-        fn action(_: ProjectsCreate.Args, opts: ProjectsCreate.Options) !void {
+        fn action(_: ProjectsCreate.Args, opts: ProjectsCreate.Options, _: Global.Options) !void {
             org = opts.org;
             name = opts.name;
         }
     };
 
-    const TestProjectsCreate = ProjectsCreate.bind(State.action);
-    var app = zeke.App(.{TestProjectsCreate}).init(std.testing.allocator, "sigillo");
+    const TestProjectsCreate = ProjectsCreate.bindWith(Global, State.action);
+    var app = zeke.AppWith(.{TestProjectsCreate}, Global).init(std.testing.allocator, "sigillo");
     try app.dispatch(&.{ "projects", "create", "--org", "org_123", "--name", "backend" });
 
     try std.testing.expectEqualStrings("org_123", State.org.?);
@@ -2198,15 +2209,15 @@ test "environments rename parses optional name and slug" {
         var name: ?[]const u8 = null;
         var slug: ?[]const u8 = null;
 
-        fn action(args: EnvironmentsRename.Args, opts: EnvironmentsRename.Options) !void {
+        fn action(args: EnvironmentsRename.Args, opts: EnvironmentsRename.Options, _: Global.Options) !void {
             id = args.id;
             name = opts.name;
             slug = opts.slug;
         }
     };
 
-    const TestEnvironmentsRename = EnvironmentsRename.bind(State.action);
-    var app = zeke.App(.{TestEnvironmentsRename}).init(std.testing.allocator, "sigillo");
+    const TestEnvironmentsRename = EnvironmentsRename.bindWith(Global, State.action);
+    var app = zeke.AppWith(.{TestEnvironmentsRename}, Global).init(std.testing.allocator, "sigillo");
     try app.dispatch(&.{ "environments", "rename", "env_123", "--name", "prod", "--slug", "production" });
 
     try std.testing.expectEqualStrings("env_123", State.id.?);
