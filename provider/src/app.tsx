@@ -12,6 +12,48 @@ import { getAuth } from './db.ts'
 import { ConsentButtons } from './components/consent-buttons.tsx'
 
 
+function ConsentScreen({ redirectDomain }: { redirectDomain: string | null }) {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-background px-4 py-10 sm:px-6">
+      <section className="w-full max-w-sm">
+        <div className="flex flex-col gap-1.5">
+          <p className="text-sm font-medium text-foreground">Sigillo Auth</p>
+          <h1 className="text-2xl font-semibold tracking-[-0.02em] text-foreground">
+            Sign in to continue
+          </h1>
+        </div>
+
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+          {redirectDomain ? (
+            <>
+              <span className="font-medium text-foreground">{redirectDomain}</span> wants to use your Sigillo account.
+            </>
+          ) : (
+            'An app wants to use your Sigillo account.'
+          )}
+        </p>
+
+        <div className="mt-6">
+          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            Redirect to
+          </p>
+          <p className="mt-2 break-all text-sm font-medium text-foreground">
+            {redirectDomain ?? 'Unknown domain'}
+          </p>
+        </div>
+
+        <p className="mt-4 text-sm leading-6 text-muted-foreground">
+          Only continue if you trust this domain.
+        </p>
+
+        <div className="mt-6">
+          <ConsentButtons />
+        </div>
+      </section>
+    </main>
+  )
+}
+
 function getRedirectDomain(redirectUri: string | null) {
   if (!redirectUri) return null
   try {
@@ -108,68 +150,12 @@ export const app = new Spiceflow()
       return Response.redirect(result.url, 302)
     }
 
-    return (
-      <main className="min-h-screen bg-background px-6 py-10 text-foreground sm:px-8">
-        <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-7xl items-center justify-center">
-          <div className="grid w-full max-w-5xl gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.9fr)]">
-            <section className="rounded-[28px] border border-border bg-card p-8 shadow-[0_24px_60px_rgba(15,23,42,0.12)] sm:p-10 dark:shadow-[0_24px_60px_rgba(0,0,0,0.4)]">
-              <div className="inline-flex items-center rounded-full border border-border bg-secondary px-3 py-1.5 text-xs font-semibold text-muted-foreground">
-                Sigillo Auth
-              </div>
-              <h1 className="mt-5 text-4xl font-semibold tracking-[-0.03em] text-balance sm:text-5xl">
-                Allow access to continue?
-              </h1>
-              <p className="mt-4 text-base leading-7 text-muted-foreground">
-                {redirectDomain ? (
-                  <>
-                    <span className="font-semibold text-foreground">{redirectDomain}</span> wants to use Sigillo Auth to sign you in.
-                  </>
-                ) : (
-                  'This app wants to use Sigillo Auth to sign you in.'
-                )}
-              </p>
+    return <ConsentScreen redirectDomain={redirectDomain} />
+  })
 
-              <div className="mt-8 rounded-[20px] border border-border bg-card p-5 shadow-sm">
-                <p className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">
-                  Redirect domain
-                </p>
-                <p className="mt-3.5 overflow-wrap-anywhere text-2xl font-semibold leading-8 text-foreground">
-                  {redirectDomain ?? 'Unknown domain'}
-                </p>
-                <p className="mt-3.5 text-sm leading-6 text-muted-foreground">
-                  Only continue if you expected this sign-in request and trust this domain.
-                </p>
-              </div>
-
-              <div className="mt-8">
-                <ConsentButtons />
-              </div>
-            </section>
-
-            <aside className="rounded-[28px] border border-border bg-secondary/80 p-8 sm:p-10">
-              <div className="rounded-[20px] border border-border bg-card p-5 shadow-sm">
-                <p className="text-sm font-semibold text-card-foreground">What you’re approving</p>
-                <ul className="mt-4 grid gap-3">
-                  <li className="rounded-2xl border border-border bg-card px-4 py-3.5 text-sm leading-6 text-muted-foreground shadow-sm">
-                    Use your Sigillo account identity to complete sign-in
-                  </li>
-                  <li className="rounded-2xl border border-border bg-card px-4 py-3.5 text-sm leading-6 text-muted-foreground shadow-sm">
-                    Share the basic profile fields needed for authentication
-                  </li>
-                  <li className="rounded-2xl border border-border bg-card px-4 py-3.5 text-sm leading-6 text-muted-foreground shadow-sm">
-                    Return you to <span className="font-semibold text-foreground">{redirectDomain ?? 'the requesting app'}</span> after approval
-                  </li>
-                </ul>
-              </div>
-
-              <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                Sigillo does not show the raw OAuth client identifier here. The only thing worth checking at approval time is the destination host.
-              </p>
-            </aside>
-          </div>
-        </div>
-      </main>
-    )
+  // Preview route to see consent UI without initiating an auth flow
+  .page('/consent-preview', async () => {
+    return <ConsentScreen redirectDomain="my-app.example.com" />
   })
 
   // ── Well-known endpoints ─────────────────────────────────────

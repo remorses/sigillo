@@ -1,5 +1,6 @@
 /* Import shared theme from app — single source of truth for colors and tokens. */
 @import 'sigillo-app/src/globals.css';
+@source '../../app/src/components/ui/**/*.tsx';
 
 @layer base {
   html,
