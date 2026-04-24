@@ -402,3 +402,14 @@ export async function createOrgAction({ name }: { name: string }) {
   ] as const)
   throw redirect(`/orgs/${org!.id}`)
 }
+
+export async function deleteOrgAction({ orgId }: { orgId: string }) {
+  if (!orgId) throw new Error('Org ID is required')
+  const session = await requireSession()
+  await requireAdminRole(session.userId, orgId)
+  const db = getDb()
+  // Cascade deletes handle orgMembers, invitations, projects, environments,
+  // secretEvents, and apiTokens automatically via foreign key constraints.
+  await db.delete(schema.org).where(orm.eq(schema.org.id, orgId))
+  throw redirect('/')
+}

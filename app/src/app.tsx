@@ -526,6 +526,31 @@ export const app = new Spiceflow()
     )
   })
 
+  // ── Settings page ────────────────────────────────────────────────
+  .page('/orgs/:orgId/projects/:projectId/settings', async ({ params, request }) => {
+    const db = getDb()
+    const { orgId } = params
+    const session = await requirePageSession(request)
+    const { role } = await requirePageOrgMember(session.userId, orgId)
+
+    const [orgRow, projects] = await Promise.all([
+      db.query.org.findFirst({ where: { id: orgId }, columns: { name: true } }),
+      db.query.project.findMany({ where: { orgId }, columns: { name: true }, orderBy: { createdAt: 'asc' } }),
+    ])
+
+    const { SettingsPage } = await import('sigillo-app/src/components/settings-page')
+
+    return (
+      <div className="flex flex-col gap-3 w-full">
+        <SettingsPage
+          orgId={orgId}
+          orgName={orgRow?.name ?? 'Organization'}
+          projectNames={projects.map((p) => p.name)}
+        />
+      </div>
+    )
+  })
+
   // ── Device flow verification page (standalone, no sidebar) ─────
   // Uses the proper BetterAuth device authorization client flow:
   // 1. Validate code via authClient.device({ query: { user_code } })
@@ -647,6 +672,7 @@ function TabBar({
       href: currentEnvBase ? `${currentEnvBase}/event-log` : `${base}/event-log`,
       active: pathname === `${base}/event-log` || pathname.endsWith('/event-log'),
     },
+    { label: 'Settings', href: `${base}/settings`, active: pathname === `${base}/settings` },
   ] as const
 
   return (
