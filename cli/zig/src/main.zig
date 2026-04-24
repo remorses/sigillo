@@ -461,6 +461,22 @@ fn meAction(_: Me.Args, opts: Me.Options, global: Global.Options) !void {
             try stdout.writeAll("\n");
         }
     }
+
+    // Show current directory's project/env setup if configured
+    if (resolved.project != null or resolved.environment != null) {
+        try stdout.writeAll("\n");
+        try color.blue(stdout, "Setup:   ");
+        try color.dim(stdout, cwd);
+        try stdout.writeAll("\n");
+        if (resolved.project) |project| {
+            try color.blue(stdout, "Project: ");
+            try stdout.print("{s}\n", .{project});
+        }
+        if (resolved.environment) |environment| {
+            try color.blue(stdout, "Env:     ");
+            try stdout.print("{s}\n", .{environment});
+        }
+    }
 }
 
 fn setupAction(_: Setup.Args, opts: Setup.Options, global: Global.Options) !void {
