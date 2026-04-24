@@ -1,7 +1,7 @@
 // Secrets table with editable keys/values like Doppler.
 // Values hidden by default (password inputs). Eye icon to reveal.
-// Editing a key or value marks the row dirty. A "Save N secrets"
-// button appears when there are unsaved changes.
+// Editing a key or value, filling a missing key, or drafting a new secret
+// marks the table dirty. A single "Save N secrets" flow handles all of it.
 // Import from .env via a dialog with a textarea, and export current secrets
 // back to .env via download or copy.
 
@@ -12,7 +12,6 @@ import { EmptyState } from "sigillo-app/src/components/ui/empty-state";
 import { useState, useCallback } from "react";
 import { z } from "zod";
 import { parseFormData } from "spiceflow";
-import { ErrorBoundary } from "spiceflow/react";
 import { cn } from "sigillo-app/src/lib/utils";
 import { Button } from "sigillo-app/src/components/ui/button";
 import { Frame } from "sigillo-app/src/components/ui/frame";
@@ -38,7 +37,6 @@ import {
 import { parseEnv } from "sigillo-app/src/lib/parse-env";
 import { formatTime } from "sigillo-app/src/lib/utils";
 import {
-  createSecretAction,
   deleteSecretAction,
   saveSecretsAction,
   syncMissingSecretsAction,
@@ -128,7 +126,7 @@ export function SecretsTable({
   allVisible: boolean;
   allSecretNames: string[];
 }) {
-  const [showNewRow, setShowNewRow] = useState(false);
+  const [newSecrets, setNewSecrets] = useState<Array<{ id: string; name: string; value: string }>>([]);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -153,7 +151,10 @@ export function SecretsTable({
   // Keys that exist in other envs but not in this one
   // Use edited names so renaming a secret to a missing key hides the red row
   const effectiveNames = new Set(
-    secrets.map((s) => edits[s.id]?.name ?? s.name).filter(Boolean)
+    [
+      ...secrets.map((s) => edits[s.id]?.name ?? s.name),
+      ...newSecrets.map((secret) => secret.name),
+    ].filter(Boolean)
   );
   const missingKeys = allSecretNames.filter((name) => !effectiveNames.has(name));
 
@@ -168,7 +169,28 @@ export function SecretsTable({
   // Missing keys that have a value typed in
   const dirtyMissingKeys = missingKeys.filter((name) => missingEdits[name]?.trim());
 
-  const totalDirtyCount = dirtySecrets.length + dirtyMissingKeys.length;
+  const dirtyNewSecrets = newSecrets.filter((secret) => secret.name.trim() && secret.value.trim());
+
+  const pendingEdits = [
+    ...dirtySecrets.map((secret) => {
+      const edit = edits[secret.id]!;
+      return {
+        originalName: secret.name,
+        name: edit.name !== undefined ? edit.name : secret.name,
+        value: edit.value !== undefined ? edit.value : secret.value,
+      };
+    }),
+    ...dirtyMissingKeys.map((name) => ({
+      name,
+      value: missingEdits[name]!,
+    })),
+    ...dirtyNewSecrets.map((secret) => ({
+      name: secret.name,
+      value: secret.value,
+    })),
+  ];
+
+  const totalDirtyCount = pendingEdits.length;
 
   const currentEnvEntries: Array<[string, string]> = [
     ...secrets.map<[string, string]>((secret) => [
@@ -176,32 +198,19 @@ export function SecretsTable({
       edits[secret.id]?.value ?? secret.value,
     ]),
     ...dirtyMissingKeys.map<[string, string]>((name) => [name, missingEdits[name]!]),
+    ...dirtyNewSecrets.map<[string, string]>((secret) => [secret.name, secret.value]),
   ];
   const envFileText = currentEnvEntries
     .map(([name, value]) => `${name}=${JSON.stringify(value)}`)
     .join("\n") + "\n";
 
-  const buildPayload = useCallback(() => {
-    return dirtySecrets.map((s) => {
-      const e = edits[s.id]!;
-      return {
-        // originalName is the key before any rename — used for event sourcing
-        originalName: s.name,
-        name: e.name !== undefined ? e.name : s.name,
-        value: e.value,
-      };
-    });
-  }, [dirtySecrets, edits]);
-
   const handleImportText = useCallback(async (text: string) => {
     const parsed = parseEnv(text);
-    const entries = Object.entries(parsed);
-    if (entries.length === 0) return;
+    const edits = Object.entries(parsed).map(([name, value]) => ({ name, value }));
+    if (edits.length === 0) return;
     setImporting(true);
     try {
-      for (const [name, value] of entries) {
-        await createSecretAction({ name, value, environmentId });
-      }
+      await saveSecretsAction({ edits, environmentIds: [environmentId] });
       setImportOpen(false);
     } catch (e: any) {
       alert(e?.message || "Failed to import secrets");
@@ -209,6 +218,20 @@ export function SecretsTable({
       setImporting(false);
     }
   }, [environmentId]);
+
+  const addNewSecret = useCallback(() => {
+    setNewSecrets((prev) => [...prev, { id: crypto.randomUUID(), name: "", value: "" }]);
+  }, []);
+
+  const updateNewSecret = useCallback((id: string, field: "name" | "value", value: string) => {
+    setNewSecrets((prev) => prev.map((secret) => (
+      secret.id === id ? { ...secret, [field]: value } : secret
+    )));
+  }, []);
+
+  const removeNewSecret = useCallback((id: string) => {
+    setNewSecrets((prev) => prev.filter((secret) => secret.id !== id));
+  }, []);
 
   const handleDownloadEnv = useCallback(() => {
     const blob = new Blob([envFileText], { type: "text/plain;charset=utf-8" });
@@ -229,7 +252,7 @@ export function SecretsTable({
   }, [envFileText]);
 
   // Empty state (only show when no secrets AND no missing keys from other envs)
-  if (secrets.length === 0 && missingKeys.length === 0 && !showNewRow) {
+  if (secrets.length === 0 && missingKeys.length === 0 && newSecrets.length === 0) {
     return (
       <>
         <EmptyState
@@ -238,7 +261,7 @@ export function SecretsTable({
           description="Add secrets manually or import them from a .env file to get started."
         >
           <div className="flex items-center gap-3">
-            <Button size="sm" onClick={() => setShowNewRow(true)}>
+            <Button size="sm" onClick={addNewSecret}>
               <PlusIcon className="size-4" />
               Add Secret
             </Button>
@@ -253,8 +276,6 @@ export function SecretsTable({
           </div>
         </EmptyState>
         <ImportEnvDialog open={importOpen} onOpenChange={setImportOpen} importing={importing} onImport={handleImportText} />
-        {/* Inline add row for empty state */}
-        {showNewRow && <AddSecretRow environmentId={environmentId} onDone={() => setShowNewRow(false)} />}
       </>
     );
   }
@@ -359,6 +380,55 @@ export function SecretsTable({
                 </TableRow>
               );
             })}
+            {newSecrets.map((secret) => {
+              const isComplete = secret.name.trim() && secret.value.trim();
+              return (
+                <TableRow
+                  key={secret.id}
+                  className={cn(
+                    "bg-primary/5 dark:bg-primary/10",
+                    isComplete && "bg-amber-50/50 dark:bg-amber-950/20",
+                  )}
+                >
+                  <TableCell className="min-w-0 overflow-hidden">
+                    <Input
+                      type="text"
+                      inputSize="sm"
+                      autoFocus={newSecrets.length === 1}
+                      value={secret.name}
+                      onChange={(e) => updateNewSecret(secret.id, "name", e.target.value)}
+                      placeholder="SECRET_KEY"
+                      className="w-full min-w-0 border-transparent bg-transparent px-1.5 font-mono font-medium focus:border-input hover:border-input"
+                    />
+                  </TableCell>
+                  <TableCell className="min-w-0 overflow-hidden">
+                    <Input
+                      type="text"
+                      inputSize="sm"
+                      autoComplete="off"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      value={secret.value}
+                      onChange={(e) => updateNewSecret(secret.id, "value", e.target.value)}
+                      placeholder="secret value"
+                      className="w-full min-w-0 border-transparent bg-transparent px-1.5 font-mono focus:border-input hover:border-input"
+                    />
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    <span className="text-xs text-muted-foreground">new</span>
+                  </TableCell>
+                  <TableCell className="p-0">
+                    <button
+                      onClick={() => removeNewSecret(secret.id)}
+                      className="text-muted-foreground hover:text-destructive cursor-pointer"
+                      title="Remove draft secret"
+                    >
+                      <TrashIcon className="size-3.5" />
+                    </button>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
 
@@ -366,59 +436,50 @@ export function SecretsTable({
         {/* Bottom bar: add secret + import */}
         <div className="flex items-center justify-between gap-2 px-1 pb-2">
           <div className="flex items-center gap-2">
-            {showNewRow ? (
-              <AddSecretRow environmentId={environmentId} onDone={() => setShowNewRow(false)} />
-            ) : (
-              <>
+            <>
+              <Button onClick={addNewSecret} size="xs">
+                <PlusIcon className="size-3" />
+                Add Secret
+              </Button>
+              {missingKeys.length > 0 && (
                 <Button
-                  onClick={() => setShowNewRow(true)}
+                  onClick={() => setSyncOpen(true)}
                   size="xs"
+                  variant="ghost"
                 >
-                  <PlusIcon className="size-3" />
-                  Add Secret
+                  <ArrowDownToLineIcon className="size-3" />
+                  Sync {missingKeys.length} missing
                 </Button>
-                {missingKeys.length > 0 && (
-                  <Button
-                    onClick={() => setSyncOpen(true)}
-                    size="xs"
-                    variant="ghost"
-                  >
-                    <ArrowDownToLineIcon className="size-3" />
-                    Sync {missingKeys.length} missing
-                  </Button>
-                )}
-              </>
-            )}
+              )}
+            </>
           </div>
 
-          {!showNewRow && (
-            <div className="flex items-center gap-1">
-              <Button
-                onClick={() => setImportOpen(true)}
-                size="xs"
-                variant="ghost"
-              >
-                <UploadIcon className="size-3" />
-                Import .env
-              </Button>
-              <Button
-                onClick={handleDownloadEnv}
-                size="xs"
-                variant="ghost"
-              >
-                <DownloadIcon className="size-3" />
-                Download .env
-              </Button>
-              <Button
-                onClick={() => void handleCopyEnv()}
-                size="xs"
-                variant="ghost"
-              >
-                <CopyIcon className="size-3" />
-                Copy as .env
-              </Button>
-            </div>
-          )}
+          <div className="flex items-center gap-1">
+            <Button
+              onClick={() => setImportOpen(true)}
+              size="xs"
+              variant="ghost"
+            >
+              <UploadIcon className="size-3" />
+              Import .env
+            </Button>
+            <Button
+              onClick={handleDownloadEnv}
+              size="xs"
+              variant="ghost"
+            >
+              <DownloadIcon className="size-3" />
+              Download .env
+            </Button>
+            <Button
+              onClick={() => void handleCopyEnv()}
+              size="xs"
+              variant="ghost"
+            >
+              <CopyIcon className="size-3" />
+              Copy as .env
+            </Button>
+          </div>
         </div>
       </Frame>
 
@@ -442,18 +503,12 @@ export function SecretsTable({
         onSave={async (envIds) => {
           setSaving(true);
           try {
-            // Save existing secret edits
-            if (dirtySecrets.length > 0) {
-              await saveSecretsAction({ edits: buildPayload(), environmentIds: envIds });
-            }
-            // Create missing keys that have values typed in (honor selected envs)
-            for (const envId of envIds) {
-              for (const name of dirtyMissingKeys) {
-                await createSecretAction({ name, value: missingEdits[name]!, environmentId: envId });
-              }
+            if (pendingEdits.length > 0) {
+              await saveSecretsAction({ edits: pendingEdits, environmentIds: envIds });
             }
             setEdits({});
             setMissingEdits({});
+            setNewSecrets([]);
             setSaveOpen(false);
           } catch (e: any) {
             alert(e?.message || "Failed to save secrets");
@@ -607,64 +662,6 @@ function SaveToEnvsDialog({
         </DialogFooter>
       </DialogPopup>
     </Dialog>
-  );
-}
-
-const addSecretSchema = z.object({ name: z.string().min(1, "Key is required"), value: z.string().min(1, "Value is required") });
-const addSecretFields = addSecretSchema.keyof().enum;
-
-function AddSecretRow({
-  environmentId,
-  onDone,
-}: {
-  environmentId: string;
-  onDone: () => void;
-}) {
-  return (
-    <ErrorBoundary
-      fallback={
-        <div className="flex items-center grow gap-2">
-          <ErrorBoundary.ErrorMessage className="text-xs text-destructive" />
-          <ErrorBoundary.ResetButton className="text-xs text-destructive underline cursor-pointer">
-            Try again
-          </ErrorBoundary.ResetButton>
-        </div>
-      }
-    >
-      <form
-        className="flex items-center grow gap-2"
-        action={async (formData: FormData) => {
-          const { name, value } = parseFormData(addSecretSchema, formData);
-          await createSecretAction({ name, value, environmentId });
-          onDone();
-        }}
-      >
-        <Input
-          name={addSecretFields.name}
-          placeholder="SECRET_KEY"
-          required
-          autoFocus
-          className="flex-1 font-mono"
-        />
-        <Input
-          name={addSecretFields.value}
-          type="text"
-          autoComplete="off"
-          data-1p-ignore
-          data-lpignore="true"
-      placeholder="secret value"
-          required
-      className="flex-1 font-mono text-security-disc"
-    />
-    <div className="flex-1" />
-        <Button size="sm" type="submit">
-          Add
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onDone}>
-          Cancel
-        </Button>
-      </form>
-    </ErrorBoundary>
   );
 }
 

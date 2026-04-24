@@ -66,25 +66,6 @@ export async function createProjectAction({ name, orgId }: { name: string; orgId
 
 // All secret mutations append to the secretEvent log. Never update or delete events.
 
-export async function createSecretAction({ name, value, environmentId }: {
-  name: string
-  value: string
-  environmentId: string
-}) {
-  if (!name || !value) throw new Error('Key and value are required')
-  const session = await requireSession()
-  const orgId = await getOrgIdForEnvironment(environmentId)
-  if (!orgId) throw new Error('Environment not found')
-  await requireOrgMember(session.userId, orgId)
-  const db = getDb()
-  const { encrypted, iv } = await encrypt(value)
-  await db.insert(schema.secretEvent).values({
-    environmentId, name, operation: 'set',
-    valueEncrypted: encrypted, iv, userId: session.userId,
-  })
-  return { name }
-}
-
 export async function deleteSecretAction({ name, environmentId }: {
   name: string
   environmentId: string
@@ -103,7 +84,7 @@ export async function deleteSecretAction({ name, environmentId }: {
 // the same changes to additional environments. Each edit appends a "set"
 // event to the log. Renames are handled as delete old name + set new name.
 export async function saveSecretsAction({ edits, environmentIds }: {
-  edits: { name: string; originalName: string; value?: string }[]
+  edits: { name: string; originalName?: string; value: string }[]
   environmentIds: string[]
 }) {
   if (edits.length === 0 || environmentIds.length === 0) return
@@ -119,7 +100,7 @@ export async function saveSecretsAction({ edits, environmentIds }: {
   const editsWithEncrypted = await Promise.all(
     edits.map(async (edit) => ({
       ...edit,
-      enc: edit.value !== undefined ? await encrypt(edit.value) : null,
+      enc: await encrypt(edit.value),
     })),
   )
 
@@ -127,29 +108,27 @@ export async function saveSecretsAction({ edits, environmentIds }: {
   const queries: BatchItem<'sqlite'>[] = []
 
   for (const edit of editsWithEncrypted) {
-    const isRename = edit.name !== edit.originalName
+    const originalName = edit.originalName
+    const isRename = !!originalName && edit.name !== originalName
     if (isRename) {
       queries.push(db.insert(schema.secretEvent).values({
-        environmentId: currentEnvId, name: edit.originalName,
+        environmentId: currentEnvId, name: originalName,
         operation: 'delete', userId: session.userId,
       }))
     }
-    if (edit.enc) {
-      queries.push(db.insert(schema.secretEvent).values({
-        environmentId: currentEnvId, name: edit.name,
-        operation: 'set', valueEncrypted: edit.enc.encrypted, iv: edit.enc.iv,
-        userId: session.userId,
-      }))
-    }
+    queries.push(db.insert(schema.secretEvent).values({
+      environmentId: currentEnvId, name: edit.name,
+      operation: 'set', valueEncrypted: edit.enc!.encrypted, iv: edit.enc!.iv,
+      userId: session.userId,
+    }))
   }
 
   // Apply value changes to other environments
   const otherEnvIds = environmentIds.slice(1)
-  const valueEdits = editsWithEncrypted.filter((e) => e.enc)
   for (const envId of otherEnvIds) {
     const targetOrgId = await getOrgIdForEnvironment(envId)
     if (targetOrgId !== orgId) continue
-    for (const edit of valueEdits) {
+    for (const edit of editsWithEncrypted) {
       queries.push(db.insert(schema.secretEvent).values({
         environmentId: envId, name: edit.name,
         operation: 'set', valueEncrypted: edit.enc!.encrypted, iv: edit.enc!.iv,
@@ -158,8 +137,9 @@ export async function saveSecretsAction({ edits, environmentIds }: {
     }
   }
 
-  if (queries.length > 0) {
-    await db.batch(queries as [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]])
+  const [firstQuery, ...restQueries] = queries
+  if (firstQuery) {
+    await db.batch([firstQuery, ...restQueries])
   }
 }
 
@@ -387,7 +367,9 @@ export async function syncMissingSecretsAction({
     }),
   )
 
-  await db.batch(queries as [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]])
+  const [firstQuery, ...restQueries] = queries
+  if (!firstQuery) return { count: 0 }
+  await db.batch([firstQuery, ...restQueries])
   return { count: toSync.length }
 }
 
