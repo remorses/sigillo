@@ -19,7 +19,16 @@ export function ConsentButtons() {
   }
 
   return (
-    <div className="flex flex-col gap-2.5 sm:flex-row-reverse">
+    <div className="flex flex-col gap-2.5 sm:flex-row">
+      <Button
+        className="w-full sm:flex-1"
+        variant="ghost"
+        size="lg"
+        onClick={() => handleConsent(false)}
+        disabled={loading}
+      >
+        Deny
+      </Button>
       <Button
         className="w-full sm:flex-1"
         size="lg"
@@ -27,15 +36,6 @@ export function ConsentButtons() {
         loading={loading}
       >
         {loading ? "Redirecting…" : "Allow access"}
-      </Button>
-      <Button
-        className="w-full sm:flex-1"
-        variant="outline"
-        size="lg"
-        onClick={() => handleConsent(false)}
-        disabled={loading}
-      >
-        Deny
       </Button>
     </div>
   )

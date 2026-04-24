@@ -33,15 +33,6 @@ function ConsentScreen({ redirectDomain }: { redirectDomain: string | null }) {
           )}
         </p>
 
-        <div className="mt-6">
-          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-            Redirect to
-          </p>
-          <p className="mt-2 break-all text-sm font-medium text-foreground">
-            {redirectDomain ?? 'Unknown domain'}
-          </p>
-        </div>
-
         <p className="mt-4 text-sm leading-6 text-muted-foreground">
           Only continue if you trust this domain.
         </p>
