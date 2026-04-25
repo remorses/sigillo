@@ -72,9 +72,30 @@ Always load these skills before working on this project:
 
 ## Deployments
 
-- When asked to deploy `app` or `provider`, default to **production deployment**, not preview.
+**Always deploy preview first, then production.** Never go straight to production.
+
+Deployment sequence:
+
+```bash
+# 1. Deploy preview (runs migration + build + deploy)
+pnpm --dir app deployment:preview
+pnpm --dir provider deployment:preview
+
+# 2. Verify preview works (load the page, hit /api/health, check logs)
+
+# 3. Deploy production (runs migration + build + deploy)
+pnpm --dir app deployment
+pnpm --dir provider deployment
+```
+
+If the preview migration or deploy fails, **stop**. Do not continue to production. Investigate the error, fix the migration, and retry preview first.
+
+Rules:
+
 - Use script names with `deployment` instead of `deploy` to avoid pnpm's built-in `pnpm deploy` command confusion.
 - Use `deployment` for production and `deployment:preview` for preview-only deploys.
+- The `deployment` and `deployment:preview` scripts run the D1 migration before building and deploying. If migration fails, the `&&` chain stops and the deploy never happens.
+- After deploying preview, always verify it works before proceeding to production.
 
 ## Local dev and first-time setup
 
@@ -143,7 +164,7 @@ pnpm --dir provider exec wrangler d1 migrations apply DB --remote
 pnpm --dir provider exec wrangler d1 migrations apply DB --remote --env preview
 ```
 
-Wrangler tracks applied migrations in a `d1_migrations` metadata table inside each D1 database, so it only runs new ones. Always migrate **before** deploying the new worker code that depends on the schema change.
+Wrangler tracks applied migrations in a `d1_migrations` metadata table inside each D1 database, so it only runs new ones. The `deployment` and `deployment:preview` scripts now run migrations automatically before building, so you rarely need these manual commands. Use them only for one-off migration testing without redeploying.
 
 Provider migrations are generated separately via `drizzle-kit generate --config drizzle.provider.config.ts` (if it exists) or manually placed in `provider/drizzle/`.
 
