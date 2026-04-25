@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.7.0
+
+1. **New `sigillo orgs` and `sigillo orgs create` commands** — manage organizations from the terminal:
+
+   ```bash
+   # list your organizations
+   sigillo orgs
+
+   # create a new organization
+   sigillo orgs create --name "My Team"
+   ```
+
+   `orgs` prints a table of org IDs, names, and your role. `orgs create` creates a new org and shows its ID and name. Both work with `--token` and `--api-url` like every other command.
+
+2. **`sigillo me` now shows current project/env setup** — when a project and/or environment is configured for the current directory (via `sigillo setup`), the me command prints a setup section showing the scoped directory, project ID, and env slug.
+
+3. **Cleaner help with shared global options** — `--token` and `--api-url` now appear once in help output instead of repeating on every command. Project-, env-, and config-specific flags stay on the commands that use them. The zeke framework powers this under the hood.
+
+4. **Empty string secrets are now allowed** — `sigillo secrets set KEY ""` no longer errors. Empty string values are valid secrets that get stored and decrypted correctly.
+
 ## 0.6.0
 
 1. **Versioned `v0` API with project-scoped environment routes**. The CLI now talks to `/api/v0/...` and includes the project id on every environment-bound request. This makes env slug resolution consistent across `run`, `secrets`, and environment management commands on self-hosted installs:
