@@ -18,7 +18,8 @@ import superjson from 'superjson'
 import { waitUntil } from 'cloudflare:workers'
 import { getDeploymentId } from 'spiceflow'
 
-const CACHE_BASE = 'https://worker-memoize.internal/'
+// Use 0.0.0.0 to avoid DNS lookups on cache key URLs (non-routable IP)
+const CACHE_BASE = 'https://0.0.0.0/'
 
 interface CacheEnvelope<T> {
   value: T
@@ -80,12 +81,15 @@ async function refreshCache<Args extends unknown[], T>(
   args: Args,
   maxAge: number,
 ): Promise<void> {
-  const value = await fn(...args)
-  if (shouldCache(value)) {
-    await putCache(cache, req, value, maxAge)
-  } else {
-    // Value became null/error; evict stale entry so next request hits DB
-    await cache.delete(req)
+  try {
+    const value = await fn(...args)
+    if (shouldCache(value)) {
+      await putCache(cache, req, value, maxAge)
+    } else {
+      await cache.delete(req).catch(() => {})
+    }
+  } catch {
+    // Background refresh failed; stale entry stays until it expires naturally
   }
 }
 
@@ -102,7 +106,7 @@ async function putCache<T>(
       'cache-control': `s-maxage=${maxAge}`,
     },
   })
-  await cache.put(req, response)
+  await cache.put(req, response).catch(() => {})
 }
 
 export async function invalidate(namespace: string, ...args: unknown[]): Promise<boolean> {
