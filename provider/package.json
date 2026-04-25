@@ -32,11 +32,11 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.31.2",
-    "drizzle-kit": "1.0.0-beta.21",
     "@types/node": "^25.6.0",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "@vitejs/plugin-react": "latest",
+    "drizzle-kit": "1.0.0-beta.21",
     "typescript": "latest",
     "vite": "latest",
     "wrangler": "latest"

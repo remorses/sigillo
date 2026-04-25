@@ -179,7 +179,8 @@ Doppler UX rather than inventing a new interface.
 ## CLI development process
 
 - Prefer editing the Zig CLI directly in `cli/`.
-- Use `zig build` and `zig build test` for local validation.
+- Use `pnpm --dir cli build` to validate CLI changes. It runs the TypeScript wrapper build and refreshes the local `sigillo` command to the current checkout.
+- Use `zig build` and `zig build test` when you specifically need to validate the native Zig side directly.
 - Keep command implementations simple and short-lived.
 - Prefer arenas backed by a general allocator for command-scoped memory.
 - Never use `std.heap.page_allocator` in the CLI. Prefer a command-scoped or function-scoped `GeneralPurposeAllocator`, and use an `ArenaAllocator` on top when the lifetime is naturally whole-command.

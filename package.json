@@ -11,6 +11,9 @@
       "sharp",
       "workerd"
     ],
+    "overrides": {
+      "spiceflow": "workspace:^"
+    },
     "ignoredBuiltDependencies": [
       "esbuild",
       "sharp",
