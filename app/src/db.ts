@@ -14,6 +14,7 @@ import { betterAuth } from 'better-auth'
 import { genericOAuth, deviceAuthorization, bearer } from 'better-auth/plugins'
 import { drizzleAdapter } from '@better-auth/drizzle-adapter/relations-v2'
 import { redirect } from 'spiceflow'
+import { memoize } from './lib/memoize.ts'
 
 // ── Drizzle client via D1 ───────────────────────────────────────────
 export { getDb }
@@ -85,13 +86,16 @@ function originForHost(host: string): string {
   return `${protocol}://${host}`
 }
 
-async function listOAuthHosts(): Promise<string[]> {
-  const db = getDb()
-  const rows = await db.select({ host: schema.oauthDomain.host })
-    .from(schema.oauthDomain)
-    .orderBy(schema.oauthDomain.createdAt)
-  return rows.map((row) => row.host)
-}
+const listOAuthHosts = memoize({
+  namespace: 'oauth-hosts',
+  fn: async (): Promise<string[]> => {
+    const db = getDb()
+    const rows = await db.select({ host: schema.oauthDomain.host })
+      .from(schema.oauthDomain)
+      .orderBy(schema.oauthDomain.createdAt)
+    return rows.map((row) => row.host)
+  },
+})
 
 // Better Auth trusts the current request host plus previously registered hosts.
 // This is safe in the current Cloudflare Workers setup because the host is tied
@@ -106,19 +110,27 @@ async function listOAuthHosts(): Promise<string[]> {
 // If ingress ever moves outside that model (extra proxies, wildcard SaaS
 // routing, etc.), revisit this and add an explicit app-level allowlist instead
 // of trusting DB entries.
+const lookupOAuthClientId = memoize({
+  namespace: 'oauth-client',
+  fn: async (host: string): Promise<string | null> => {
+    const db = getDb()
+    const [row] = await db.select({ oauthClientId: schema.oauthDomain.oauthClientId })
+      .from(schema.oauthDomain)
+      .where(orm.eq(schema.oauthDomain.host, host))
+      .limit(1)
+    return row?.oauthClientId ?? null
+  },
+})
+
 export async function ensureOAuthClient(request: Request): Promise<string> {
-  const db = getDb()
   const pathname = new URL(request.url).pathname
   const host = getRequestHost(request)
-  const [row] = await db.select({ oauthClientId: schema.oauthDomain.oauthClientId })
-    .from(schema.oauthDomain)
-    .where(orm.eq(schema.oauthDomain.host, host))
-    .limit(1)
+  const cachedClientId = await lookupOAuthClientId(host)
 
   const isLocalHost = host.startsWith('localhost:') || host.startsWith('127.0.0.1:')
   const isOAuthCallback = pathname.startsWith('/api/auth/oauth2/callback/')
-  if (row && (!isLocalHost || isOAuthCallback)) {
-    return row.oauthClientId
+  if (cachedClientId && (!isLocalHost || isOAuthCallback)) {
+    return cachedClientId
   }
 
   if (host.endsWith('.workers.dev')) {
@@ -149,6 +161,7 @@ export async function ensureOAuthClient(request: Request): Promise<string> {
   }
   const { client_id }: { client_id: string } = await res.json()
 
+  const db = getDb()
   await db.insert(schema.oauthDomain)
     .values({ host, oauthClientId: client_id })
     .onConflictDoUpdate({
@@ -235,11 +248,20 @@ export async function requirePageSession(request: Request): Promise<Session> {
 
 // ── Org authorization ───────────────────────────────────────────────
 
+const lookupOrgMember = memoize({
+  namespace: 'org-member',
+  fn: async (userId: string, orgId: string): Promise<{ role: string } | null> => {
+    const db = getDb()
+    const member = await db.query.orgMember.findFirst({ where: { userId, orgId } })
+    if (!member) return null
+    return { role: member.role }
+  },
+})
+
 export async function requireOrgMember(userId: string, orgId: string) {
-  const db = getDb()
-  const member = await db.query.orgMember.findFirst({ where: { userId, orgId } })
+  const member = await lookupOrgMember(userId, orgId)
   if (!member) throw new Error('FORBIDDEN')
-  return { role: member.role }
+  return member
 }
 
 export async function requireApiOrgMember(userId: string, orgId: string) {
@@ -260,36 +282,46 @@ export async function requirePageOrgMember(userId: string, orgId: string) {
 
 // ── Org ownership chain lookups ─────────────────────────────────────
 
-export async function getOrgIdForProject(projectId: string) {
-  const db = getDb()
-  const row = await db.query.project.findFirst({ where: { id: projectId }, columns: { orgId: true } })
-  return row?.orgId ?? null
+export const getOrgIdForProject = memoize({
+  namespace: 'project-org',
+  fn: async (projectId: string): Promise<string | null> => {
+    const db = getDb()
+    const row = await db.query.project.findFirst({ where: { id: projectId }, columns: { orgId: true } })
+    return row?.orgId ?? null
+  },
+})
+
+// Resolve an environment identifier (ULID or slug) to { id, projectId, slug, orgId }.
+// Tries ID first, falls back to slug within the project scope.
+type ResolvedEnvironment = {
+  id: string
+  projectId: string
+  name: string
+  slug: string
+  createdAt: number
+  updatedAt: number
+  orgId: string | null
 }
 
-// Resolve an environment identifier that may be either a ULID or a slug.
-// Tries ID first (fast unique lookup), then falls back to slug within
-// the given project scope. Returns the full environment row or null.
-// Resolve an environment identifier that may be either a ULID or a slug.
-// Tries ID first (fast unique lookup), then falls back to slug within
-// the given project scope. Returns { id, projectId, slug, orgId } or null.
-export async function resolveEnvironment(identifier: string, projectId?: string | null) {
-  const db = getDb()
-  // Try by ID first (globally unique)
-  const byId = await db.query.environment.findFirst({
-    where: { id: identifier },
-    with: { project: { columns: { orgId: true } } },
-  })
-  if (byId) return { ...byId, orgId: byId.project?.orgId ?? null }
-  // Fall back to slug lookup — requires project context
-  if (projectId) {
-    const bySlug = await db.query.environment.findFirst({
-      where: { projectId, slug: identifier },
+export const resolveEnvironment = memoize({
+  namespace: 'resolve-env',
+  fn: async (identifier: string, projectId?: string | null): Promise<ResolvedEnvironment | null> => {
+    const db = getDb()
+    const byId = await db.query.environment.findFirst({
+      where: { id: identifier },
       with: { project: { columns: { orgId: true } } },
     })
-    if (bySlug) return { ...bySlug, orgId: bySlug.project?.orgId ?? null }
-  }
-  return null
-}
+    if (byId) return { ...byId, orgId: byId.project?.orgId ?? null }
+    if (projectId) {
+      const bySlug = await db.query.environment.findFirst({
+        where: { projectId, slug: identifier },
+        with: { project: { columns: { orgId: true } } },
+      })
+      if (bySlug) return { ...bySlug, orgId: bySlug.project?.orgId ?? null }
+    }
+    return null
+  },
+})
 
 export async function getOrgIdForEnvironment(environmentId: string, projectId?: string | null) {
   const env = await resolveEnvironment(environmentId, projectId)
