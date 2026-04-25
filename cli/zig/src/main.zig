@@ -154,9 +154,9 @@ const Logout = zeke.cmd("logout", "Remove saved auth for a scope")
 const Me = zeke.cmd("me", "Show current user info")
     .option("--json", "Print raw JSON");
 
-const Setup = zeke.cmd("setup", "Save project and env for the current directory")
+const Setup = zeke.cmd("setup", "Save default project and env for the current directory (stored in ~/.sigillo, not in the repo)")
     .option("--project [id]", "Project ID")
-    .option("--env [slug]", "Env slug (e.g. dev, prod)")
+    .option("--env [slug]", "Env slug, usually dev since you run locally with the development environment")
     .option("-c, --config [slug]", "Env slug alias")
     .example("sigillo setup --project website --env dev");
 

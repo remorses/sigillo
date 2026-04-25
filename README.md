@@ -80,13 +80,13 @@ bunx sigillo run -- next dev
 sigillo login
 ```
 
-**3. Link your project** — picks up the project and environment you created:
+**3. Link your project** — picks the default project and environment for this directory:
 
 ```bash
 sigillo setup
 ```
 
-This saves the project and environment for the current directory in `~/.sigillo/config.json`. Any subdirectory automatically resolves the right secrets from that point on.
+This saves the project and environment for the current directory in `~/.sigillo/config.json` (not in the repo). Run it in the project root if you have a single project, or in each subfolder of a monorepo. Since the config is local to your machine, you need to run `sigillo setup` again after cloning the repo on a new machine. Alternatively, skip setup entirely and always pass `--project` and `--env` (or `-c`) flags.
 
 **4. Run your app** with secrets injected as environment variables:
 
@@ -125,11 +125,24 @@ sigillo projects create --org <ORG_ID> --name my-app
 
 ### Link a directory
 
-`sigillo setup` saves the project and environment for the current directory in `~/.sigillo/config.json`. After this, every `sigillo run` in that directory (or any subdirectory) automatically resolves the right secrets without extra flags.
+`sigillo setup` saves the **default project and environment** for the current directory. This is a local-only setting stored in `~/.sigillo/config.json`, not in the repository. After setup, every `sigillo run` in that directory (or any subdirectory) resolves the right secrets without extra flags.
+
+Run it in the **project root** for single-project repos, or in **each subfolder** of a monorepo:
 
 ```bash
+# single project
 cd my-app
 sigillo setup --project <PROJECT_ID> --env dev
+
+# monorepo
+cd monorepo/api     && sigillo setup --project api_xxx --env dev
+cd monorepo/web     && sigillo setup --project web_xxx --env dev
+```
+
+Since the config lives on your machine (not in the repo), you need to re-run `sigillo setup` after cloning on a new machine. If you prefer not to run setup at all, you can always pass `--project` and `--env` explicitly:
+
+```bash
+sigillo run --project <PROJECT_ID> -c dev -- next dev
 ```
 
 Without flags, `sigillo setup` shows an interactive picker. Use `--project` and `--env` for non-interactive/CI workflows.
@@ -200,11 +213,11 @@ sigillo login --api-url https://my-instance.dev --scope .  # custom instance, sc
 
 ### `sigillo setup`
 
-Link the current directory to a project and environment. Interactive prompts guide you through selection.
+Save the default project and environment for the current directory. This is stored locally in `~/.sigillo/config.json`, not in the repo, so it needs to be done on each machine after cloning. Run it in the project root, or in each subfolder of a monorepo. You can skip setup entirely by always passing `--project` and `--env` flags to other commands.
 
 ```bash
 sigillo setup                                    # interactive project/env picker
-sigillo setup --project proj_abc --env prod       # non-interactive (CI)
+sigillo setup --project proj_abc --env dev        # non-interactive
 ```
 
 ### `sigillo run`
