@@ -283,7 +283,7 @@ Most commands that resolve auth, project, or environment from config accept thes
 | `--token <sig_xxx>` | `SIGILLO_TOKEN` | Bearer token for auth |
 | `--api-url <url>` | `SIGILLO_API_URL` | API endpoint (default: `https://sigillo.dev`) |
 | `--env <slug>` / `--config <slug>` / `-c <slug>` | `SIGILLO_ENVIRONMENT` | Environment slug (e.g. `dev`, `prod`) |
-| `--project <id>` | `SIGILLO_PROJECT` | Project ID override |
+| `--project <id>` / `-p <id>` | `SIGILLO_PROJECT` | Project ID override |
 
 ### Download formats
 

@@ -155,7 +155,7 @@ const Me = zeke.cmd("me", "Show current user info")
     .option("--json", "Print raw JSON");
 
 const Setup = zeke.cmd("setup", "Save default project and env for the current directory (stored in ~/.sigillo, not in the repo)")
-    .option("--project [id]", "Project ID")
+    .option("-p, --project [id]", "Project ID")
     .option("--env [slug]", "Env slug, usually dev since you run locally with the development environment")
     .option("-c, --config [slug]", "Env slug alias")
     .example("sigillo setup --project website --env dev");
@@ -165,7 +165,7 @@ const Run = zeke.cmd("run <...cmd>", "Run a command with secrets injected")
     .option("--mount [path]", "Write secrets to a file before running")
     .option("--mount-format [fmt]", "Format for mounted file: env, env-no-quotes, json, yaml, docker, dotnet-json (default: env)")
     .option("--disable-redaction", "Print child output without secret redaction")
-    .option("--project [id]", "Project ID override")
+    .option("-p, --project [id]", "Project ID override")
     .option("--env [slug]", "Env slug override (e.g. dev, prod)")
     .option("-c, --config [slug]", "Env slug override")
     .example("sigillo run -- env")
@@ -174,23 +174,28 @@ const Run = zeke.cmd("run <...cmd>", "Run a command with secrets injected")
     .example("sigillo run --command 'echo $MY_SECRET'");
 
 const Secrets = zeke.cmd("secrets", "List secrets for the configured env")
+    .option("-p, --project [id]", "Project ID override")
     .option("--env [slug]", "Env slug override (e.g. dev, prod)")
     .option("-c, --config [slug]", "Env slug override");
 
 const SecretsGet = zeke.cmd("secrets get <name>", "Get a secret value")
+    .option("-p, --project [id]", "Project ID override")
     .option("--env [slug]", "Env slug override (e.g. dev, prod)")
     .option("-c, --config [slug]", "Env slug override");
 
 const SecretsSet = zeke.cmd("secrets set <name> [value]", "Set a secret value (omit value to read from stdin)")
+    .option("-p, --project [id]", "Project ID override")
     .option("--env [slug]", "Env slug override (e.g. dev, prod)")
     .option("-c, --config [slug]", "Env slug override");
 
 const SecretsDelete = zeke.cmd("secrets delete <name>", "Delete a secret")
+    .option("-p, --project [id]", "Project ID override")
     .option("--env [slug]", "Env slug override (e.g. dev, prod)")
     .option("-c, --config [slug]", "Env slug override");
 
 const SecretsDownload = zeke.cmd("secrets download", "Download all secrets in a chosen format")
     .option("--format [fmt]", "Output format: json, env, env-no-quotes, xargs, yaml, docker, dotnet-json (default: yaml)")
+    .option("-p, --project [id]", "Project ID override")
     .option("--env [slug]", "Env slug override (e.g. dev, prod)")
     .option("-c, --config [slug]", "Env slug override")
     .example("sigillo secrets download")
@@ -216,10 +221,10 @@ const ProjectsUpdate = zeke.cmd("projects update <id>", "Update a project")
 const ProjectsDelete = zeke.cmd("projects delete <id>", "Delete a project");
 
 const Environments = zeke.cmd("environments", "List envs for the configured project")
-    .option("--project [id]", "Project ID override");
+    .option("-p, --project [id]", "Project ID override");
 
 const EnvironmentsCreate = zeke.cmd("environments create", "Create an env")
-    .option("--project <id>", "Project ID")
+    .option("-p, --project <id>", "Project ID")
     .option("--name <name>", "Env name")
     .option("--slug <slug>", "Env slug");
 
@@ -1130,6 +1135,7 @@ fn secretsAction(_: Secrets.Args, opts: Secrets.Options, global: Global.Options)
     const ctx = try requireEnvironmentContext(allocator, stderr, cwd, .{
         .token = global.token,
         .api_url = global.api_url,
+        .project = opts.project,
         .environment = envOverride(opts.env, opts.config),
     });
 
@@ -1172,6 +1178,7 @@ fn secretsGetAction(args: SecretsGet.Args, opts: SecretsGet.Options, global: Glo
     const ctx = try requireEnvironmentContext(allocator, stderr, cwd, .{
         .token = global.token,
         .api_url = global.api_url,
+        .project = opts.project,
         .environment = envOverride(opts.env, opts.config),
     });
 
@@ -1213,6 +1220,7 @@ fn secretsSetAction(args: SecretsSet.Args, opts: SecretsSet.Options, global: Glo
     const ctx = try requireEnvironmentContext(allocator, stderr, cwd, .{
         .token = global.token,
         .api_url = global.api_url,
+        .project = opts.project,
         .environment = envOverride(opts.env, opts.config),
     });
 
@@ -1278,6 +1286,7 @@ fn secretsDeleteAction(args: SecretsDelete.Args, opts: SecretsDelete.Options, gl
     const ctx = try requireEnvironmentContext(allocator, stderr, cwd, .{
         .token = global.token,
         .api_url = global.api_url,
+        .project = opts.project,
         .environment = envOverride(opts.env, opts.config),
     });
 
@@ -1311,6 +1320,7 @@ fn secretsDownloadAction(_: SecretsDownload.Args, opts: SecretsDownload.Options,
     const ctx = try requireEnvironmentContext(allocator, stderr, cwd, .{
         .token = global.token,
         .api_url = global.api_url,
+        .project = opts.project,
         .environment = envOverride(opts.env, opts.config),
     });
 
@@ -2259,6 +2269,38 @@ test "run command parses short config alias" {
     try app.dispatch(&.{ "run", "-c", "env_123", "--", "next", "dev" });
 
     try std.testing.expectEqualStrings("env_123", State.environment.?);
+}
+
+test "run command parses short project alias" {
+    const State = struct {
+        var project: ?[]const u8 = null;
+
+        fn action(_: Run.Args, opts: Run.Options, _: Global.Options) !void {
+            project = opts.project;
+        }
+    };
+
+    const TestRun = Run.bindWith(Global, State.action);
+    var app = zeke.AppWith(.{TestRun}, Global).init(std.testing.allocator, "sigillo");
+    try app.dispatch(&.{ "run", "-p", "proj_123", "--", "next", "dev" });
+
+    try std.testing.expectEqualStrings("proj_123", State.project.?);
+}
+
+test "secrets set parses short project alias" {
+    const State = struct {
+        var project: ?[]const u8 = null;
+
+        fn action(_: SecretsSet.Args, opts: SecretsSet.Options, _: Global.Options) !void {
+            project = opts.project;
+        }
+    };
+
+    const TestSecretsSet = SecretsSet.bindWith(Global, State.action);
+    var app = zeke.AppWith(.{TestSecretsSet}, Global).init(std.testing.allocator, "sigillo");
+    try app.dispatch(&.{ "secrets", "set", "DATABASE_URL", "postgres://example", "-p", "proj_123", "-c", "dev" });
+
+    try std.testing.expectEqualStrings("proj_123", State.project.?);
 }
 
 test "orgs create parses required options" {

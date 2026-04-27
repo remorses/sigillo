@@ -122,14 +122,14 @@ Pipe each Doppler secret value directly into Sigillo. The value is not printed t
 
 ```bash
 doppler secrets get <secret-name> --plain -p <doppler-project> -c <doppler-config> |
-  sigillo secrets set <secret-name> --project <sigillo-project-id> -c <sigillo-env>
+  sigillo secrets set <secret-name> -p <sigillo-project-id> -c <sigillo-env>
 ```
 
 Example:
 
 ```bash
 doppler secrets get DATABASE_URL --plain -p <doppler-project> -c dev |
-  sigillo secrets set DATABASE_URL --project <sigillo-project-id> -c dev
+  sigillo secrets set DATABASE_URL -p <sigillo-project-id> -c dev
 ```
 
 Repeat this command for every secret name from the previous step.
@@ -152,7 +152,7 @@ Example for staging:
 doppler secrets --only-names -p <doppler-project> -c stg
 
 doppler secrets get <secret-name> --plain -p <doppler-project> -c stg |
-  sigillo secrets set <secret-name> --project <sigillo-project-id> -c preview
+  sigillo secrets set <secret-name> -p <sigillo-project-id> -c preview
 ```
 
 Example for production:
@@ -161,7 +161,7 @@ Example for production:
 doppler secrets --only-names -p <doppler-project> -c prd
 
 doppler secrets get <secret-name> --plain -p <doppler-project> -c prd |
-  sigillo secrets set <secret-name> --project <sigillo-project-id> -c prod
+  sigillo secrets set <secret-name> -p <sigillo-project-id> -c prod
 ```
 
 ## 10. Verify without revealing values
