@@ -96,6 +96,8 @@ sigillo run -- next dev
 
 That's it. No `.env` files, no copy-pasting keys. Go back to [sigillo.dev](https://sigillo.dev) any time to add, edit, or rotate secrets — the next `sigillo run` picks them up automatically.
 
+Migrating from Doppler? See the [Doppler migration guide](docs/doppler-migration.md).
+
 ## Setting up a new project
 
 The Quick Start above assumes you already have a project with secrets. This section walks through creating everything from scratch, either from the CLI or the [dashboard](https://sigillo.dev).
