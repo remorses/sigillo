@@ -8,6 +8,9 @@
     { "tag": "v1", "new_sqlite_classes": ["SecretsStore"] },
     { "tag": "v2", "deleted_classes": ["SecretsStore"] },
   ],
+  "placement": {
+    "mode": "smart",
+  },
   "observability": {
     "enabled": true,
     "traces": {

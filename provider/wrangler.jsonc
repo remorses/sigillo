@@ -3,6 +3,9 @@
   "compatibility_date": "2026-04-16",
   "compatibility_flags": ["nodejs_compat"],
   "main": "spiceflow/cloudflare-entrypoint",
+  "placement": {
+    "mode": "smart",
+  },
   // DO → D1 migration: delete the old AuthStore DO class
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["AuthStore"] },
