@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.8.0
+
+1. **New `-p` project flag alias** — pass a project ID with the same short flag Doppler uses. This makes one-off commands and Doppler migrations easier to copy without relying on saved directory setup:
+
+   ```bash
+   sigillo run -p <project-id> -c dev -- pnpm dev
+
+   doppler secrets get DATABASE_URL --plain -p <doppler-project> -c dev |
+     sigillo secrets set DATABASE_URL -p <sigillo-project-id> -c dev
+   ```
+
+   The alias works anywhere `--project` is accepted, including `setup`, `run`, `secrets`, `secrets get`, `secrets set`, `secrets delete`, `secrets download`, `environments`, and `environments create`.
+
+2. **Project overrides now work on secret commands** — secret commands can target a project directly instead of requiring a prior `sigillo setup`:
+
+   ```bash
+   sigillo secrets -p <project-id> -c prod
+   sigillo secrets download -p <project-id> -c prod --format json
+   ```
+
+   This is especially useful for agents and migration steps that should use explicit placeholders instead of storing CLI state first.
+
 ## 0.7.0
 
 1. **New `sigillo orgs` and `sigillo orgs create` commands** — manage organizations from the terminal:
