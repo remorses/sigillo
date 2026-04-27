@@ -53,7 +53,7 @@ export function memoize<Args extends unknown[], T>(
 
     const hit = await cache.match(req)
     if (hit) {
-      const envelope = superjson.parse(await hit.text()) as CacheEnvelope<T>
+      const envelope = superjson.parse<CacheEnvelope<T>>(await hit.text())
       const age = (Date.now() - envelope.createdAt) / 1000
 
       if (age < ttl) {

@@ -88,11 +88,12 @@ function originForHost(host: string): string {
 
 const listOAuthHosts = memoize({
   namespace: 'oauth-hosts',
-  fn: async (): Promise<string[]> => {
+  fn: async (): Promise<string[] | null> => {
     const db = getDb()
     const rows = await db.select({ host: schema.oauthDomain.host })
       .from(schema.oauthDomain)
       .orderBy(schema.oauthDomain.createdAt)
+    if (rows.length === 0) return null
     return rows.map((row) => row.host)
   },
 })
@@ -178,7 +179,7 @@ export async function getAuth(request: Request) {
   const db = getDb()
   const host = getRequestHost(request)
   const clientId = await ensureOAuthClient(request)
-  const trustedOrigins = (await listOAuthHosts()).map(originForHost)
+  const trustedOrigins = ((await listOAuthHosts()) ?? []).map(originForHost)
   trustedOrigins.push(originForHost(host))
   return betterAuth({
     baseURL: getRequestOrigin(request),
