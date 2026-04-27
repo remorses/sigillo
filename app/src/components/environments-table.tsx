@@ -14,7 +14,7 @@ import { PencilIcon, TrashIcon } from "lucide-react";
 import { useState, useRef } from "react";
 import { z } from "zod";
 import { parseFormData } from "spiceflow";
-import { ErrorBoundary } from "spiceflow/react";
+import { ErrorBoundary, useLoaderData } from "spiceflow/react";
 import { Badge } from "sigillo-app/src/components/ui/badge";
 import { cn } from "sigillo-app/src/lib/utils";
 import { Button } from "sigillo-app/src/components/ui/button";
@@ -141,6 +141,19 @@ function EditableEnvCell({ env, field }: { env: Environment; field: "name" | "sl
 
 const envSchema = z.object({ name: z.string().min(1, "Name is required"), slug: z.string().min(1, "Slug is required") });
 const envFields = envSchema.keyof().enum;
+
+export function EnvironmentsPage() {
+  const { projectId, projectName, environments } = useLoaderData('/orgs/:orgId/projects/:projectId/environments');
+
+  return (
+    <div className="flex flex-col gap-3 w-full">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight">{projectName}</h1>
+      </div>
+      <EnvironmentsTable environments={environments} projectId={projectId} />
+    </div>
+  );
+}
 
 export function EnvironmentsTable({
   environments,

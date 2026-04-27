@@ -87,8 +87,7 @@ export const app = new Spiceflow()
     )
   })
 
-  // ── Layout 2: App shell with sidebar ──────────────────────────
-  .layout('/orgs/:orgId/projects/:projectId/*', async ({ children, params, request }) => {
+  .loader('/orgs/:orgId/projects/:projectId/*', async ({ params, request }) => {
     const { orgId, projectId } = params
     const db = getDb()
     const url = new URL(request.url)
@@ -121,32 +120,43 @@ export const app = new Spiceflow()
       const sortedEnvs = [...(p.environments || [])].sort((a, b) => a.createdAt - b.createdAt)
       return { id: p.id, name: p.name, firstEnvSlug: sortedEnvs[0]?.slug ?? null }
     })
-    const currentProjectFirstEnvSlug = projects.find((project) => project.id === projectId)?.firstEnvSlug ?? null
-    const user = { name: session.user.name || 'User', email: session.user.email || '' }
 
+    return {
+      orgId,
+      projectId,
+      pathname: url.pathname,
+      orgs,
+      projects,
+      currentProjectFirstEnvSlug: projects.find((project) => project.id === projectId)?.firstEnvSlug ?? null,
+      user: { name: session.user.name || 'User', email: session.user.email || '' },
+    }
+  })
+
+  // ── Layout 2: App shell with sidebar ──────────────────────────
+  .layout('/orgs/:orgId/projects/:projectId/*', async ({ children, loaderData }) => {
     return (
       <>
         <TabBar
-          orgId={orgId}
-          projectId={projectId}
-          pathname={url.pathname}
-          firstEnvSlug={currentProjectFirstEnvSlug}
+          orgId={loaderData.orgId}
+          projectId={loaderData.projectId}
+          pathname={loaderData.pathname}
+          firstEnvSlug={loaderData.currentProjectFirstEnvSlug}
         />
         <div className="border-t border-border" />
         <div className="isolate grow relative flex max-w-(--content-max-width) mx-auto w-full border-x border-border">
           <Sidebar
-            orgs={orgs}
-            projects={projects}
-            currentOrgId={orgId}
-            currentProjectId={projectId}
-            user={user}
+            orgs={loaderData.orgs}
+            projects={loaderData.projects}
+            currentOrgId={loaderData.orgId}
+            currentProjectId={loaderData.projectId}
+            user={loaderData.user}
           />
           <MobileDrawer
-            orgs={orgs}
-            projects={projects}
-            currentOrgId={orgId}
-            currentProjectId={projectId}
-            user={user}
+            orgs={loaderData.orgs}
+            projects={loaderData.projects}
+            currentOrgId={loaderData.orgId}
+            currentProjectId={loaderData.projectId}
+            user={loaderData.user}
           />
           <main className="flex-1 p-6 overflow-auto">
             {children}
@@ -269,48 +279,29 @@ export const app = new Spiceflow()
     return redirect(`/orgs/${params.orgId}/projects/${params.id}/envs/${firstEnvSlug}`)
   })
 
-  // ── Project detail with env ───────────────────────────────────
-  .page('/orgs/:orgId/projects/:projectId/envs/:envSlug', async ({ request, params }) => {
+  .loader('/orgs/:orgId/projects/:projectId/envs/:envSlug', async ({ request, params }) => {
     const db = getDb()
     const { orgId, projectId, envSlug } = params
 
-    const [allProjects, environments] = await Promise.all([
-      db.query.project.findMany({
-        where: { orgId },
-        with: { environments: true },
-        orderBy: { createdAt: 'desc' },
-      }),
+    const [project, environments] = await Promise.all([
+      db.query.project.findFirst({ where: { id: projectId }, columns: { name: true } }),
       db.query.environment.findMany({
         where: { projectId },
         orderBy: { createdAt: 'asc' },
       }),
     ])
 
-    const project = allProjects.find((p) => p.id === projectId)
-    if (!project) {
-      return (
-        <div className="text-center py-12">
-          <h1 className="text-xl font-semibold mb-2">Project not found</h1>
-          <Link href="/" className="text-primary hover:underline">Back to dashboard</Link>
-        </div>
-      )
-    }
-
     const matchedEnv = environments.find((e) => e.slug === envSlug)
     const selectedEnvId = matchedEnv?.id ?? environments[0]?.id ?? null
 
-    // Redirect to canonical slug if the URL slug didn't match any environment
     if (selectedEnvId && !matchedEnv && environments[0]) {
       return redirect(`/orgs/${orgId}/projects/${projectId}/envs/${environments[0].slug}`)
     }
 
-    // Derive current secrets from the event log and decrypt values
     let secrets: { id: string; name: string; value: string; createdAt: number; updatedAt: number; createdBy: { id: string; name: string } | null }[] = []
-    // Collect all secret names across all environments for cross-env missing key detection
     const allSecretNames = await deriveAllSecretNames(environments.map((e) => e.id))
     if (selectedEnvId) {
       const derived = await deriveSecrets(selectedEnvId)
-      // Look up user info for each secret's latest event author
       const userIds = [...new Set(derived.map((d) => d.userId).filter(isTruthy))]
       const userMap = new Map<string, { id: string; name: string }>()
       for (const uid of userIds) {
@@ -328,32 +319,24 @@ export const app = new Spiceflow()
       })))
     }
 
-    const dataKey = `${selectedEnvId}-${Date.now()}`
-
     const cookieHeader = request.headers.get('cookie') ?? ''
-    const showBanner = !hasCookie({
-      cookieHeader,
-      name: cliBannerCookieName,
-    })
 
-    return (
-      <div>
-        <ProjectPage
-          key={dataKey}
-          projectId={projectId}
-          projectName={project.name}
-          orgId={orgId}
-          environments={environments}
-          selectedEnvId={selectedEnvId}
-          secrets={secrets}
-          allSecretNames={allSecretNames}
-          showBanner={showBanner}
-        />
-      </div>
-    )
+    return {
+      projectName: project?.name ?? 'Project',
+      environments,
+      selectedEnvId,
+      secrets,
+      allSecretNames,
+      showBanner: !hasCookie({ cookieHeader, name: cliBannerCookieName }),
+    }
   })
 
-  .page('/orgs/:orgId/projects/:projectId/environments', async ({ params }) => {
+  // ── Project detail with env ───────────────────────────────────
+  .page('/orgs/:orgId/projects/:projectId/envs/:envSlug', async ({ loaderData }) => {
+    return <ProjectPage key={loaderData.selectedEnvId ?? 'none'} />
+  })
+
+  .loader('/orgs/:orgId/projects/:projectId/environments', async ({ params }) => {
     const db = getDb()
     const { projectId } = params
 
@@ -362,20 +345,17 @@ export const app = new Spiceflow()
       db.query.environment.findMany({ where: { projectId }, orderBy: { createdAt: 'asc' } }),
     ])
 
-    const { EnvironmentsTable } = await import('sigillo-app/src/components/environments-table')
+    return { projectId, projectName: project?.name ?? 'Project', environments }
+  })
 
-    return (
-      <div className="flex flex-col gap-3 w-full">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold tracking-tight">{project?.name ?? 'Project'}</h1>
-        </div>
-        <EnvironmentsTable environments={environments} projectId={projectId} />
-      </div>
-    )
+  .page('/orgs/:orgId/projects/:projectId/environments', async () => {
+    const { EnvironmentsPage } = await import('sigillo-app/src/components/environments-table')
+
+    return <EnvironmentsPage />
   })
 
   // ── Access page ────────────────────────────────────────────────
-  .page('/orgs/:orgId/projects/:projectId/access', async ({ params, request }) => {
+  .loader('/orgs/:orgId/projects/:projectId/access', async ({ params, request }) => {
     const db = getDb()
     const { orgId, projectId } = params
     const session = await requirePageSession(request)
@@ -392,22 +372,19 @@ export const app = new Spiceflow()
       orderBy: { createdAt: 'asc' },
     })
 
-    const { InviteButton } = await import('sigillo-app/src/components/invite-dialog')
-    const { AccessTable } = await import('sigillo-app/src/components/access-table')
+    return {
+      projectName: project?.name ?? 'Project',
+      orgId,
+      role,
+      currentUserId: session.userId,
+      members,
+    }
+  })
 
-    return (
-      <div className="flex flex-col gap-3 w-full">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold tracking-tight">{project?.name ?? 'Project'}</h1>
-          {role === 'admin' ? <InviteButton orgId={orgId} /> : null}
-        </div>
-        <AccessTable
-          canManage={role === 'admin'}
-          currentUserId={session.userId}
-          members={members}
-        />
-      </div>
-    )
+  .page('/orgs/:orgId/projects/:projectId/access', async () => {
+    const { AccessPage } = await import('sigillo-app/src/components/access-table')
+
+    return <AccessPage />
   })
 
   // ── Event Log page ─────────────────────────────────────────────
@@ -421,7 +398,7 @@ export const app = new Spiceflow()
     return redirect(`/orgs/${params.orgId}/projects/${params.projectId}/envs/${firstEnvSlug}/event-log`)
   })
 
-  .page('/orgs/:orgId/projects/:projectId/envs/:envSlug/event-log', async ({ params }) => {
+  .loader('/orgs/:orgId/projects/:projectId/envs/:envSlug/event-log', async ({ params }) => {
     const db = getDb()
     const { orgId, projectId, envSlug } = params
 
@@ -470,26 +447,30 @@ export const app = new Spiceflow()
       return { ...evt, value, valueEncrypted: undefined, iv: undefined }
     }))
 
+    return {
+      projectName: project?.name ?? 'Project',
+      events: eventsWithValues,
+      environments,
+      selectedEnvId,
+      orgId,
+      projectId,
+    }
+  })
+
+  .page('/orgs/:orgId/projects/:projectId/envs/:envSlug/event-log', async () => {
     const { EventLogTable } = await import('sigillo-app/src/components/event-log-table')
 
     return (
       <div className="flex flex-col gap-3 w-full">
-        <EventLogTable
-          projectName={project?.name ?? 'Project'}
-          events={eventsWithValues}
-          environments={environments}
-          selectedEnvId={selectedEnvId}
-          orgId={orgId}
-          projectId={projectId}
-        />
+        <EventLogTable />
       </div>
     )
   })
 
   // ── Tokens page ────────────────────────────────────────────────────
-  .page('/orgs/:orgId/projects/:projectId/tokens', async ({ params }) => {
+  .loader('/orgs/:orgId/projects/:projectId/tokens', async ({ params }) => {
     const db = getDb()
-    const { orgId, projectId } = params
+    const { projectId } = params
 
     const [project, environments, tokens] = await Promise.all([
       db.query.project.findFirst({ where: { id: projectId }, columns: { name: true } }),
@@ -504,50 +485,57 @@ export const app = new Spiceflow()
       }),
     ])
 
+    return {
+      projectName: project?.name ?? 'Project',
+      projectId,
+      environments,
+      tokens: tokens.map((t) => ({
+        id: t.id,
+        name: t.name,
+        prefix: t.prefix,
+        environmentId: t.environmentId,
+        environmentName: t.environment?.name ?? null,
+        createdBy: t.creator?.name ?? '—',
+        createdAt: t.createdAt,
+      })),
+    }
+  })
+
+  .page('/orgs/:orgId/projects/:projectId/tokens', async () => {
     const { TokensPage } = await import('sigillo-app/src/components/tokens-page')
 
     return (
       <div className="flex flex-col gap-3 w-full">
-        <TokensPage
-          projectName={project?.name ?? 'Project'}
-          projectId={projectId}
-          orgId={orgId}
-          environments={environments}
-          tokens={tokens.map((t) => ({
-            id: t.id,
-            name: t.name,
-            prefix: t.prefix,
-            environmentId: t.environmentId,
-            environmentName: t.environment?.name ?? null,
-            createdBy: t.creator?.name ?? '—',
-            createdAt: t.createdAt,
-          }))}
-        />
+        <TokensPage />
       </div>
     )
   })
 
   // ── Settings page ────────────────────────────────────────────────
-  .page('/orgs/:orgId/projects/:projectId/settings', async ({ params, request }) => {
+  .loader('/orgs/:orgId/projects/:projectId/settings', async ({ params, request }) => {
     const db = getDb()
     const { orgId } = params
     const session = await requirePageSession(request)
-    const { role } = await requirePageOrgMember(session.userId, orgId)
+    await requirePageOrgMember(session.userId, orgId)
 
     const [orgRow, projects] = await Promise.all([
       db.query.org.findFirst({ where: { id: orgId }, columns: { name: true } }),
       db.query.project.findMany({ where: { orgId }, columns: { name: true }, orderBy: { createdAt: 'asc' } }),
     ])
 
+    return {
+      orgId,
+      orgName: orgRow?.name ?? 'Organization',
+      projectNames: projects.map((p) => p.name),
+    }
+  })
+
+  .page('/orgs/:orgId/projects/:projectId/settings', async () => {
     const { SettingsPage } = await import('sigillo-app/src/components/settings-page')
 
     return (
       <div className="flex flex-col gap-3 w-full">
-        <SettingsPage
-          orgId={orgId}
-          orgName={orgRow?.name ?? 'Organization'}
-          projectNames={projects.map((p) => p.name)}
-        />
+        <SettingsPage />
       </div>
     )
   })
@@ -791,7 +779,5 @@ declare module 'spiceflow/react' {
 }
 
 export default {
-  async fetch(request: Request): Promise<Response> {
-    return app.handle(request)
-  },
+  fetch: app.handle.bind(app),
 } satisfies ExportedHandler<Env>

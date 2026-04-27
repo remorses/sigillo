@@ -8,6 +8,7 @@
 import { useState } from "react"
 import { z } from "zod"
 import { parseFormData } from "spiceflow"
+import { useLoaderData } from "spiceflow/react"
 import { KeyIcon, TrashIcon, PlusIcon, CopyIcon, CheckIcon } from "lucide-react"
 import { EmptyState } from "sigillo-app/src/components/ui/empty-state"
 import { Button } from "sigillo-app/src/components/ui/button"
@@ -35,21 +36,8 @@ type Token = {
   createdAt: number
 }
 
-type Environment = { id: string; name: string; slug: string }
-
-export function TokensPage({
-  projectName,
-  projectId,
-  orgId,
-  environments,
-  tokens,
-}: {
-  projectName: string
-  projectId: string
-  orgId: string
-  environments: Environment[]
-  tokens: Token[]
-}) {
+export function TokensPage() {
+  const { projectName, projectId, environments, tokens } = useLoaderData('/orgs/:orgId/projects/:projectId/tokens')
   const [createOpen, setCreateOpen] = useState(false)
 
   return (
@@ -74,7 +62,7 @@ export function TokensPage({
           </Button>
         </EmptyState>
       ) : (
-        <TokensTable tokens={tokens} projectId={projectId} />
+        <TokensTable tokens={tokens} />
       )}
 
       <CreateTokenDialog
@@ -87,7 +75,7 @@ export function TokensPage({
   )
 }
 
-function TokensTable({ tokens, projectId }: { tokens: Token[]; projectId: string }) {
+function TokensTable({ tokens }: { tokens: Token[] }) {
   return (
     <Frame className="w-full">
       <Table className="table-fixed">
@@ -165,7 +153,7 @@ function CreateTokenDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
   projectId: string
-  environments: Environment[]
+  environments: { id: string; name: string; slug: string }[]
 }) {
   const [creating, setCreating] = useState(false)
   const [createdKey, setCreatedKey] = useState<string | null>(null)

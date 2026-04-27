@@ -16,7 +16,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "sigillo-app/src/components/ui/select";
-import { router } from "spiceflow/react";
+import { router, useLoaderData } from "spiceflow/react";
 
 const cliBannerCookieName = "sigillo-cli-banner-dismissed";
 const cliBannerCodeLines = [
@@ -100,40 +100,17 @@ function CliBanner() {
   );
 }
 
-type Secret = {
-  id: string;
-  name: string;
-  value: string;
-  createdAt: number;
-  updatedAt: number;
-  createdBy: { id: string; name: string } | null;
-};
-
-export function ProjectPage({
-  projectId,
-  projectName,
-  orgId,
-  environments,
-  selectedEnvId,
-  secrets,
-  allSecretNames,
-  showBanner,
-}: {
-  projectId: string;
-  projectName: string;
-  orgId: string;
-  environments: {
-    id: string;
-    name: string;
-    slug: string;
-    createdAt: number;
-    updatedAt: number;
-  }[];
-  selectedEnvId: string | null;
-  secrets: Secret[];
-  allSecretNames: string[];
-  showBanner?: boolean;
-}) {
+export function ProjectPage() {
+  const {
+    orgId,
+    projectId,
+    projectName,
+    environments,
+    selectedEnvId,
+    secrets,
+    allSecretNames,
+    showBanner,
+  } = useLoaderData('/orgs/:orgId/projects/:projectId/envs/:envSlug');
   const [allVisible, setAllVisible] = useState(false);
 
   return (

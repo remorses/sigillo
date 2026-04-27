@@ -8,7 +8,7 @@ import { ClockIcon, EyeIcon, EyeOffIcon } from "lucide-react";
 import { cn } from "sigillo-app/src/lib/utils";
 import { EmptyState } from "sigillo-app/src/components/ui/empty-state";
 import { useState } from "react";
-import { router } from "spiceflow/react";
+import { router, useLoaderData } from "spiceflow/react";
 import { Badge } from "sigillo-app/src/components/ui/badge";
 import { Frame } from "sigillo-app/src/components/ui/frame";
 import {
@@ -28,39 +28,17 @@ import {
 } from "sigillo-app/src/components/ui/table";
 import { formatTime } from "sigillo-app/src/lib/utils";
 
-type EventRow = {
-  id: string;
-  name: string;
-  operation: string;
-  value: string | null;
-  createdAt: number;
-  environmentName: string;
-  userName: string;
-};
-
 // Secret values use the .text-security-disc CSS class from globals.css.
 
-export function EventLogTable({
-  projectName,
-  events,
-  environments,
-  selectedEnvId,
-  orgId,
-  projectId,
-}: {
-  projectName: string;
-  events: EventRow[];
-  environments: {
-    id: string;
-    name: string;
-    slug: string;
-    createdAt: number;
-    updatedAt: number;
-  }[];
-  selectedEnvId: string | null;
-  orgId: string;
-  projectId: string;
-}) {
+export function EventLogTable() {
+  const {
+    projectName,
+    events,
+    environments,
+    selectedEnvId,
+    orgId,
+    projectId,
+  } = useLoaderData('/orgs/:orgId/projects/:projectId/envs/:envSlug/event-log');
   const [visibleValues, setVisibleValues] = useState<Record<string, boolean>>({});
 
   const toggleValue = (id: string) => {

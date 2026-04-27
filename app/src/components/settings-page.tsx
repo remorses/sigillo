@@ -7,6 +7,7 @@
 
 import { useState, useTransition } from 'react'
 import { AlertTriangleIcon } from 'lucide-react'
+import { useLoaderData } from 'spiceflow/react'
 import { Button } from 'sigillo-app/src/components/ui/button'
 import {
   Dialog,
@@ -19,15 +20,8 @@ import {
 } from 'sigillo-app/src/components/ui/dialog'
 import { deleteOrgAction } from '../actions.ts'
 
-export function SettingsPage({
-  orgId,
-  orgName,
-  projectNames,
-}: {
-  orgId: string
-  orgName: string
-  projectNames: string[]
-}) {
+export function SettingsPage() {
+  const { orgId, orgName, projectNames } = useLoaderData('/orgs/:orgId/projects/:projectId/settings')
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
 

@@ -6,10 +6,12 @@
 import { useState } from "react"
 import { TrashIcon } from "lucide-react"
 import { removeOrgMemberAction, updateOrgMemberRoleAction } from "sigillo-app/src/actions"
+import { InviteButton } from "sigillo-app/src/components/invite-dialog"
 import { Button } from "sigillo-app/src/components/ui/button"
 import { Frame } from "sigillo-app/src/components/ui/frame"
 import { NativeSelect } from "sigillo-app/src/components/ui/native-select"
 import { Spinner } from "sigillo-app/src/components/ui/spinner"
+import { useLoaderData } from "spiceflow/react"
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "sigillo-app/src/components/ui/table"
@@ -25,6 +27,24 @@ type Member = {
     image: string | null
     name: string | null
   } | null
+}
+
+export function AccessPage() {
+  const { projectName, orgId, role, currentUserId, members } = useLoaderData('/orgs/:orgId/projects/:projectId/access')
+
+  return (
+    <div className="flex flex-col gap-3 w-full">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight">{projectName}</h1>
+        {role === 'admin' ? <InviteButton orgId={orgId} /> : null}
+      </div>
+      <AccessTable
+        canManage={role === 'admin'}
+        currentUserId={currentUserId}
+        members={members}
+      />
+    </div>
+  )
 }
 
 export function AccessTable({
