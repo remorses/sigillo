@@ -475,7 +475,11 @@ fn meAction(_: Me.Args, opts: Me.Options, global: Global.Options) !void {
         try stdout.writeAll("\n");
         if (resolved.project) |project| {
             try color.blue(stdout, "Project: ");
-            try stdout.print("{s}\n", .{project});
+            if (resolved.project_name) |project_name| {
+                try stdout.print("{s} ({s})\n", .{ project_name, project });
+            } else {
+                try stdout.print("{s}\n", .{project});
+            }
         }
         if (resolved.environment) |environment| {
             try color.blue(stdout, "Env:     ");
@@ -512,7 +516,8 @@ fn setupAction(_: Setup.Args, opts: Setup.Options, global: Global.Options) !void
         std.posix.isatty(File.stdout().handle);
 
     // ── Resolve project ────────────────────────────────────────────
-    const project: []const u8 = if (opts.project) |p| p else if (is_tty) proj: {
+    const SelectedProject = struct { id: []const u8, name: ?[]const u8 };
+    const selected_project: SelectedProject = if (opts.project) |p| .{ .id = p, .name = null } else if (is_tty) proj: {
         // Fetch orgs → projects and present an interactive select.
         const me_res = client.getMe(.{
             .allocator = allocator,
@@ -576,13 +581,14 @@ fn setupAction(_: Setup.Args, opts: Setup.Options, global: Global.Options) !void
             try stderr.print(": setup cancelled\n", .{});
             std.process.exit(1);
         };
-        break :proj all_projects.items[proj_choice].id;
+        break :proj .{ .id = all_projects.items[proj_choice].id, .name = all_projects.items[proj_choice].name };
     } else {
         try color.err(stderr, "error");
         try stderr.print(": --project is required\n", .{});
         try stderr.writeAll("  sigillo setup --project <PROJECT_ID> --env <SLUG>\n");
         std.process.exit(1);
     };
+    const project = selected_project.id;
 
     // ── Fetch environments for the chosen project ──────────────────
     const env_res = client.listEnvironments(.{
@@ -610,6 +616,17 @@ fn setupAction(_: Setup.Args, opts: Setup.Options, global: Global.Options) !void
         std.process.exit(1);
     };
     const all_envs = envs.environments;
+
+    const project_name = selected_project.name orelse name: {
+        const project_res = client.getProject(.{
+            .allocator = allocator,
+            .api_url = api_url,
+            .token = token,
+            .project_id = project,
+        }) catch break :name null;
+        if (project_res.status != 200 or project_res.value == null) break :name null;
+        break :name project_res.value.?.name;
+    };
 
     // ── Resolve environment (by slug) ─────────────────────────────
     const environment: []const u8 = if (envOverride(opts.env, opts.config)) |e| env_val: {
@@ -650,6 +667,7 @@ fn setupAction(_: Setup.Args, opts: Setup.Options, global: Global.Options) !void
 
     try config.setScope(allocator, cwd, .{
         .project = project,
+        .project_name = project_name,
         .environment = environment,
     });
 
@@ -658,7 +676,11 @@ fn setupAction(_: Setup.Args, opts: Setup.Options, global: Global.Options) !void
     try color.bold(stdout, cwd);
     try stdout.writeAll("\n");
     try color.blue(stdout, "  project:     ");
-    try stdout.print("{s}\n", .{project});
+    if (project_name) |name| {
+        try stdout.print("{s} ({s})\n", .{ name, project });
+    } else {
+        try stdout.print("{s}\n", .{project});
+    }
     try color.blue(stdout, "  env:         ");
     try stdout.print("{s}\n", .{environment});
 }

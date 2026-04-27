@@ -9,6 +9,7 @@ pub const ScopedEntry = struct {
     token: ?[]const u8 = null,
     api_url: ?[]const u8 = null,
     project: ?[]const u8 = null,
+    project_name: ?[]const u8 = null,
     environment: ?[]const u8 = null,
 };
 
@@ -70,7 +71,7 @@ pub fn readConfig(allocator: std.mem.Allocator) !ConfigFile {
         };
 
         var record: ScopeRecord = .{
-            .scope = entry.key_ptr.*, 
+            .scope = entry.key_ptr.*,
             .entry = .{},
         };
 
@@ -82,6 +83,9 @@ pub fn readConfig(allocator: std.mem.Allocator) !ConfigFile {
         }
         if (scope_object.get("project")) |value| {
             if (value == .string) record.entry.project = value.string;
+        }
+        if (scope_object.get("project-name")) |value| {
+            if (value == .string) record.entry.project_name = value.string;
         }
         if (scope_object.get("environment")) |value| {
             if (value == .string) record.entry.environment = value.string;
@@ -128,6 +132,10 @@ pub fn writeConfig(allocator: std.mem.Allocator, config: *const ConfigFile) !voi
         }
         if (record.entry.project) |value| {
             try json_writer.objectField("project");
+            try json_writer.write(value);
+        }
+        if (record.entry.project_name) |value| {
+            try json_writer.objectField("project-name");
             try json_writer.write(value);
         }
         if (record.entry.environment) |value| {
@@ -209,6 +217,7 @@ pub fn resolve(allocator: std.mem.Allocator, cwd_input: []const u8, flags: Resol
         }
         if (record.entry.project != null and record.scope.len >= best_project_len) {
             result.project = record.entry.project;
+            result.project_name = record.entry.project_name;
             best_project_len = record.scope.len;
         }
         if (record.entry.environment != null and record.scope.len >= best_environment_len) {
@@ -219,12 +228,18 @@ pub fn resolve(allocator: std.mem.Allocator, cwd_input: []const u8, flags: Resol
 
     if (try getEnvVarOptional(allocator, "SIGILLO_TOKEN")) |value| result.token = value;
     if (try getEnvVarOptional(allocator, "SIGILLO_API_URL")) |value| result.api_url = value;
-    if (try getEnvVarOptional(allocator, "SIGILLO_PROJECT")) |value| result.project = value;
+    if (try getEnvVarOptional(allocator, "SIGILLO_PROJECT")) |value| {
+        result.project = value;
+        result.project_name = null;
+    }
     if (try getEnvVarOptional(allocator, "SIGILLO_ENVIRONMENT")) |value| result.environment = value;
 
     if (flags.token) |value| result.token = value;
     if (flags.api_url) |value| result.api_url = value;
-    if (flags.project) |value| result.project = value;
+    if (flags.project) |value| {
+        result.project = value;
+        result.project_name = flags.project_name;
+    }
     if (flags.environment) |value| result.environment = value;
 
     // Default api_url to sigillo.dev when not configured anywhere
@@ -292,6 +307,7 @@ fn mergeEntry(allocator: std.mem.Allocator, destination: *ScopedEntry, updates: 
     }
     if (updates.project) |value| {
         destination.project = try allocator.dupe(u8, value);
+        destination.project_name = if (updates.project_name) |name| try allocator.dupe(u8, name) else null;
     }
     if (updates.environment) |value| {
         destination.environment = try allocator.dupe(u8, value);
