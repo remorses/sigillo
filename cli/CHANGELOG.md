@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.8.1
+
+1. **Faster project setup and listing**. `sigillo setup` and `sigillo projects` now fetch all accessible projects in one request instead of querying every organization one by one:
+
+   ```bash
+   sigillo setup
+   sigillo projects
+   ```
+
+   This makes interactive setup noticeably quicker for accounts with multiple organizations.
+
+2. **Project names are saved in local setup**. After setup, `sigillo me` shows the configured project name alongside its ID so scoped directories are easier to inspect:
+
+   ```bash
+   sigillo setup --project <project-id> --env dev
+   sigillo me
+   ```
+
+3. **Clearer project lists across organizations**. Project suggestions and `sigillo projects` now include the organization name directly, so duplicated project names are easier to tell apart.
+
 ## 0.8.0
 
 1. **New `-p` project flag alias** — pass a project ID with the same short flag Doppler uses. This makes one-off commands and Doppler migrations easier to copy without relying on saved directory setup:

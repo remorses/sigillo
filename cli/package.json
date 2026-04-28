@@ -1,6 +1,6 @@
 {
   "name": "sigillo",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "type": "module",
   "description": "CLI for Sigillo — self-hostable secret manager. Manage secrets, environments, and configs from the terminal.",
   "bin": "./dist/bin.js",
