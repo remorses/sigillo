@@ -444,11 +444,14 @@ pnpm --dir provider dev     # start provider (runs migrations automatically)
 pnpm --dir app dev           # start app (runs migrations automatically)
 ```
 
-5. Deploy to production:
+5. Deploy preview first, then production:
 
 ```bash
-pnpm --dir provider deployment    # deploy provider worker
-pnpm --dir app deployment         # deploy app worker
+pnpm --dir provider deployment       # deploy provider preview worker
+pnpm --dir app deployment            # deploy app preview worker
+
+pnpm --dir provider deployment:prod  # deploy provider production worker
+pnpm --dir app deployment:prod       # deploy app production worker
 ```
 
 The app auto-registers with the provider on first request via dynamic client registration. No manual OAuth setup needed.
