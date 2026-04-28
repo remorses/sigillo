@@ -5,7 +5,7 @@
 "use client"
 
 import { useState } from "react"
-import { Button } from "sigillo-app/src/components/ui/button"
+import { Button } from "sigillo-app/src/components/ui/button.tsx"
 import { authClient } from "../auth-client.ts"
 
 export function ConsentButtons() {

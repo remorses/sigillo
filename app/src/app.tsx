@@ -86,7 +86,7 @@ export const app = new Spiceflow()
     )
   })
 
-  .loader('/orgs/:orgId/projects/:projectId/*', async ({ params, request, redirect }) => {
+  .loader('/orgs/:orgId/projects/:projectId/*', async ({ params, request }) => {
     const { orgId, projectId } = params
     const db = getDb()
     const url = new URL(request.url)
@@ -97,7 +97,7 @@ export const app = new Spiceflow()
     // Verify projectId actually belongs to this org — prevents cross-org
     // access via crafted URLs like /orgs/<org-a>/projects/<project-from-org-b>/*
     const realOrgId = await getOrgIdForProject(projectId)
-    if (realOrgId !== orgId) throw redirect('/')
+    if (realOrgId !== orgId) throw Response.redirect(new URL('/', request.url).toString(), 302)
 
     const [members, allProjects] = await Promise.all([
       db.query.orgMember.findMany({
@@ -167,9 +167,9 @@ export const app = new Spiceflow()
   })
 
   // ── Root redirect → first org ─────────────────────────────────
-  .get('/', async ({ request, redirect }) => {
+  .get('/', async ({ request }) => {
     const session = await getSession(request)
-    if (!session) return redirect('/login')
+    if (!session) return Response.redirect(new URL('/login', request.url).toString(), 302)
     const db = getDb()
     const base = new URL(request.url)
     try {
@@ -546,10 +546,10 @@ export const app = new Spiceflow()
   // Uses the proper BetterAuth device authorization client flow:
   // 1. Validate code via authClient.device({ query: { user_code } })
   // 2. Approve/deny via authClient.device.approve() / .deny()
-  .page('/device', async ({ request, redirect }) => {
+  .page('/device', async ({ request }) => {
     // User must be logged in to approve device codes
     const session = await getSession(request)
-    if (!session) return redirect('/login')
+    if (!session) return Response.redirect(new URL('/login', request.url).toString(), 302)
     const url = new URL(request.url)
     const userCode = url.searchParams.get('user_code') ?? ''
     const { DeviceFlow } = await import('sigillo-app/src/components/device-flow')
@@ -592,7 +592,7 @@ export const app = new Spiceflow()
       )
     }
     const session = await getSession(request)
-    if (!session) return redirect(`/login?redirect=/invite/${params.id}`)
+    if (!session) return Response.redirect(new URL(`/login?redirect=/invite/${params.id}`, request.url).toString(), 302)
     // Already a member? Skip straight to the org
     const existing = await db.query.orgMember.findFirst({
       where: { orgId: invite.orgId, userId: session.userId },

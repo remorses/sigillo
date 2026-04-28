@@ -181,5 +181,5 @@ export const app = new Spiceflow()
 export type App = typeof app
 
 export default {
-  fetch: app.handle,
+  fetch: (request: Request) => app.handle(request),
 } satisfies ExportedHandler<Env>

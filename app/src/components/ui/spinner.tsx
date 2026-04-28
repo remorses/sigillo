@@ -1,6 +1,6 @@
 import { Loader2Icon } from "lucide-react";
 import type React from "react";
-import { cn } from "sigillo-app/src/lib/utils";
+import { cn } from "../../lib/utils.ts";
 
 export function Spinner({
   className,
