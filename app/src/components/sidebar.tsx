@@ -146,12 +146,13 @@ function SidebarContent({
         <nav className="flex flex-col gap-0.5">
           {projects.map((project) => {
             const isActive = currentProjectId === project.id;
+            const href = project.firstEnvSlug
+              ? router.href('/orgs/:orgId/projects/:projectId/envs/:envSlug', { orgId: currentOrgId!, projectId: project.id, envSlug: project.firstEnvSlug })
+              : router.href('/orgs/:orgId/projects/:id', { orgId: currentOrgId!, id: project.id })
             return (
               <Link
                 key={project.id}
-                href={project.firstEnvSlug
-                  ? router.href('/orgs/:orgId/projects/:projectId/envs/:envSlug', { orgId: currentOrgId!, projectId: project.id, envSlug: project.firstEnvSlug })
-                  : router.href('/orgs/:orgId/projects/:id', { orgId: currentOrgId!, id: project.id })}
+                href={href}
                 onClick={onNavigate}
                 className={cn(
                   "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-sidebar-accent",
@@ -391,12 +392,11 @@ export function FooterColo() {
   useEffect(() => {
     fetch("/api/info")
       .then((r) => r.json())
-      .then((data) => setColo(
-        data && typeof data === 'object' && 'colo' in data && typeof data.colo === 'string'
-          ? data.colo
-          : null,
-      ))
-      .catch(() => {});
+      .then((data) => {
+        const info: { colo?: unknown } = Object(data)
+        setColo(typeof info.colo === 'string' ? info.colo : null)
+      })
+      .catch((error) => console.warn('Failed to load colo info', error));
   }, []);
 
   if (!colo) return null;
