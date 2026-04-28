@@ -69,7 +69,7 @@ export const app = new Spiceflow()
           <Head.Meta charSet="UTF-8" />
           <Head.Meta name="viewport" content="width=device-width, initial-scale=1.0" />
           <Head.Title>Sigillo — Secret Manager</Head.Title>
-          <Head.Link rel="icon" href="/favicon.ico" />
+          <Head.Link rel="icon" type="image/png" href="/favicon.png" />
         </Head>
         <body className="relative flex flex-col min-h-screen bg-background font-sans antialiased">
           <ProgressBar color="var(--primary)" />
