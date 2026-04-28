@@ -9,7 +9,7 @@
     "./src/*": "./src/*"
   },
   "scripts": {
-    "dev": "pnpm db:migrate:local && vite dev",
+    "dev": "pnpm db:migrate:local && tuistory -s sigillo-app-dev --attach -- vite dev",
     "prebuild": "pnpm generate:install",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
