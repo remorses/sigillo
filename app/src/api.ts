@@ -106,6 +106,7 @@ const projectSummarySchema = projectSelectSchema.pick({
 })
 
 const projectListItemSchema = projectSummarySchema.extend({
+  orgName: z.string(),
   environments: z.array(environmentSummarySchema),
 })
 
@@ -357,28 +358,50 @@ export const apiApp = new Spiceflow()
   .route({
     method: 'GET',
     path: '/api/v0/projects',
-    query: z.object({ orgId: z.string().min(1) }),
+    query: z.object({ orgId: z.string().min(1).optional() }),
     response: projectListResponseSchema,
     async handler({ request, query }) {
-      const orgId = query.orgId
       const session = await requireApiSession(request)
-      await requireApiOrgMember(session.userId, orgId)
       const db = getDb()
-      const projects = (await db.query.project.findMany({ where: { orgId }, with: { environments: true }, orderBy: { createdAt: 'desc' } })).map((project) => ({
-        id: project.id,
-        orgId: project.orgId,
-        name: project.name,
-        createdAt: project.createdAt,
-        updatedAt: project.updatedAt,
-        environments: project.environments.map((environment) => ({
-          id: environment.id,
-          projectId: environment.projectId,
-          name: environment.name,
-          slug: environment.slug,
-          createdAt: environment.createdAt,
-          updatedAt: environment.updatedAt,
-        })),
-      }))
+
+      const memberships = await db.query.orgMember.findMany({
+        where: query.orgId ? { userId: session.userId, orgId: query.orgId } : { userId: session.userId },
+        with: {
+          org: {
+            with: {
+              projects: {
+                with: { environments: true },
+                orderBy: { createdAt: 'desc' },
+              },
+            },
+          },
+        },
+      })
+
+      if (query.orgId && memberships.length === 0) {
+        await requireApiOrgMember(session.userId, query.orgId)
+      }
+
+      const projects = memberships.flatMap((membership) => {
+        if (!membership.org) return []
+        const org = membership.org
+        return org.projects.map((project) => ({
+          id: project.id,
+          orgId: project.orgId,
+          orgName: org.name,
+          name: project.name,
+          createdAt: project.createdAt,
+          updatedAt: project.updatedAt,
+          environments: project.environments.map((environment) => ({
+            id: environment.id,
+            projectId: environment.projectId,
+            name: environment.name,
+            slug: environment.slug,
+            createdAt: environment.createdAt,
+            updatedAt: environment.updatedAt,
+          })),
+        }))
+      })
       return { projects }
     },
   })
@@ -395,12 +418,13 @@ export const apiApp = new Spiceflow()
       const db = getDb()
       const project = await db.query.project.findFirst({
         where: { id: params.id },
-        with: { environments: true },
+        with: { org: true, environments: true },
       })
       if (!project) return json({ error: 'not found' }, { status: 404 })
       return {
         id: project.id,
         orgId: project.orgId,
+        orgName: project.org?.name ?? '',
         name: project.name,
         createdAt: project.createdAt,
         updatedAt: project.updatedAt,

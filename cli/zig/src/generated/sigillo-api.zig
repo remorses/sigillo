@@ -47,6 +47,7 @@ pub const ProjectListResponseProjectsItem = struct {
     name: []const u8,
     createdAt: std.json.Value,
     updatedAt: std.json.Value,
+    orgName: []const u8,
     environments: []const ProjectListResponseProjectsItemEnvironmentsItem,
 };
 pub const ProjectListResponse = struct {
@@ -66,6 +67,7 @@ pub const ProjectSummary = struct {
     name: []const u8,
     createdAt: std.json.Value,
     updatedAt: std.json.Value,
+    orgName: []const u8,
     environments: []const ProjectSummaryEnvironmentsItem,
 };
 pub const ProjectMutationResponse = struct {

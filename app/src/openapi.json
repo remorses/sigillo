@@ -294,7 +294,7 @@
             },
             "in": "query",
             "name": "orgId",
-            "required": true
+            "required": false
           }
         ],
         "responses": {
@@ -321,6 +321,9 @@
                           },
                           "createdAt": {},
                           "updatedAt": {},
+                          "orgName": {
+                            "type": "string"
+                          },
                           "environments": {
                             "type": "array",
                             "items": {
@@ -358,6 +361,7 @@
                           "name",
                           "createdAt",
                           "updatedAt",
+                          "orgName",
                           "environments"
                         ]
                       }
@@ -412,6 +416,9 @@
                     },
                     "createdAt": {},
                     "updatedAt": {},
+                    "orgName": {
+                      "type": "string"
+                    },
                     "environments": {
                       "type": "array",
                       "items": {
@@ -449,6 +456,7 @@
                     "name",
                     "createdAt",
                     "updatedAt",
+                    "orgName",
                     "environments"
                   ]
                 }

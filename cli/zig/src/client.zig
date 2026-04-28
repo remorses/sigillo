@@ -230,11 +230,14 @@ pub const ListProjectsArgs = struct {
     allocator: std.mem.Allocator,
     api_url: []const u8,
     token: []const u8,
-    org_id: []const u8,
+    org_id: ?[]const u8 = null,
 };
 
 pub fn listProjects(args: ListProjectsArgs) !JsonResult(api.ProjectListResponse) {
-    const path = try std.fmt.allocPrint(args.allocator, "/api/v0/projects?orgId={s}", .{args.org_id});
+    const path = if (args.org_id) |org_id|
+        try std.fmt.allocPrint(args.allocator, "/api/v0/projects?orgId={s}", .{org_id})
+    else
+        "/api/v0/projects";
     return parseJsonResult(api.ProjectListResponse, .{
         .allocator = args.allocator,
         .method = .GET,

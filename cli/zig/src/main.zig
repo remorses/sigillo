@@ -54,42 +54,40 @@ fn printAvailableProjects(
     api_url: []const u8,
     token: []const u8,
 ) !void {
-    const me_res = try client.getMe(.{
+    const projects_res = try client.listProjects(.{
         .allocator = allocator,
         .api_url = api_url,
         .token = token,
     });
-    if (me_res.status != 200 or me_res.value == null) return;
+    if (projects_res.status != 200 or projects_res.value == null) return;
 
-    const me = me_res.value.?;
-    var wrote_any = false;
-    for (me.orgs) |org| {
-        const proj_res = client.listProjects(.{
-            .allocator = allocator,
-            .api_url = api_url,
-            .token = token,
-            .org_id = org.id,
-        }) catch continue;
-        if (proj_res.status != 200 or proj_res.value == null) continue;
-        for (proj_res.value.?.projects) |project| {
-            if (!wrote_any) {
-                try stderr.writeAll("available projects:\n");
-                wrote_any = true;
-            }
-            try stderr.print("  - {s} ({s})\n", .{ project.name, project.id });
+    for (projects_res.value.?.projects, 0..) |project, index| {
+        if (index == 0) {
+            try stderr.writeAll("available projects:\n");
         }
+        try stderr.print("  - {s} / {s} ({s})\n", .{ project.orgName, project.name, project.id });
     }
 }
 
+const EnvOption = struct { name: []const u8, slug: []const u8 };
+
 fn printAvailableEnvs(
     stderr: Writer,
-    envs: []const client.api.EnvironmentListResponseEnvironmentsItem,
+    envs: []const EnvOption,
 ) !void {
     if (envs.len == 0) return;
     try stderr.writeAll("available envs:\n");
     for (envs) |env| {
         try stderr.print("  - {s} ({s})\n", .{ env.name, env.slug });
     }
+}
+
+fn envOptionsFrom(allocator: std.mem.Allocator, envs: anytype) ![]const EnvOption {
+    const options = try allocator.alloc(EnvOption, envs.len);
+    for (envs, 0..) |env, index| {
+        options[index] = .{ .name = env.name, .slug = env.slug };
+    }
+    return options;
 }
 
 fn fetchAvailableEnvs(
@@ -133,7 +131,8 @@ fn exitEnvNotFound(
     if (project) |project_id| {
         stderr.print(": env {s} was not found in project {s}\n", .{ env, project_id }) catch {};
         if (fetchAvailableEnvs(allocator, api_url, token, project_id) catch null) |available| {
-            printAvailableEnvs(stderr, available.environments) catch {};
+            const env_options = envOptionsFrom(allocator, available.environments) catch &.{};
+            printAvailableEnvs(stderr, env_options) catch {};
         }
     } else {
         stderr.print(": env {s} was not found or you do not have access to it\n", .{env}) catch {};
@@ -516,63 +515,50 @@ fn setupAction(_: Setup.Args, opts: Setup.Options, global: Global.Options) !void
         std.posix.isatty(File.stdout().handle);
 
     // ── Resolve project ────────────────────────────────────────────
-    const SelectedProject = struct { id: []const u8, name: ?[]const u8 };
-    const selected_project: SelectedProject = if (opts.project) |p| .{ .id = p, .name = null } else if (is_tty) proj: {
-        // Fetch orgs → projects and present an interactive select.
-        const me_res = client.getMe(.{
+    const SelectedProject = struct { id: []const u8, name: ?[]const u8, envs: ?[]const EnvOption };
+    const selected_project: SelectedProject = if (opts.project) |p| .{ .id = p, .name = null, .envs = null } else if (is_tty) proj: {
+        // Fetch all accessible projects in one request and present an interactive select.
+        const projects_res = client.listProjects(.{
             .allocator = allocator,
             .api_url = api_url,
             .token = token,
         }) catch |err| {
             try color.err(stderr, "error");
-            try stderr.print(": failed to fetch user info: {s}\n", .{@errorName(err)});
+            try stderr.print(": failed to fetch projects: {s}\n", .{@errorName(err)});
             std.process.exit(1);
         };
-        if (me_res.status != 200) {
-            const message = client.parseError(allocator, me_res.body) orelse try allocator.dupe(u8, "unknown error");
+        if (projects_res.status != 200) {
+            const message = client.parseError(allocator, projects_res.body) orelse try allocator.dupe(u8, "unknown error");
             try color.err(stderr, "error");
-            try stderr.print(": failed to fetch user info ({d}): {s}\n", .{ me_res.status, message });
+            try stderr.print(": failed to fetch projects ({d}): {s}\n", .{ projects_res.status, message });
             std.process.exit(1);
         }
-        const me = me_res.value orelse {
+        const projects = projects_res.value orelse {
             try color.err(stderr, "error");
-            try stderr.print(": invalid user info response\n", .{});
+            try stderr.print(": invalid projects response\n", .{});
             std.process.exit(1);
         };
-        const orgs = me.orgs;
-        if (orgs.len == 0) {
-            try color.err(stderr, "error");
-            try stderr.print(": no organizations found — create one first\n", .{});
-            std.process.exit(1);
-        }
 
-        // Collect all projects across all orgs, tagging each with its org name.
-        const OrgProject = struct { id: []const u8, name: []const u8, org_name: []const u8 };
-        var all_projects = std.ArrayListUnmanaged(OrgProject).empty;
-        for (orgs) |org| {
-            const proj_res = client.listProjects(.{
-                .allocator = allocator,
-                .api_url = api_url,
-                .token = token,
-                .org_id = org.id,
-            }) catch continue;
-            if (proj_res.status != 200) continue;
-            const projects = proj_res.value orelse continue;
-            for (projects.projects) |item| try all_projects.append(allocator, .{ .id = item.id, .name = item.name, .org_name = org.name });
-        }
-
-        if (all_projects.items.len == 0) {
+        if (projects.projects.len == 0) {
             try color.err(stderr, "error");
             try stderr.print(": no projects found — create one first\n", .{});
             std.process.exit(1);
         }
 
         // When member of multiple orgs, prefix project names with org name for disambiguation.
-        const multi_org = orgs.len > 1;
-        const proj_options = try allocator.alloc([]const u8, all_projects.items.len);
-        for (all_projects.items, 0..) |p, i| {
+        var first_org_id: ?[]const u8 = null;
+        var multi_org = false;
+        for (projects.projects) |p| {
+            if (first_org_id) |id| {
+                if (!std.mem.eql(u8, id, p.orgId)) multi_org = true;
+            } else {
+                first_org_id = p.orgId;
+            }
+        }
+        const proj_options = try allocator.alloc([]const u8, projects.projects.len);
+        for (projects.projects, 0..) |p, i| {
             proj_options[i] = if (multi_org)
-                try std.fmt.allocPrint(allocator, "{s} / {s} ({s})", .{ p.org_name, p.name, p.id })
+                try std.fmt.allocPrint(allocator, "{s} / {s} ({s})", .{ p.orgName, p.name, p.id })
             else
                 try std.fmt.allocPrint(allocator, "{s} ({s})", .{ p.name, p.id });
         }
@@ -581,7 +567,8 @@ fn setupAction(_: Setup.Args, opts: Setup.Options, global: Global.Options) !void
             try stderr.print(": setup cancelled\n", .{});
             std.process.exit(1);
         };
-        break :proj .{ .id = all_projects.items[proj_choice].id, .name = all_projects.items[proj_choice].name };
+        const project = projects.projects[proj_choice];
+        break :proj .{ .id = project.id, .name = project.name, .envs = try envOptionsFrom(allocator, project.environments) };
     } else {
         try color.err(stderr, "error");
         try stderr.print(": --project is required\n", .{});
@@ -590,43 +577,43 @@ fn setupAction(_: Setup.Args, opts: Setup.Options, global: Global.Options) !void
     };
     const project = selected_project.id;
 
-    // ── Fetch environments for the chosen project ──────────────────
-    const env_res = client.listEnvironments(.{
-        .allocator = allocator,
-        .api_url = api_url,
-        .token = token,
-        .project_id = project,
-    }) catch |err| {
-        try color.err(stderr, "error");
-        try stderr.print(": failed to fetch environments: {s}\n", .{@errorName(err)});
-        std.process.exit(1);
-    };
-    if (env_res.status != 200) {
-        if (env_res.status == 404 and opts.project != null) {
-            exitProjectNotFound(allocator, stderr, api_url, token, project);
-        }
-        const message = client.parseError(allocator, env_res.body) orelse try allocator.dupe(u8, "unknown error");
-        try color.err(stderr, "error");
-        try stderr.print(": failed to fetch environments ({d}): {s}\n", .{ env_res.status, message });
-        std.process.exit(1);
-    }
-    const envs = env_res.value orelse {
-        try color.err(stderr, "error");
-        try stderr.print(": invalid environments response\n", .{});
-        std.process.exit(1);
-    };
-    const all_envs = envs.environments;
-
-    const project_name = selected_project.name orelse name: {
+    // ── Fetch project details only when they were not included by the picker ──
+    const project_details = if (selected_project.envs == null) details: {
         const project_res = client.getProject(.{
             .allocator = allocator,
             .api_url = api_url,
             .token = token,
             .project_id = project,
-        }) catch break :name null;
-        if (project_res.status != 200 or project_res.value == null) break :name null;
-        break :name project_res.value.?.name;
-    };
+        }) catch |err| {
+            try color.err(stderr, "error");
+            try stderr.print(": failed to fetch project: {s}\n", .{@errorName(err)});
+            std.process.exit(1);
+        };
+        if (project_res.status != 200) {
+            if (project_res.status == 404 and opts.project != null) {
+                exitProjectNotFound(allocator, stderr, api_url, token, project);
+            }
+            const message = client.parseError(allocator, project_res.body) orelse try allocator.dupe(u8, "unknown error");
+            try color.err(stderr, "error");
+            try stderr.print(": failed to fetch project ({d}): {s}\n", .{ project_res.status, message });
+            std.process.exit(1);
+        }
+        const value = project_res.value orelse {
+            try color.err(stderr, "error");
+            try stderr.print(": invalid project response\n", .{});
+            std.process.exit(1);
+        };
+        break :details .{ .name = value.name, .envs = try envOptionsFrom(allocator, value.environments) };
+    } else null;
+
+    const project_name = selected_project.name orelse if (project_details) |details| details.name else null;
+    const all_envs = selected_project.envs orelse if (project_details) |details| details.envs else &.{};
+
+    if (all_envs.len == 0) {
+        try color.err(stderr, "error");
+        try stderr.print(": no envs found in project {s}\n", .{project});
+        std.process.exit(1);
+    }
 
     // ── Resolve environment (by slug) ─────────────────────────────
     const environment: []const u8 = if (envOverride(opts.env, opts.config)) |e| env_val: {
@@ -643,11 +630,6 @@ fn setupAction(_: Setup.Args, opts: Setup.Options, global: Global.Options) !void
         }
         break :env_val e;
     } else if (is_tty) env_sel: {
-        if (all_envs.len == 0) {
-            try color.err(stderr, "error");
-            try stderr.print(": no envs found in project {s}\n", .{project});
-            std.process.exit(1);
-        }
         const env_options = try allocator.alloc([]const u8, all_envs.len);
         for (all_envs, 0..) |e, i| {
             env_options[i] = try std.fmt.allocPrint(allocator, "{s} ({s})", .{ e.name, e.slug });
@@ -1445,34 +1427,25 @@ fn projectsAction(_: Projects.Args, _: Projects.Options, global: Global.Options)
     const allocator = arena.allocator();
     const cwd = try config.getCwd(allocator);
     const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url });
-    const me = try client.getMe(.{ .allocator = allocator, .api_url = api_ctx.api_url, .token = api_ctx.token });
-    if (me.status != 200 or me.value == null) {
-        const message = client.parseError(allocator, me.body) orelse try allocator.dupe(u8, "unknown error");
+    const projects = try client.listProjects(.{ .allocator = allocator, .api_url = api_ctx.api_url, .token = api_ctx.token });
+    if (projects.status != 200 or projects.value == null) {
+        const message = client.parseError(allocator, projects.body) orelse try allocator.dupe(u8, "unknown error");
         try color.err(stderr, "error");
-        try stderr.print(": failed to list projects ({d}): {s}\n", .{ me.status, message });
+        try stderr.print(": failed to list projects ({d}): {s}\n", .{ projects.status, message });
         std.process.exit(1);
     }
 
     try stdout.writeAll("projects:\n");
-    for (me.value.?.orgs) |org| {
-        const projects = try client.listProjects(.{
-            .allocator = allocator,
-            .api_url = api_ctx.api_url,
-            .token = api_ctx.token,
-            .org_id = org.id,
-        });
-        if (projects.status != 200 or projects.value == null) continue;
-        for (projects.value.?.projects) |project| {
-            try stdout.print(
-                "  - id: {s}\n    name: {s}\n    org_id: {s}\n    org_name: {s}\n",
-                .{
-                    try quoteString(allocator, project.id),
-                    try quoteString(allocator, project.name),
-                    try quoteString(allocator, project.orgId),
-                    try quoteString(allocator, org.name),
-                },
-            );
-        }
+    for (projects.value.?.projects) |project| {
+        try stdout.print(
+            "  - id: {s}\n    name: {s}\n    org_id: {s}\n    org_name: {s}\n",
+            .{
+                try quoteString(allocator, project.id),
+                try quoteString(allocator, project.name),
+                try quoteString(allocator, project.orgId),
+                try quoteString(allocator, project.orgName),
+            },
+        );
     }
 }
 
