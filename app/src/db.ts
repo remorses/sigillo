@@ -115,26 +115,31 @@ const listOAuthHosts = memoize({
 // If ingress ever moves outside that model (extra proxies, wildcard SaaS
 // routing, etc.), revisit this and add an explicit app-level allowlist instead
 // of trusting DB entries.
+async function readOAuthClientId(host: string): Promise<string | null> {
+  const db = getDb()
+  const [row] = await db.select({ oauthClientId: schema.oauthDomain.oauthClientId })
+    .from(schema.oauthDomain)
+    .where(orm.eq(schema.oauthDomain.host, host))
+    .limit(1)
+  return row?.oauthClientId ?? null
+}
+
 const lookupOAuthClientId = memoize({
   namespace: 'oauth-client',
-  fn: async (host: string): Promise<string | null> => {
-    const db = getDb()
-    const [row] = await db.select({ oauthClientId: schema.oauthDomain.oauthClientId })
-      .from(schema.oauthDomain)
-      .where(orm.eq(schema.oauthDomain.host, host))
-      .limit(1)
-    return row?.oauthClientId ?? null
-  },
+  fn: readOAuthClientId,
 })
 
 export async function ensureOAuthClient(request: Request): Promise<string> {
   const pathname = new URL(request.url).pathname
   const host = getRequestHost(request)
-  const cachedClientId = await lookupOAuthClientId(host)
-
-  const isLocalHost = host.startsWith('localhost:') || host.startsWith('127.0.0.1:')
+  const hostname = host.split(':')[0] ?? host
+  const isLocal = isLocalHost(hostname)
   const isOAuthCallback = pathname.startsWith('/api/auth/oauth2/callback/')
-  if (cachedClientId && (!isLocalHost || isOAuthCallback)) {
+  const cachedClientId = isLocal && isOAuthCallback
+    ? await readOAuthClientId(host)
+    : await lookupOAuthClientId(host)
+
+  if (cachedClientId && (!isLocal || isOAuthCallback)) {
     return cachedClientId
   }
 
