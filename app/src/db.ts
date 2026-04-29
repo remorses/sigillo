@@ -42,23 +42,34 @@ function getRequestHost(request: Request): string {
   return new URL(request.url).host.toLowerCase()
 }
 
+function isLocalHost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1'
+}
+
+function originFromHost(host: string, protocol = 'https'): string {
+  const hostname = host.split(':')[0] ?? host
+  const safeProtocol = protocol === 'http' || protocol === 'https' ? protocol : 'https'
+  const scheme = isLocalHost(hostname) ? 'http' : safeProtocol
+  return `${scheme}://${host}`
+}
+
 function getPublicOriginOverride(request: Request): string | null {
   const requestUrl = new URL(request.url)
-  const isLocalHost = requestUrl.hostname === 'localhost' || requestUrl.hostname === '127.0.0.1'
-  if (!isLocalHost) {
+  if (!isLocalHost(requestUrl.hostname)) {
     return null
   }
 
   const forwardedHost = request.headers.get('x-forwarded-host')
-  const forwardedProto = request.headers.get('x-forwarded-proto')
-  if (forwardedHost && forwardedProto) {
-    return `${forwardedProto}://${forwardedHost}`
+  if (forwardedHost) {
+    const host = forwardedHost.split(',')[0]!.trim().toLowerCase()
+    const protocol = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim().toLowerCase()
+    return originFromHost(host, protocol)
   }
 
   const origin = request.headers.get('origin')
   if (origin) {
     const originUrl = new URL(origin)
-    if (originUrl.hostname !== 'localhost' && originUrl.hostname !== '127.0.0.1') {
+    if (!isLocalHost(originUrl.hostname)) {
       return originUrl.origin
     }
   }
@@ -66,7 +77,7 @@ function getPublicOriginOverride(request: Request): string | null {
   const referer = request.headers.get('referer')
   if (referer) {
     const refererUrl = new URL(referer)
-    if (refererUrl.hostname !== 'localhost' && refererUrl.hostname !== '127.0.0.1') {
+    if (!isLocalHost(refererUrl.hostname)) {
       return refererUrl.origin
     }
   }
@@ -77,13 +88,6 @@ function getPublicOriginOverride(request: Request): string | null {
   }
 
   return traforoUrl
-}
-
-function originForHost(host: string): string {
-  const protocol = host.startsWith('localhost:') || host.startsWith('127.0.0.1:')
-    ? 'http'
-    : 'https'
-  return `${protocol}://${host}`
 }
 
 const listOAuthHosts = memoize({
@@ -179,8 +183,8 @@ export async function getAuth(request: Request) {
   const db = getDb()
   const host = getRequestHost(request)
   const clientId = await ensureOAuthClient(request)
-  const trustedOrigins = ((await listOAuthHosts()) ?? []).map(originForHost)
-  trustedOrigins.push(originForHost(host))
+  const trustedOrigins = ((await listOAuthHosts()) ?? []).map((host) => originFromHost(host))
+  trustedOrigins.push(originFromHost(host))
   return betterAuth({
     baseURL: getRequestOrigin(request),
     secret: env.BETTER_AUTH_SECRET,
