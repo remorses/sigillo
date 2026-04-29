@@ -52,24 +52,21 @@
 :root {
   --content-max-width: 1200px;
   --radius: 0.625rem;
-  --background: var(--color-white);
-  --foreground: var(--color-neutral-800);
+  /* Warm off-white background inspired by ElevenLabs' "eggshell" (#FDFCFC) */
+  --background: #fdfcfb;
+  --foreground: var(--color-neutral-900);
   --card: var(--color-white);
-  --card-foreground: var(--color-neutral-800);
+  --card-foreground: var(--foreground);
   --popover: var(--color-white);
-  --popover-foreground: var(--color-neutral-800);
+  --popover-foreground: var(--foreground);
   --primary: color-mix(in srgb, var(--color-blue-600) 80%, var(--color-black));
   --primary-foreground: var(--color-white);
-  --secondary: --alpha(var(--color-black) / 4%);
-  --secondary-foreground: var(--color-neutral-800);
-  --muted: --alpha(var(--color-black) / 4%);
-  --muted-foreground: color-mix(
-    in srgb,
-    var(--color-neutral-500) 90%,
-    var(--color-black)
-  );
-  --accent: --alpha(var(--color-black) / 4%);
-  --accent-foreground: var(--color-neutral-800);
+  --secondary: --alpha(var(--color-black) / 3%);
+  --secondary-foreground: var(--foreground);
+  --muted: --alpha(var(--color-black) / 3%);
+  --muted-foreground: var(--color-neutral-500);
+  --accent: --alpha(var(--color-black) / 3%);
+  --accent-foreground: var(--foreground);
   --destructive: var(--color-red-500);
   --destructive-foreground: var(--color-red-700);
   --info: var(--color-blue-500);
@@ -78,20 +75,20 @@
   --success-foreground: var(--color-emerald-700);
   --warning: var(--color-amber-500);
   --warning-foreground: var(--color-amber-700);
-  --border: --alpha(var(--color-black) / 12%);
-  --input: --alpha(var(--color-black) / 14%);
+  --border: --alpha(var(--color-black) / 6%);
+  --input: --alpha(var(--color-black) / 10%);
   --ring: var(--primary);
-  --sidebar: var(--color-neutral-50);
+  --sidebar: #f8f7f6;
   --sidebar-foreground: color-mix(
     in srgb,
-    var(--color-neutral-800) 64%,
+    var(--color-neutral-700) 80%,
     var(--sidebar)
   );
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--color-white);
-  --sidebar-accent: --alpha(var(--color-black) / 4%);
-  --sidebar-accent-foreground: var(--color-neutral-800);
-  --sidebar-border: --alpha(var(--color-black) / 10%);
+  --sidebar-accent: --alpha(var(--color-black) / 3%);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: --alpha(var(--color-black) / 6%);
   --sidebar-ring: var(--color-neutral-400);
 
   @variant dark {
@@ -213,3 +210,44 @@
     }
   }
 }
+
+/* Dotted separator line using repeating-radial-gradient (ElevenLabs technique).
+   Produces evenly spaced 1px dots, much cleaner than CSS border-style: dotted. */
+.dotted-separator {
+  height: 2px;
+  background-image: repeating-radial-gradient(
+    circle,
+    var(--border) 0 1px,
+    transparent 1px 6px
+  );
+  background-size: 6px 100%;
+}
+
+/* Grid intersection dot — place on a relatively-positioned container at
+   border crossings. The outer circle uses the page background to "punch out"
+   the border intersection, the inner dot marks the joint.
+   Inspired by ElevenLabs' pricing grid. */
+.grid-dot {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background-color: var(--background);
+  pointer-events: none;
+}
+.grid-dot::after {
+  content: '';
+  width: 3px;
+  height: 3px;
+  border-radius: 9999px;
+  background-color: var(--foreground);
+  opacity: 0.35;
+}
+.grid-dot-tl { top: 0; left: 0; translate: -50% -50%; }
+.grid-dot-tr { top: 0; right: 0; translate: 50% -50%; }
+.grid-dot-bl { bottom: 0; left: 0; translate: -50% 50%; }
+.grid-dot-br { bottom: 0; right: 0; translate: 50% 50%; }

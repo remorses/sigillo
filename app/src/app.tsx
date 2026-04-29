@@ -76,7 +76,9 @@ export const app = new Spiceflow()
           <Navbar mobileMenuSlot={<MobileMenuButton />} />
           <div className="border-t border-border" />
           {children ?? (
-            <div className="max-w-(--content-max-width) mx-auto w-full border-x border-border flex items-center justify-center text-muted-foreground py-12">
+            <div className="relative max-w-(--content-max-width) mx-auto w-full border-x border-border flex items-center justify-center text-muted-foreground py-12">
+              <GridDot position="tl" />
+              <GridDot position="tr" />
               Page not found
             </div>
           )}
@@ -144,6 +146,8 @@ export const app = new Spiceflow()
         />
         <div className="border-t border-border" />
         <div className="isolate grow relative flex max-w-(--content-max-width) mx-auto w-full border-x border-border">
+          <GridDot position="tl" />
+          <GridDot position="tr" />
           <Sidebar
             orgs={loaderData.orgs}
             projects={loaderData.projects}
@@ -672,7 +676,11 @@ function TabBar({
   ] as const
 
   return (
-    <div className="max-w-(--content-max-width) mx-auto w-full border-x border-border">
+    <div className="relative max-w-(--content-max-width) mx-auto w-full border-x border-border">
+      <GridDot position="tl" />
+      <GridDot position="tr" />
+      <GridDot position="bl" />
+      <GridDot position="br" />
       <div className="flex h-10 items-stretch gap-6 px-6 overflow-x-auto scrollbar-hide">
         {tabs.map((tab) => (
           <Link
@@ -696,6 +704,11 @@ function TabBar({
   )
 }
 
+/** Decorative dot placed at border intersections. Must be inside a relative container. */
+function GridDot({ position }: { position: 'tl' | 'tr' | 'bl' | 'br' }) {
+  return <div aria-hidden className={`grid-dot grid-dot-${position}`} />
+}
+
 function ContentFrame({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={cn("max-w-(--content-max-width) mx-auto w-full border-x border-border", className)}>
@@ -707,7 +720,9 @@ function ContentFrame({ children, className }: { children: React.ReactNode; clas
 function Navbar({ mobileMenuSlot }: { mobileMenuSlot?: React.ReactNode }) {
   return (
     <nav className="sticky top-0 z-50 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="max-w-(--content-max-width) mx-auto border-x border-border">
+      <div className="relative max-w-(--content-max-width) mx-auto border-x border-border">
+        <GridDot position="bl" />
+        <GridDot position="br" />
         <div className="flex h-14 items-center justify-between px-6">
           <div className="flex items-center gap-2">
             {mobileMenuSlot}
@@ -752,7 +767,9 @@ async function Footer() {
   return (
     <footer className="flex flex-col ">
       <div className="border-t border-border" />
-      <div className="max-w-(--content-max-width) grow mx-auto w-full border-x border-border">
+      <div className="relative max-w-(--content-max-width) grow mx-auto w-full border-x border-border">
+        <GridDot position="tl" />
+        <GridDot position="tr" />
         <div className="flex items-center justify-end gap-4 px-6 py-5">
           <FooterColo />
           <span className="text-xs text-muted-foreground">
