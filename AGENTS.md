@@ -94,8 +94,7 @@ Rules:
 
 - Use script names with `deployment` instead of `deploy` to avoid pnpm's built-in `pnpm deploy` command confusion.
 - Use `deployment` for preview by default and `deployment:prod` for production deploys.
-- Keep `deployment:preview` as an explicit preview alias.
-- The `deployment`, `deployment:preview`, and `deployment:prod` scripts run the D1 migration before building and deploying. If migration fails, the `&&` chain stops and the deploy never happens.
+- The `deployment` and `deployment:prod` scripts run the D1 migration before building and deploying. If migration fails, the `&&` chain stops and the deploy never happens.
 - After deploying preview, always verify it works before proceeding to production.
 
 ## Local dev and first-time setup
@@ -165,7 +164,7 @@ pnpm --dir provider exec wrangler d1 migrations apply DB --remote
 pnpm --dir provider exec wrangler d1 migrations apply DB --remote --env preview
 ```
 
-Wrangler tracks applied migrations in a `d1_migrations` metadata table inside each D1 database, so it only runs new ones. The `deployment`, `deployment:preview`, and `deployment:prod` scripts now run migrations automatically before building, so you rarely need these manual commands. Use them only for one-off migration testing without redeploying.
+Wrangler tracks applied migrations in a `d1_migrations` metadata table inside each D1 database, so it only runs new ones. The `deployment` and `deployment:prod` scripts now run migrations automatically before building, so you rarely need these manual commands. Use them only for one-off migration testing without redeploying.
 
 Provider migrations are generated separately via `drizzle-kit generate --config drizzle.provider.config.ts` (if it exists) or manually placed in `provider/drizzle/`.
 
