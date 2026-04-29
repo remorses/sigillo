@@ -716,8 +716,8 @@ const gridDotPosition = {
 function GridDot({ position }: { position: keyof typeof gridDotPosition }) {
   return (
     <div aria-hidden className={cn(
-      'absolute z-20 size-3 rounded-full bg-background pointer-events-none',
-      'after:content-[""] after:block after:size-[3px] after:rounded-full after:bg-foreground/35 after:m-auto',
+      'absolute z-20 size-5 rounded-full bg-background pointer-events-none',
+      'after:content-[""] after:block after:size-[2px] after:rounded-full after:bg-foreground/40 after:m-auto',
       'flex items-center justify-center',
       gridDotPosition[position],
     )} />
