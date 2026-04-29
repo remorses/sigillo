@@ -704,9 +704,24 @@ function TabBar({
   )
 }
 
-/** Decorative dot placed at border intersections. Must be inside a relative container. */
-function GridDot({ position }: { position: 'tl' | 'tr' | 'bl' | 'br' }) {
-  return <div aria-hidden className={`grid-dot grid-dot-${position}`} />
+/** Decorative dot placed at border intersections. Must be inside a relative container.
+    Outer circle masks the border crossing with the page bg, inner dot marks the joint. */
+const gridDotPosition = {
+  tl: 'top-0 left-0 -translate-x-1/2 -translate-y-1/2',
+  tr: 'top-0 right-0 translate-x-1/2 -translate-y-1/2',
+  bl: 'bottom-0 left-0 -translate-x-1/2 translate-y-1/2',
+  br: 'bottom-0 right-0 translate-x-1/2 translate-y-1/2',
+} as const
+
+function GridDot({ position }: { position: keyof typeof gridDotPosition }) {
+  return (
+    <div aria-hidden className={cn(
+      'absolute z-20 size-3 rounded-full bg-background pointer-events-none',
+      'after:content-[""] after:block after:size-[3px] after:rounded-full after:bg-foreground/35 after:m-auto',
+      'flex items-center justify-center',
+      gridDotPosition[position],
+    )} />
+  )
 }
 
 function ContentFrame({ children, className }: { children: React.ReactNode; className?: string }) {
