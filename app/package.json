@@ -38,7 +38,7 @@
     "prismjs": "^1.29.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "spiceflow": "rsc",
+    "spiceflow": "1.20.0-rsc.1",
     "superjson": "^2.2.6",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.2",

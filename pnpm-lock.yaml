@@ -56,7 +56,7 @@ importers:
         specifier: ^19.2.5
         version: 19.2.5(react@19.2.5)
       spiceflow:
-        specifier: rsc
+        specifier: 1.20.0-rsc.1
         version: 1.20.0-rsc.1(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0))(zod@4.4.1)
       superjson:
         specifier: ^2.2.6
@@ -165,7 +165,7 @@ importers:
         specifier: workspace:^
         version: link:../app
       spiceflow:
-        specifier: rsc
+        specifier: 1.20.0-rsc.1
         version: 1.20.0-rsc.1(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0))(zod@4.4.1)
       tailwindcss:
         specifier: ^4.2.2
