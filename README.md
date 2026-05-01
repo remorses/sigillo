@@ -293,6 +293,26 @@ sigillo run --mount config.json --mount-format json -- next dev  # mount as JSON
 sigillo run --disable-redaction -- ./my-script.sh                # opt out of output redaction
 ```
 
+Use **`--command`** when you need shell features like `&&`, pipes, redirects, or `$VARIABLE` expansion. Wrap the command in single quotes so your parent shell does not expand secret variables before Sigillo injects them.
+
+```bash
+# Wrong: your shell expands $DATABASE_URL before sigillo starts
+sigillo run --command "psql $DATABASE_URL -c 'select 1'"
+
+# Right: $DATABASE_URL expands inside sigillo's child shell
+sigillo run --command 'psql $DATABASE_URL -c "select 1"'
+```
+
+Put **non-secret env vars before** `sigillo run`, especially in package scripts. This keeps regular build flags visible while secrets still come from Sigillo.
+
+```json
+{
+  "scripts": {
+    "deployment": "CLOUDFLARE_ENV=preview sigillo run -c preview --command 'vite build && wrangler deploy --env preview'"
+  }
+}
+```
+
 **Output redaction** is enabled by default. Secret values with high entropy (>=3.5 Shannon bits, >=16 chars) are replaced with `*` in stdout/stderr. This prevents secrets from leaking into agent context windows or CI logs.
 
 ### `sigillo secrets`
