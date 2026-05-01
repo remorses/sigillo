@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.9.0
+
+1. **Configured subfolders shown in error messages** — when you run `sigillo run` from a directory without a project configured, the error now lists subfolders that _are_ set up with their project names and environments. This helps agents and users discover they need to `cd` into the right directory:
+
+   ```
+   error: project not configured for /Users/me/monorepo
+     sigillo setup --project <PROJECT_ID> --env <SLUG>
+
+   subfolders configured with sigillo:
+     ./app  →  my-website (dev)
+     ./api  →  my-api (dev)
+
+   run sigillo from one of these directories instead, or run:
+     sigillo setup
+   ```
+
+   The same hint appears in `secrets`, `secrets get/set/delete`, `secrets download`, and `environments` commands.
+
+2. **`sigillo me` shows configured subfolders** — the `me` command now lists all subfolders under the current directory that have sigillo set up, so you can quickly see the status of a monorepo:
+
+   ```bash
+   sigillo me
+   ```
+
+   ```
+   Configured subfolders:
+     ./app  →  my-website (dev)
+     ./api  →  my-api (prod)
+   ```
+
 ## 0.8.1
 
 1. **Faster project setup and listing**. `sigillo setup` and `sigillo projects` now fetch all accessible projects in one request instead of querying every organization one by one:
