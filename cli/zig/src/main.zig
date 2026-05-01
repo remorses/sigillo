@@ -48,6 +48,30 @@ const Global = zeke.globalOpts()
     .option("--token [token]", "Auth token override")
     .option("--api-url [url]", "API URL override (default: https://sigillo.dev)");
 
+fn printChildScopes(
+    allocator: std.mem.Allocator,
+    stderr: Writer,
+    cwd: []const u8,
+) !void {
+    const children = config.findChildScopes(allocator, cwd) catch return;
+    if (children.len == 0) return;
+
+    try stderr.writeAll("\nsubfolders configured with sigillo:\n");
+    for (children) |child| {
+        try stderr.print("  ." ++ std.fs.path.sep_str ++ "{s}", .{child.relative_path});
+        if (child.entry.project_name) |name| {
+            try stderr.print("  →  {s}", .{name});
+        } else if (child.entry.project) |project| {
+            try stderr.print("  →  {s}", .{project});
+        }
+        if (child.entry.environment) |env| {
+            try stderr.print(" ({s})", .{env});
+        }
+        try stderr.writeAll("\n");
+    }
+    try stderr.writeAll("\nrun sigillo from one of these directories instead, or run:\n  sigillo setup\n");
+}
+
 fn printAvailableProjects(
     allocator: std.mem.Allocator,
     stderr: Writer,
@@ -485,6 +509,27 @@ fn meAction(_: Me.Args, opts: Me.Options, global: Global.Options) !void {
             try stdout.print("{s}\n", .{environment});
         }
     }
+
+    // Show configured subfolders under cwd
+    const children = config.findChildScopes(allocator, cwd) catch &.{};
+    if (children.len > 0) {
+        try stdout.writeAll("\n");
+        try color.blue(stdout, "Configured subfolders:\n");
+        for (children) |child| {
+            try stdout.writeAll("  ");
+            try color.bold(stdout, "." ++ std.fs.path.sep_str);
+            try color.bold(stdout, child.relative_path);
+            if (child.entry.project_name) |name| {
+                try stdout.print("  →  {s}", .{name});
+            } else if (child.entry.project) |project| {
+                try stdout.print("  →  {s}", .{project});
+            }
+            if (child.entry.environment) |env| {
+                try stdout.print(" ({s})", .{env});
+            }
+            try stdout.writeAll("\n");
+        }
+    }
 }
 
 fn setupAction(_: Setup.Args, opts: Setup.Options, global: Global.Options) !void {
@@ -707,14 +752,16 @@ fn runAction(args: Run.Args, opts: Run.Options, global: Global.Options) !void {
     const api_url = resolved.api_url.?; // always set — defaults to https://sigillo.dev
     const project = resolved.project orelse {
         try color.err(stderr, "error");
-        try stderr.print(": project not configured\n", .{});
+        try stderr.print(": project not configured for {s}\n", .{cwd});
         try stderr.writeAll("  sigillo setup --project <PROJECT_ID> --env <SLUG>\n");
+        try printChildScopes(allocator, stderr, cwd);
         std.process.exit(1);
     };
     const environment = resolved.environment orelse {
         try color.err(stderr, "error");
-        try stderr.print(": env not configured\n", .{});
+        try stderr.print(": env not configured for {s}\n", .{cwd});
         try stderr.writeAll("  sigillo setup\n");
+        try printChildScopes(allocator, stderr, cwd);
         std.process.exit(1);
     };
 
@@ -1095,8 +1142,9 @@ fn requireProjectContext(allocator: std.mem.Allocator, stderr: Writer, cwd: []co
         },
         error.ProjectNotConfigured => {
             try color.err(stderr, "error");
-            try stderr.print(": project not configured\n", .{});
+            try stderr.print(": project not configured for {s}\n", .{cwd});
             try stderr.writeAll("  sigillo setup --project <PROJECT_ID> --env <SLUG>\n");
+            try printChildScopes(allocator, stderr, cwd);
             std.process.exit(1);
         },
         else => return err,
@@ -1113,14 +1161,16 @@ fn requireEnvironmentContext(allocator: std.mem.Allocator, stderr: Writer, cwd: 
         },
         error.EnvironmentNotConfigured => {
             try color.err(stderr, "error");
-            try stderr.print(": env not configured\n", .{});
+            try stderr.print(": env not configured for {s}\n", .{cwd});
             try stderr.writeAll("  sigillo setup\n");
+            try printChildScopes(allocator, stderr, cwd);
             std.process.exit(1);
         },
         error.ProjectNotConfigured => {
             try color.err(stderr, "error");
-            try stderr.print(": project not configured\n", .{});
+            try stderr.print(": project not configured for {s}\n", .{cwd});
             try stderr.writeAll("  sigillo setup --project <PROJECT_ID> --env <SLUG>\n");
+            try printChildScopes(allocator, stderr, cwd);
             std.process.exit(1);
         },
         else => return err,

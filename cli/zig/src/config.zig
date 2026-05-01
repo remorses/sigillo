@@ -298,6 +298,39 @@ fn scopeMatches(cwd: []const u8, scope: []const u8) bool {
     return cwd[scope.len] == std.fs.path.sep;
 }
 
+pub const ChildScope = struct {
+    /// Relative path from the parent directory (e.g. "app", "services/api")
+    relative_path: []const u8,
+    entry: ScopedEntry,
+};
+
+/// Find all configured scopes that are direct children (subfolders) of the
+/// given directory. Returns scopes where the scope path starts with `parent_dir/`.
+pub fn findChildScopes(allocator: std.mem.Allocator, parent_dir: []const u8) ![]const ChildScope {
+    const cfg = try readConfig(allocator);
+    const normalized_parent = try normalizeScope(allocator, parent_dir);
+
+    var results = std.ArrayListUnmanaged(ChildScope).empty;
+
+    for (cfg.scopes.items) |record| {
+        // Must be strictly under parent_dir (not equal to it)
+        if (record.scope.len <= normalized_parent.len) continue;
+        if (!std.mem.startsWith(u8, record.scope, normalized_parent)) continue;
+        if (record.scope[normalized_parent.len] != std.fs.path.sep) continue;
+
+        // Only include scopes that have a project configured
+        if (record.entry.project == null) continue;
+
+        const relative = record.scope[normalized_parent.len + 1 ..];
+        try results.append(allocator, .{
+            .relative_path = relative,
+            .entry = record.entry,
+        });
+    }
+
+    return results.items;
+}
+
 fn mergeEntry(allocator: std.mem.Allocator, destination: *ScopedEntry, updates: ScopedEntry) !void {
     if (updates.token) |value| {
         destination.token = try allocator.dupe(u8, value);
