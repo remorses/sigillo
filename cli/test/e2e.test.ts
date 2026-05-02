@@ -134,6 +134,38 @@ describe('sigillo cli e2e', () => {
     })
   }, 60_000)
 
+  test('blocks plain secret output in agent shells unless forced', async () => {
+    const agentContext = {
+      ...cliContext,
+      env: {
+        ...cliContext.env,
+        CODEX_THREAD_ID: 'sigillo-test-agent',
+      },
+    }
+
+    const blockedGet = await runCli({ args: ['secrets', 'get', cliContext.secretName], context: agentContext })
+    expect(blockedGet.status).toBe(1)
+    expect(blockedGet.stdout).toBe('')
+    expect(blockedGet.stderr).toContain('reading secret values into an agent context is discouraged')
+    expect(blockedGet.stderr).toContain('sigillo run --command')
+    expect(blockedGet.stderr).toContain('--force')
+
+    const forcedGet = await runCli({ args: ['secrets', 'get', cliContext.secretName, '--force'], context: agentContext })
+    expect(forcedGet.status).toBe(0)
+    expect(forcedGet.stdout).toContain(`value: "${cliContext.secretValue}"`)
+
+    const blockedDownload = await runCli({ args: ['secrets', 'download', '--format', 'json'], context: agentContext })
+    expect(blockedDownload.status).toBe(1)
+    expect(blockedDownload.stdout).toBe('')
+    expect(blockedDownload.stderr).toContain('reading secret values into an agent context is discouraged')
+
+    const forcedDownload = await runCli({ args: ['secrets', 'download', '--format', 'json', '--force'], context: agentContext })
+    expect(forcedDownload.status).toBe(0)
+    expect(JSON.parse(forcedDownload.stdout)).toMatchObject({
+      [cliContext.secretName]: cliContext.secretValue,
+    })
+  }, 60_000)
+
   test('environment commands accept env slugs', async () => {
     const get = await runCli({ args: ['environments', 'get', cliContext.extraEnvironmentSlug], context: cliContext })
     expect(get.status).toBe(0)

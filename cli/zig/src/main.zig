@@ -204,7 +204,8 @@ const Secrets = zeke.cmd("secrets", "List secrets for the configured env")
 const SecretsGet = zeke.cmd("secrets get <name>", "Get a secret value")
     .option("-p, --project [id]", "Project ID override")
     .option("--env [slug]", "Env slug override (e.g. dev, prod)")
-    .option("-c, --config [slug]", "Env slug override");
+    .option("-c, --config [slug]", "Env slug override")
+    .option("--force", "Allow printing secret values in agent shells");
 
 const SecretsSet = zeke.cmd("secrets set <name> [value]", "Set a secret value (omit value to read from stdin)")
     .option("-p, --project [id]", "Project ID override")
@@ -221,6 +222,7 @@ const SecretsDownload = zeke.cmd("secrets download", "Download all secrets in a 
     .option("-p, --project [id]", "Project ID override")
     .option("--env [slug]", "Env slug override (e.g. dev, prod)")
     .option("-c, --config [slug]", "Env slug override")
+    .option("--force", "Allow printing secret values in agent shells")
     .example("sigillo secrets download")
     .example("sigillo secrets download --format json")
     .example("sigillo secrets download --format xargs | xargs -0 -n2 sh -c 'printf %s \"$2\" | vercel env add \"$1\" production --force' sh");
@@ -1177,6 +1179,65 @@ fn requireEnvironmentContext(allocator: std.mem.Allocator, stderr: Writer, cwd: 
     };
 }
 
+fn requirePlainSecretForceInAgent(allocator: std.mem.Allocator, stderr: Writer, force: bool) !void {
+    if (force) return;
+
+    var env_map = try std.process.getEnvMap(allocator);
+    defer env_map.deinit();
+    if (detectAgentNameFromEnvMap(&env_map)) |agent_name| {
+        try color.err(stderr, "error");
+        try stderr.writeAll(": reading secret values into an agent context is discouraged\n");
+        try stderr.print("  detected agent shell: {s}\n", .{agent_name});
+        try stderr.writeAll("\n");
+        try stderr.writeAll("  Prefer chaining the command that needs secrets through Sigillo, so values never enter chat context:\n");
+        try stderr.writeAll("    sigillo run --command 'your-command \"$DATABASE_URL\"'\n");
+        try stderr.writeAll("\n");
+        try stderr.writeAll("  For tools that read secrets from stdin, pipe directly and add --force intentionally:\n");
+        try stderr.writeAll("    sigillo secrets download --format env --force | fly secrets import --app my-app\n");
+        try stderr.writeAll("\n");
+        try stderr.writeAll("  If you really need to inspect secrets as a last resort, rerun with --force.\n");
+        std.process.exit(1);
+    }
+}
+
+fn detectAgentNameFromEnvMap(env_map: *const std.process.EnvMap) ?[]const u8 {
+    if (presentEnv(env_map, "AI_AGENT")) |value| return value;
+
+    // Mirrors std-env's src/agents.ts markers so Sigillo blocks raw secret
+    // output in the same shells agents already identify for themselves.
+    const agents = [_]struct { name: []const u8, keys: []const []const u8 }{
+        .{ .name = "claude", .keys = &.{ "CLAUDECODE", "CLAUDE_CODE" } },
+        .{ .name = "replit", .keys = &.{"REPL_ID"} },
+        .{ .name = "gemini", .keys = &.{"GEMINI_CLI"} },
+        .{ .name = "codex", .keys = &.{ "CODEX_SANDBOX", "CODEX_THREAD_ID" } },
+        .{ .name = "opencode", .keys = &.{"OPENCODE"} },
+        .{ .name = "auggie", .keys = &.{"AUGMENT_AGENT"} },
+        .{ .name = "goose", .keys = &.{"GOOSE_PROVIDER"} },
+        .{ .name = "cursor", .keys = &.{"CURSOR_AGENT"} },
+    };
+
+    for (agents) |agent| {
+        for (agent.keys) |key| {
+            if (presentEnv(env_map, key) != null) return agent.name;
+        }
+    }
+    if (presentEnv(env_map, "PATH")) |path| {
+        if (std.mem.indexOf(u8, path, ".pi/agent") != null or std.mem.indexOf(u8, path, ".pi\\agent") != null) return "pi";
+    }
+    if (presentEnv(env_map, "EDITOR")) |editor| {
+        if (std.mem.indexOf(u8, editor, "devin") != null) return "devin";
+    }
+    if (presentEnv(env_map, "TERM_PROGRAM")) |term_program| {
+        if (std.mem.indexOf(u8, term_program, "kiro") != null) return "kiro";
+    }
+    return null;
+}
+
+fn presentEnv(env_map: *const std.process.EnvMap, key: []const u8) ?[]const u8 {
+    const value = env_map.get(key) orelse return null;
+    return if (value.len == 0) null else value;
+}
+
 fn secretsAction(_: Secrets.Args, opts: Secrets.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
@@ -1228,6 +1289,7 @@ fn secretsGetAction(args: SecretsGet.Args, opts: SecretsGet.Options, global: Glo
     var arena = std.heap.ArenaAllocator.init(gpa.allocator());
     defer arena.deinit();
     const allocator = arena.allocator();
+    try requirePlainSecretForceInAgent(allocator, stderr, opts.force);
     const cwd = try config.getCwd(allocator);
     const ctx = try requireEnvironmentContext(allocator, stderr, cwd, .{
         .token = global.token,
@@ -1370,13 +1432,6 @@ fn secretsDownloadAction(_: SecretsDownload.Args, opts: SecretsDownload.Options,
     var arena = std.heap.ArenaAllocator.init(gpa.allocator());
     defer arena.deinit();
     const allocator = arena.allocator();
-    const cwd = try config.getCwd(allocator);
-    const ctx = try requireEnvironmentContext(allocator, stderr, cwd, .{
-        .token = global.token,
-        .api_url = global.api_url,
-        .project = opts.project,
-        .environment = envOverride(opts.env, opts.config),
-    });
 
     const format = opts.format orelse "yaml";
     if (!isSupportedDownloadFormat(format)) {
@@ -1384,6 +1439,15 @@ fn secretsDownloadAction(_: SecretsDownload.Args, opts: SecretsDownload.Options,
         try stderr.print(": invalid download format '{s}' (expected: json, env, env-no-quotes, xargs, yaml, docker, dotnet-json)\n", .{format});
         std.process.exit(1);
     }
+    try requirePlainSecretForceInAgent(allocator, stderr, opts.force);
+
+    const cwd = try config.getCwd(allocator);
+    const ctx = try requireEnvironmentContext(allocator, stderr, cwd, .{
+        .token = global.token,
+        .api_url = global.api_url,
+        .project = opts.project,
+        .environment = envOverride(opts.env, opts.config),
+    });
 
     const res = try client.downloadSecrets(.{
         .allocator = allocator,
@@ -1963,6 +2027,19 @@ test "redaction leaves non secret values visible" {
     try std.testing.expectEqualStrings("url=https://example.com env=development", output);
 }
 
+test "agent detection follows std-env environment markers" {
+    var env_map = std.process.EnvMap.init(std.testing.allocator);
+    defer env_map.deinit();
+
+    try std.testing.expect(detectAgentNameFromEnvMap(&env_map) == null);
+
+    try env_map.put("CODEX_THREAD_ID", "thread_123");
+    try std.testing.expectEqualStrings("codex", detectAgentNameFromEnvMap(&env_map).?);
+
+    try env_map.put("AI_AGENT", "custom-agent");
+    try std.testing.expectEqualStrings("custom-agent", detectAgentNameFromEnvMap(&env_map).?);
+}
+
 test "redaction handles repeated and multiple secret values" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -2250,6 +2327,38 @@ test "secrets download parses explicit format" {
     try app.dispatch(&.{ "secrets", "download", "--format", "xargs" });
 
     try std.testing.expectEqualStrings("xargs", State.format.?);
+}
+
+test "secrets download parses force option" {
+    const State = struct {
+        var force = false;
+
+        fn action(_: SecretsDownload.Args, opts: SecretsDownload.Options, _: Global.Options) !void {
+            force = opts.force;
+        }
+    };
+
+    const TestSecretsDownload = SecretsDownload.bindWith(Global, State.action);
+    var app = zeke.AppWith(.{TestSecretsDownload}, Global).init(std.testing.allocator, "sigillo");
+    try app.dispatch(&.{ "secrets", "download", "--force" });
+
+    try std.testing.expect(State.force);
+}
+
+test "secrets get parses force option" {
+    const State = struct {
+        var force = false;
+
+        fn action(_: SecretsGet.Args, opts: SecretsGet.Options, _: Global.Options) !void {
+            force = opts.force;
+        }
+    };
+
+    const TestSecretsGet = SecretsGet.bindWith(Global, State.action);
+    var app = zeke.AppWith(.{TestSecretsGet}, Global).init(std.testing.allocator, "sigillo");
+    try app.dispatch(&.{ "secrets", "get", "DATABASE_URL", "--force" });
+
+    try std.testing.expect(State.force);
 }
 
 test "secrets download leaves format unset when omitted" {

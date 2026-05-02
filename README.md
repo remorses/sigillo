@@ -322,12 +322,20 @@ Manage individual secrets.
 ```bash
 sigillo secrets                           # list secret names
 sigillo secrets get DATABASE_URL          # get a single value
+sigillo secrets get DATABASE_URL --force  # allow value output inside agent shells
 sigillo secrets set API_KEY sk-live-xxx   # set a value
 echo "multiline\nvalue" | sigillo secrets set CERT  # set from stdin
 sigillo secrets delete OLD_KEY            # delete
 sigillo secrets download                  # download all (YAML)
 sigillo secrets download --format json    # download as JSON
 sigillo secrets download --format env     # download as .env
+```
+
+Inside AI agent shells, `secrets get` and `secrets download` refuse to print raw values unless you pass `--force`. Prefer `sigillo run` or a direct pipe so secret values go straight to the tool that needs them, not into the chat context.
+
+```bash
+sigillo run --command 'psql "$DATABASE_URL" -c "select 1"'
+sigillo secrets download --format env --force | fly secrets import --app my-app
 ```
 
 ### `sigillo projects`
