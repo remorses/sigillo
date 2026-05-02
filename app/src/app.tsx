@@ -92,6 +92,8 @@ export const app = new Spiceflow()
 
   .loader('/dash/*', async ({ request }) => {
     const db = getDb()
+    const pathname = new URL(request.url).pathname
+    const projectId = pathname.match(/^\/dash\/projects\/([^/]+)/)?.[1] ?? null
     const session = await requirePageSession(request)
     const members = await db.query.orgMember.findMany({
       where: { userId: session.userId },
@@ -105,6 +107,9 @@ export const app = new Spiceflow()
 
     return {
       orgs,
+      projectId,
+      pathname,
+      currentProjectFirstEnvSlug: null,
       user: { name: session.user.name || 'User', email: session.user.email || '' },
     }
   })
@@ -170,8 +175,19 @@ export const app = new Spiceflow()
   // ── Layout 2: Authenticated app shell with sidebar ─────────────
   .layout('/dash/*', async ({ children, loaderData }) => {
     const { Sidebar, MobileDrawer } = await import('sigillo-app/src/components/sidebar')
+    const projectId = loaderData.projectId
     return (
       <>
+        {projectId && (
+          <>
+            <TabBar
+              projectId={projectId}
+              pathname={loaderData.pathname}
+              firstEnvSlug={loaderData.currentProjectFirstEnvSlug}
+            />
+            <div className="border-t border-border" />
+          </>
+        )}
         <div className="isolate grow relative flex max-w-(--content-max-width) mx-auto w-full border-x border-border">
           <GridDot position="tl" />
           <GridDot position="tr" />
@@ -181,20 +197,6 @@ export const app = new Spiceflow()
             {children}
           </main>
         </div>
-      </>
-    )
-  })
-
-  .layout('/dash/projects/:projectId/*', async ({ children, loaderData }) => {
-    return (
-      <>
-        <TabBar
-          projectId={loaderData.projectId}
-          pathname={loaderData.pathname}
-          firstEnvSlug={loaderData.currentProjectFirstEnvSlug}
-        />
-        <div className="border-t border-border" />
-        {children}
       </>
     )
   })
