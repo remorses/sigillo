@@ -93,7 +93,8 @@ export const app = new Spiceflow()
   .loader('/dash/*', async ({ request }) => {
     const db = getDb()
     const pathname = new URL(request.url).pathname
-    const projectId = pathname.match(/^\/dash\/projects\/([^/]+)/)?.[1] ?? null
+    const projectId = new URLPattern({ pathname: '/dash/projects/:projectId/*' })
+      .exec(request.url)?.pathname.groups.projectId ?? null
     const session = await requirePageSession(request)
     const members = await db.query.orgMember.findMany({
       where: { userId: session.userId },
@@ -274,7 +275,7 @@ export const app = new Spiceflow()
   // ── New Organization page (standalone, no sidebar) ─────────────
   .page('/dash/new-org', async () => {
     return (
-      <div className="max-w-md py-12">
+      <div className="max-w-md mx-auto py-12">
         <h1 className="text-2xl font-bold tracking-tight mb-2">New Organization</h1>
         <p className="text-muted-foreground mb-6">
           Organizations group your projects and team members.
