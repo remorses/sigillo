@@ -118,13 +118,17 @@ export const app = new Spiceflow()
       const sortedEnvs = [...(p.environments || [])].sort((a, b) => a.createdAt - b.createdAt)
       return { id: p.id, name: p.name, firstEnvSlug: sortedEnvs[0]?.slug ?? null }
     })
+    const currentProject = allProjects.find((project) => project.id === projectId)
+    const environments = [...(currentProject?.environments || [])].sort((a, b) => a.createdAt - b.createdAt)
 
     return {
       orgId,
       projectId,
+      projectName: currentProject?.name ?? 'Project',
       pathname: url.pathname,
       orgs,
       projects,
+      environments,
       currentProjectFirstEnvSlug: projects.find((project) => project.id === projectId)?.firstEnvSlug ?? null,
       user: { name: session.user.name || 'User', email: session.user.email || '' },
     }
@@ -144,20 +148,8 @@ export const app = new Spiceflow()
         <div className="isolate grow relative flex max-w-(--content-max-width) mx-auto w-full border-x border-border">
           <GridDot position="tl" />
           <GridDot position="tr" />
-          <Sidebar
-            orgs={loaderData.orgs}
-            projects={loaderData.projects}
-            currentOrgId={loaderData.orgId}
-            currentProjectId={loaderData.projectId}
-            user={loaderData.user}
-          />
-          <MobileDrawer
-            orgs={loaderData.orgs}
-            projects={loaderData.projects}
-            currentOrgId={loaderData.orgId}
-            currentProjectId={loaderData.projectId}
-            user={loaderData.user}
-          />
+          <Sidebar />
+          <MobileDrawer />
           <main className="flex-1 p-6 overflow-auto">
             {children}
           </main>
@@ -234,13 +226,13 @@ export const app = new Spiceflow()
     }
 
     const user = { name: session.user.name || 'User', email: session.user.email || '' }
-    const { Sidebar, MobileDrawer, NewProjectButton } = await import('sigillo-app/src/components/sidebar')
+    const { SidebarWithProps, MobileDrawerWithProps, NewProjectButton } = await import('sigillo-app/src/components/sidebar')
 
     return (
       <ContentFrame>
         <div className="isolate relative flex min-h-[min(400px,100vh)]">
-          <Sidebar orgs={orgs} projects={[]} currentOrgId={params.orgId} currentProjectId={null} user={user} />
-          <MobileDrawer orgs={orgs} projects={[]} currentOrgId={params.orgId} currentProjectId={null} user={user} />
+          <SidebarWithProps orgs={orgs} projects={[]} currentOrgId={params.orgId} currentProjectId={null} user={user} />
+          <MobileDrawerWithProps orgs={orgs} projects={[]} currentOrgId={params.orgId} currentProjectId={null} user={user} />
           <main className="flex-1 p-6 overflow-auto">
             <div className="max-w-3xl">
               <h1 className="text-2xl font-bold tracking-tight mb-2">No projects yet</h1>
@@ -299,13 +291,10 @@ export const app = new Spiceflow()
     const db = getDb()
     const { projectId, envSlug } = params
 
-    const [project, environments] = await Promise.all([
-      db.query.project.findFirst({ where: { id: projectId }, columns: { name: true } }),
-      db.query.environment.findMany({
-        where: { projectId },
-        orderBy: { createdAt: 'asc' },
-      }),
-    ])
+    const environments = await db.query.environment.findMany({
+      where: { projectId },
+      orderBy: { createdAt: 'asc' },
+    })
 
     const matchedEnv = environments.find((e) => e.slug === envSlug)
     const selectedEnvId = matchedEnv?.id ?? environments[0]?.id ?? null
@@ -338,8 +327,6 @@ export const app = new Spiceflow()
     const cookieHeader = request.headers.get('cookie') ?? ''
 
     return {
-      projectName: project?.name ?? 'Project',
-      environments,
       selectedEnvId,
       secrets,
       allSecretNames,
@@ -354,15 +341,7 @@ export const app = new Spiceflow()
   })
 
   .loader('/projects/:projectId/environments', async ({ params }) => {
-    const db = getDb()
-    const { projectId } = params
-
-    const [project, environments] = await Promise.all([
-      db.query.project.findFirst({ where: { id: projectId }, columns: { name: true } }),
-      db.query.environment.findMany({ where: { projectId }, orderBy: { createdAt: 'asc' } }),
-    ])
-
-    return { projectId, projectName: project?.name ?? 'Project', environments }
+    return { projectId: params.projectId }
   })
 
   .page('/projects/:projectId/environments', async () => {
@@ -380,11 +359,6 @@ export const app = new Spiceflow()
     if (!orgId) throw redirect('/')
     const { role } = await requirePageOrgMember(session.userId, orgId)
 
-    const project = await db.query.project.findFirst({
-      where: { id: projectId },
-      columns: { name: true },
-    })
-
     const members = await db.query.orgMember.findMany({
       where: { orgId },
       with: { user: { columns: { id: true, name: true, email: true, image: true } } },
@@ -392,7 +366,6 @@ export const app = new Spiceflow()
     })
 
     return {
-      projectName: project?.name ?? 'Project',
       orgId,
       role,
       currentUserId: session.userId,
@@ -421,10 +394,7 @@ export const app = new Spiceflow()
     const db = getDb()
     const { projectId, envSlug } = params
 
-    const [project, environments] = await Promise.all([
-      db.query.project.findFirst({ where: { id: projectId }, columns: { name: true } }),
-      db.query.environment.findMany({ where: { projectId }, orderBy: { createdAt: 'asc' } }),
-    ])
+    const environments = await db.query.environment.findMany({ where: { projectId }, orderBy: { createdAt: 'asc' } })
 
     const matchedEnv = environments.find((e) => e.slug === envSlug)
     const selectedEnvId = matchedEnv?.id ?? environments[0]?.id ?? null
@@ -467,9 +437,7 @@ export const app = new Spiceflow()
     }))
 
     return {
-      projectName: project?.name ?? 'Project',
       events: eventsWithValues,
-      environments,
       selectedEnvId,
       projectId,
     }
@@ -490,23 +458,17 @@ export const app = new Spiceflow()
     const db = getDb()
     const { projectId } = params
 
-    const [project, environments, tokens] = await Promise.all([
-      db.query.project.findFirst({ where: { id: projectId }, columns: { name: true } }),
-      db.query.environment.findMany({ where: { projectId }, orderBy: { createdAt: 'asc' } }),
-      db.query.apiToken.findMany({
-        where: { projectId },
-        with: {
-          creator: { columns: { id: true, name: true } },
-          environment: { columns: { id: true, name: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-      }),
-    ])
+    const tokens = await db.query.apiToken.findMany({
+      where: { projectId },
+      with: {
+        creator: { columns: { id: true, name: true } },
+        environment: { columns: { id: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
 
     return {
-      projectName: project?.name ?? 'Project',
       projectId,
-      environments,
       tokens: tokens.map((t) => ({
         id: t.id,
         name: t.name,

@@ -30,7 +30,7 @@ type Member = {
 }
 
 export function AccessPage() {
-  const { projectName, orgId, role, currentUserId, members } = useLoaderData('/projects/:projectId/access')
+  const { projectName, orgId, role } = useLoaderData('/projects/:projectId/access')
 
   return (
     <div className="flex flex-col gap-3 w-full">
@@ -38,24 +38,14 @@ export function AccessPage() {
         <h1 className="text-2xl font-bold tracking-tight">{projectName}</h1>
         {role === 'admin' ? <InviteButton orgId={orgId} /> : null}
       </div>
-      <AccessTable
-        canManage={role === 'admin'}
-        currentUserId={currentUserId}
-        members={members}
-      />
+      <AccessTable />
     </div>
   )
 }
 
-export function AccessTable({
-  currentUserId,
-  canManage,
-  members,
-}: {
-  currentUserId: string
-  canManage: boolean
-  members: Member[]
-}) {
+export function AccessTable() {
+  const { role, currentUserId, members } = useLoaderData('/projects/:projectId/access')
+  const canManage = role === 'admin'
   const [roleOverrides, setRoleOverrides] = useState<Record<string, Member["role"]>>({})
   const [pendingRoleId, setPendingRoleId] = useState<string | null>(null)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)

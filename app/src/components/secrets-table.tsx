@@ -41,16 +41,8 @@ import {
   saveSecretsAction,
   syncMissingSecretsAction,
 } from "../actions.ts";
+import { useLoaderData } from "spiceflow/react";
 
-
-type Secret = {
-  id: string;
-  name: string;
-  value: string;
-  createdAt: number;
-  updatedAt: number;
-  createdBy: { id: string; name: string } | null;
-};
 
 // Secret values use the .text-security-disc CSS class from globals.css
 // instead of inline style objects (eliminates duplication with event-log-table).
@@ -114,18 +106,11 @@ function SecretValueCell({
 type Environment = { id: string; name: string; slug: string };
 
 export function SecretsTable({
-  secrets,
-  environmentId,
-  environments,
   allVisible,
-  allSecretNames,
 }: {
-  secrets: Secret[];
-  environmentId: string;
-  environments: Environment[];
   allVisible: boolean;
-  allSecretNames: string[];
 }) {
+  const { secrets, selectedEnvId: environmentId, environments, allSecretNames } = useLoaderData('/projects/:projectId/envs/:envSlug');
   const [newSecrets, setNewSecrets] = useState<Array<{ id: string; name: string; value: string }>>([]);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -140,6 +125,8 @@ export function SecretsTable({
   const [edits, setEdits] = useState<Record<string, { name?: string; value?: string }>>({});
   // Track values typed into missing-key rows (keyed by secret name)
   const [missingEdits, setMissingEdits] = useState<Record<string, string>>({});
+
+  if (!environmentId) return null;
 
   const setEdit = useCallback((id: string, field: "name" | "value", val: string) => {
     setEdits((prev) => ({

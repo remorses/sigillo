@@ -13,7 +13,7 @@ import { useState, useEffect } from "react";
 import { z } from "zod";
 import { Drawer } from "vaul";
 import { parseFormData } from "spiceflow";
-import { router, Link, ErrorBoundary } from "spiceflow/react";
+import { router, Link, ErrorBoundary, useLoaderData } from "spiceflow/react";
 import {
   PlusIcon,
   FolderIcon,
@@ -48,7 +48,7 @@ import {
 import { createProjectAction } from "../actions.ts";
 import { authClient } from "../auth-client.ts";
 
-export type SidebarProps = {
+type SidebarContentProps = {
   orgs: { id: string; name: string; role: string }[];
   projects: { id: string; name: string; firstEnvSlug: string | null }[];
   currentOrgId: string | null;
@@ -69,7 +69,7 @@ function SidebarContent({
   currentProjectId,
   user,
   onNavigate,
-}: SidebarProps & { onNavigate?: () => void }) {
+}: SidebarContentProps & { onNavigate?: () => void }) {
   const [showNewProject, setShowNewProject] = useState(false);
 
   const currentOrg = orgs.find((o) => o.id === currentOrgId);
@@ -264,7 +264,23 @@ function SidebarContent({
 
 // ── Desktop sidebar ────────────────────────────────────────────
 
-export function Sidebar(props: SidebarProps) {
+function useSidebarContentProps(): SidebarContentProps {
+  const { orgs, projects, orgId, projectId, user } = useLoaderData('/projects/:projectId/*');
+  return {
+    orgs,
+    projects,
+    currentOrgId: orgId,
+    currentProjectId: projectId,
+    user,
+  };
+}
+
+export function Sidebar() {
+  const props = useSidebarContentProps();
+  return <SidebarWithProps {...props} />;
+}
+
+export function SidebarWithProps(props: SidebarContentProps) {
   return (
     <aside className="hidden md:flex flex-col w-72 self-stretch min-h-0 border-r border-sidebar-border bg-background text-foreground p-6">
       <SidebarContent {...props} />
@@ -277,7 +293,12 @@ export function Sidebar(props: SidebarProps) {
 // Listens for the "sigillo:toggle-drawer" custom event dispatched by
 // MobileMenuButton in the Navbar (which lives in a different layout level).
 
-export function MobileDrawer(props: SidebarProps) {
+export function MobileDrawer() {
+  const props = useSidebarContentProps();
+  return <MobileDrawerWithProps {...props} />;
+}
+
+export function MobileDrawerWithProps(props: SidebarContentProps) {
   const [open, setOpen] = useState(false);
 
   // Listen for toggle events from MobileMenuButton

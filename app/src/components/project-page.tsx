@@ -107,7 +107,6 @@ export function ProjectPage() {
     environments,
     selectedEnvId,
     secrets,
-    allSecretNames,
     showBanner,
   } = useLoaderData('/projects/:projectId/envs/:envSlug');
   const [allVisible, setAllVisible] = useState(false);
@@ -151,13 +150,7 @@ export function ProjectPage() {
 
       {/* Secrets table */}
       {selectedEnvId ? (
-        <SecretsTable
-          secrets={secrets}
-          environmentId={selectedEnvId}
-          environments={environments}
-          allVisible={allVisible}
-          allSecretNames={allSecretNames}
-        />
+        <SecretsTable allVisible={allVisible} />
       ) : (
         <p className="text-muted-foreground text-sm">No environments yet.</p>
       )}

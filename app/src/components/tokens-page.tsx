@@ -26,16 +26,6 @@ import { formatTime } from "sigillo-app/src/lib/utils"
 import { createTokenAction, deleteTokenAction } from "../actions.ts"
 
 
-type Token = {
-  id: string
-  name: string
-  prefix: string
-  environmentId: string | null
-  environmentName: string | null
-  createdBy: string
-  createdAt: number
-}
-
 export function TokensPage() {
   const { projectName, projectId, environments, tokens } = useLoaderData('/projects/:projectId/tokens')
   const [createOpen, setCreateOpen] = useState(false)
@@ -62,7 +52,7 @@ export function TokensPage() {
           </Button>
         </EmptyState>
       ) : (
-        <TokensTable tokens={tokens} />
+        <TokensTable />
       )}
 
       <CreateTokenDialog
@@ -75,7 +65,8 @@ export function TokensPage() {
   )
 }
 
-function TokensTable({ tokens }: { tokens: Token[] }) {
+function TokensTable() {
+  const { tokens } = useLoaderData('/projects/:projectId/tokens')
   return (
     <Frame className="w-full">
       <Table className="table-fixed">
