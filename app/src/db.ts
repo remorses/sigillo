@@ -539,8 +539,7 @@ export async function hashTokenKey(key: string): Promise<string> {
 
 export async function generateApiToken(): Promise<{ key: string; hashedKey: string; prefix: string }> {
   const bytes = crypto.getRandomValues(new Uint8Array(32))
-  const raw = btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  const raw = Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('')
   const key = `sig_${raw}`
   const hashedKey = await hashTokenKey(key)
   const prefix = raw.slice(0, 12)
