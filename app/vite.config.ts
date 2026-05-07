@@ -11,7 +11,9 @@ const port = parseInt(process.env.PORT || '5188', 10)
 
 export default defineConfig(async () => {
   // Read D1 migration SQL files so they can be applied in the workerd setup file
-  const migrations = await readD1Migrations(path.join(__dirname, '../db/drizzle-app')).catch(() => [])
+  const migrations = process.env.VITEST
+    ? await readD1Migrations(path.join(__dirname, '../db/drizzle-app'))
+    : []
 
   return {
     server: { port, strictPort: true },

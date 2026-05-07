@@ -171,8 +171,8 @@ importers:
         specifier: workspace:^
         version: link:../app
       spiceflow:
-        specifier: 1.20.0-rsc.1
-        version: 1.20.0-rsc.1(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0))(zod@4.4.3)
+        specifier: 1.23.1-rsc.0
+        version: 1.23.1-rsc.0(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0))(zod@4.4.3)
       tailwindcss:
         specifier: ^4.2.2
         version: 4.2.4
@@ -2425,17 +2425,6 @@ packages:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
 
-  spiceflow@1.20.0-rsc.1:
-    resolution: {integrity: sha512-TdN9FKEAoYqrdHJu6rLrJMQHlkJUrkp1DHrU7Jo4Z2klWDUA1zTE2WCp5awm2igktt4cB0llS4+qMEQXIMmY9Q==}
-    peerDependencies:
-      '@modelcontextprotocol/sdk': '*'
-      react: '*'
-      react-dom: '*'
-      zod: ^4.0.0
-    peerDependenciesMeta:
-      '@modelcontextprotocol/sdk':
-        optional: true
-
   spiceflow@1.23.1-rsc.0:
     resolution: {integrity: sha512-0x9CZ7uJ/nGT3BcHRUVBMpwOsUzu+plw+X0925DzXnPdnZ6LaJ3KfD+M76WdVwI6k4lij44OBsVxcC4Xi1UDlA==}
     peerDependencies:
@@ -4550,25 +4539,6 @@ snapshots:
   siginfo@2.0.0: {}
 
   source-map-js@1.2.1: {}
-
-  spiceflow@1.20.0-rsc.1(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0))(zod@4.4.3):
-    dependencies:
-      '@vitejs/plugin-rsc': 0.5.21(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0))
-      errore: 0.14.1
-      eventsource-parser: 3.0.8
-      history: 5.3.0
-      isbot: 4.4.0
-      its-fine: 2.0.0(@types/react@19.2.14)(react@19.2.5)
-      nf3: 0.3.16
-      openapi-types: 12.1.3
-      react: 19.2.5
-      react-dom: 19.2.5(react@19.2.5)
-      superjson: 2.2.6
-      zod: 4.4.3
-    transitivePeerDependencies:
-      - '@types/react'
-      - react-server-dom-webpack
-      - vite
 
   spiceflow@1.23.1-rsc.0(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0))(zod@4.4.3):
     dependencies:

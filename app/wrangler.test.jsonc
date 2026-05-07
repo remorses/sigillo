@@ -16,7 +16,7 @@
     }
   ],
   "vars": {
-    "PROVIDER_URL": "https://auth.sigillo.dev",
+    "PROVIDER_URL": "https://provider.invalid",
     "VITEST": "true"
   }
 }

@@ -25,7 +25,7 @@
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "sigillo-app": "workspace:^",
-    "spiceflow": "1.20.0-rsc.1",
+    "spiceflow": "1.23.1-rsc.0",
     "tailwindcss": "^4.2.2",
     "ulid": "latest",
     "zod": "latest"

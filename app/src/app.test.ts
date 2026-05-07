@@ -44,6 +44,13 @@ function assertOk<T>(result: T | Error): Exclude<T, Error> {
   return result as Exclude<T, Error>
 }
 
+/** Assert result is an Error with a specific HTTP status code */
+function assertErrorStatus(result: unknown, status: number) {
+  expect(result).toBeInstanceOf(Error)
+  // spiceflow wraps non-2xx responses as Error with a status property
+  expect((result as Error & { status?: number }).status).toBe(status)
+}
+
 /** Create a typed fetch client with Bearer auth for a given token */
 function authedFetch(token: string) {
   return createSpiceflowFetch(app, {
@@ -79,30 +86,20 @@ describe('health & info', () => {
 // ── Auth — unauthenticated access ───────────────────────────────────
 
 describe('auth — unauthenticated access', () => {
-  test('GET /api/v0/me returns error', async () => {
-    const result = await f('/api/v0/me')
-    expect(result).toBeInstanceOf(Error)
+  test('GET /api/v0/me returns 401', async () => {
+    assertErrorStatus(await f('/api/v0/me'), 401)
   })
 
-  test('GET /api/v0/orgs returns error', async () => {
-    const result = await f('/api/v0/orgs')
-    expect(result).toBeInstanceOf(Error)
+  test('GET /api/v0/orgs returns 401', async () => {
+    assertErrorStatus(await f('/api/v0/orgs'), 401)
   })
 
-  test('POST /api/v0/orgs returns error', async () => {
-    const result = await f('/api/v0/orgs', {
-      method: 'POST',
-      body: { name: 'test' },
-    })
-    expect(result).toBeInstanceOf(Error)
+  test('POST /api/v0/orgs returns 401', async () => {
+    assertErrorStatus(await f('/api/v0/orgs', { method: 'POST', body: { name: 'test' } }), 401)
   })
 
-  test('POST /api/v0/projects returns error', async () => {
-    const result = await f('/api/v0/projects', {
-      method: 'POST',
-      body: { name: 'test', orgId: 'fake' },
-    })
-    expect(result).toBeInstanceOf(Error)
+  test('POST /api/v0/projects returns 401', async () => {
+    assertErrorStatus(await f('/api/v0/projects', { method: 'POST', body: { name: 'test', orgId: 'fake' } }), 401)
   })
 })
 
@@ -518,19 +515,19 @@ describe('api tokens', () => {
     }))
     expect(devResult.secrets).toBeTruthy()
 
-    // Access prod env — should be forbidden (Error)
+    // Access prod env — should be forbidden
     const prodResult = await tokenFetch('/api/v0/projects/:pid/environments/:eid/secrets', {
       params: { pid: projectId, eid: prodEnvId },
     })
-    expect(prodResult).toBeInstanceOf(Error)
+    assertErrorStatus(prodResult, 403)
   })
 
-  test('invalid token returns error', async () => {
+  test('invalid token returns 401', async () => {
     const badFetch = authedFetch('sig_invalid_token_that_does_not_exist')
     const result = await badFetch('/api/v0/projects/:pid/environments/:eid/secrets', {
       params: { pid: projectId, eid: devEnvId },
     })
-    expect(result).toBeInstanceOf(Error)
+    assertErrorStatus(result, 401)
   })
 })
 
@@ -597,6 +594,38 @@ describe('security — cross-user isolation', () => {
 
   test('user B cannot get user A secret value (403)', async () => {
     const res = await req(`/api/v0/projects/${userAProjectId}/environments/${userAEnvId}/secrets/ALICE_SECRET`, userBToken)
+    expect(res.status).toBe(403)
+  })
+
+  // Write-path isolation — these are the scary paths
+  test('user B cannot set secrets in user A env (403)', async () => {
+    const res = await req(`/api/v0/projects/${userAProjectId}/environments/${userAEnvId}/secrets`, userBToken, 'POST', {
+      name: 'INJECTED', value: 'evil',
+    })
+    expect(res.status).toBe(403)
+  })
+
+  test('user B cannot bulk-set secrets in user A env (403)', async () => {
+    const res = await req(`/api/v0/projects/${userAProjectId}/environments/${userAEnvId}/secrets`, userBToken, 'PUT', {
+      secrets: { INJECTED: 'evil' },
+    })
+    expect(res.status).toBe(403)
+  })
+
+  test('user B cannot delete user A secret (403)', async () => {
+    const res = await req(`/api/v0/projects/${userAProjectId}/environments/${userAEnvId}/secrets/ALICE_SECRET`, userBToken, 'DELETE')
+    expect(res.status).toBe(403)
+  })
+
+  test('user B cannot create environment in user A project (403)', async () => {
+    const res = await req(`/api/v0/projects/${userAProjectId}/environments`, userBToken, 'POST', {
+      name: 'Injected', slug: 'injected',
+    })
+    expect(res.status).toBe(403)
+  })
+
+  test('user B cannot delete user A environment (403)', async () => {
+    const res = await req(`/api/v0/projects/${userAProjectId}/environments/${userAEnvId}`, userBToken, 'DELETE')
     expect(res.status).toBe(403)
   })
 })
