@@ -64,7 +64,8 @@ const f = createSpiceflowFetch(app)
 
 describe('health & info', () => {
   test('GET /health returns ok', async () => {
-    const result = await f('/health')
+    const result = await f('/health');
+
     expect(result).toMatchInlineSnapshot(`
       {
         "ok": true,
