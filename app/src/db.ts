@@ -53,6 +53,17 @@ function originFromHost(host: string, protocol = 'https'): string {
   return `${scheme}://${host}`
 }
 
+// IMPORTANT: This function MUST only run when request.url is localhost.
+// The isLocalHost guard below is critical for security. In production,
+// Cloudflare Workers set request.url to the real hostname (e.g. sigillo.dev),
+// so this function returns null immediately and never reads forwarded headers.
+//
+// If this guard were removed, an attacker could inject X-Forwarded-Host: evil.com
+// to make BetterAuth set baseURL and trustedOrigins to evil.com, redirecting
+// the OAuth callback there and stealing the user's auth code/credentials.
+//
+// This override only exists for local dev behind a tunnel (e.g. traforo),
+// where request.url is localhost but the real public URL is the tunnel domain.
 function getPublicOriginOverride(request: Request): string | null {
   const requestUrl = new URL(request.url)
   if (!isLocalHost(requestUrl.hostname)) {
