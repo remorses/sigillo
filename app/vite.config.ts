@@ -32,15 +32,23 @@ export default defineConfig(async () => {
               },
             },
           })
-        : cloudflare({
+        : null,
+      react(),
+      spiceflowPlugin({ entry: './src/app.tsx' }),
+      ...(process.env.VITEST ? [] : [tailwindcss()]),
+      // cloudflare() must come AFTER spiceflow — spiceflow sets ssr outDir to
+      // dist/rsc/ssr (nested inside the worker root) so workerd can resolve the
+      // cross-environment import. cloudflare's config hook unconditionally sets
+      // outDir to dist/ssr (sibling), and Vite's config merge gives the first
+      // setter priority. See https://github.com/cloudflare/workers-sdk/issues/13869
+      !process.env.VITEST
+        ? cloudflare({
             viteEnvironment: {
               name: 'rsc',
               childEnvironments: ['ssr'],
             },
-          }),
-      react(),
-      spiceflowPlugin({ entry: './src/app.tsx' }),
-      ...(process.env.VITEST ? [] : [tailwindcss()]),
+          })
+        : null,
     ],
     test: {
       setupFiles: ['./src/test-setup.ts'],
