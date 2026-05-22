@@ -1,16 +1,17 @@
 /// <reference types="vitest/config" />
+// Read D1 migration SQL files so they can be applied in the workerd setup file
 import path from 'node:path'
 import { cloudflare } from '@cloudflare/vite-plugin'
 import { cloudflareTest, readD1Migrations } from '@cloudflare/vitest-pool-workers'
+import { holocron } from '@holocron.so/vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import { defineConfig } from 'vite'
 import { spiceflowPlugin } from 'spiceflow/vite'
+import { defineConfig } from 'vite'
 
 const port = parseInt(process.env.PORT || '5188', 10)
 
 export default defineConfig(async () => {
-  // Read D1 migration SQL files so they can be applied in the workerd setup file
   const migrations = process.env.VITEST
     ? await readD1Migrations(path.join(__dirname, '../db/drizzle-app'))
     : []
@@ -33,10 +34,12 @@ export default defineConfig(async () => {
             },
           })
         : null,
-      react(),
-      spiceflowPlugin({ entry: './src/app.tsx' }),
-      ...(process.env.VITEST ? [] : [tailwindcss()]),
-      // cloudflare() must come AFTER spiceflow — spiceflow sets ssr outDir to
+      // In test mode: use raw plugins (holocron auto-adds react+tailwind+spiceflow
+      // which conflicts with cloudflareTest). In dev/build: use holocron.
+      ...(process.env.VITEST
+        ? [react(), spiceflowPlugin({ entry: './src/app.tsx' })]
+        : [holocron({ entry: './src/app.tsx', pagesDir: './src/docs' })]),
+      // cloudflare() must come AFTER spiceflow/holocron — spiceflow sets ssr outDir to
       // dist/rsc/ssr (nested inside the worker root) so workerd can resolve the
       // cross-environment import. cloudflare's config hook unconditionally sets
       // outDir to dist/ssr (sibling), and Vite's config merge gives the first
@@ -50,6 +53,9 @@ export default defineConfig(async () => {
           })
         : null,
     ],
+    resolve: {
+      dedupe: ['spiceflow', 'spiceflow/react', 'react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime'],
+    },
     test: {
       setupFiles: ['./src/test-setup.ts'],
     },

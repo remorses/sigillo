@@ -1,0 +1,95 @@
+{
+  "$schema": "https://holocron.so/docs.json",
+  "name": "Sigillo",
+  "description": "Self-hostable secrets manager for humans & agents",
+  "favicon": "/favicon.png",
+  "colors": {
+    "primary": "#2563eb"
+  },
+  "appearance": {
+    "default": "system"
+  },
+  "icons": {
+    "library": "lucide"
+  },
+  "navbar": {
+    "links": [
+      { "type": "github", "href": "https://github.com/remorses/sigillo" }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Dashboard",
+      "href": "/dash"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/remorses/sigillo",
+      "x": "https://x.com/__morse"
+    }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Docs",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "icon": "lucide:rocket",
+            "pages": ["index"]
+          }
+        ]
+      },
+      {
+        "tab": "CLI Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "icon": "lucide:terminal",
+            "pages": ["cli/index"]
+          },
+          {
+            "group": "Auth & Setup",
+            "icon": "lucide:log-in",
+            "pages": ["cli/login", "cli/logout", "cli/me", "cli/setup"]
+          },
+          {
+            "group": "Secrets",
+            "icon": "lucide:lock",
+            "pages": ["cli/run", "cli/secrets", "cli/secrets-get", "cli/secrets-set", "cli/secrets-delete", "cli/secrets-download"]
+          },
+          {
+            "group": "Organizations",
+            "icon": "lucide:building-2",
+            "pages": ["cli/orgs", "cli/orgs-create"]
+          },
+          {
+            "group": "Projects",
+            "icon": "lucide:folder",
+            "pages": ["cli/projects", "cli/projects-create", "cli/projects-get", "cli/projects-update", "cli/projects-delete"]
+          },
+          {
+            "group": "Environments",
+            "icon": "lucide:layers",
+            "pages": ["cli/environments", "cli/environments-create", "cli/environments-get", "cli/environments-rename", "cli/environments-delete"]
+          }
+        ]
+      }
+    ],
+    "global": {
+      // Anchors use placement "tabs" so they appear in the tab bar
+      "anchors": [
+        { "anchor": "GitHub", "href": "https://github.com/remorses/sigillo", "icon": "lucide:github", "placement": "tabs" },
+        { "anchor": "Changelog", "href": "https://github.com/remorses/sigillo/releases", "icon": "lucide:newspaper", "placement": "tabs"  }
+      ]
+    }
+  },
+  "knownPaths": [
+    "/login",
+    "/device",
+    "/invite/*",
+    "/dash/*",
+    "/api/*"
+  ],
+  // "decorativeLines": "none"
+}

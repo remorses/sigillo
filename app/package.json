@@ -20,13 +20,15 @@
     "deployment": "pnpm db:migrate:preview && CLOUDFLARE_ENV=preview pnpm build && wrangler deploy --env preview",
     "deployment:prod": "pnpm db:migrate:prod && pnpm build && wrangler deploy",
     "openapi": "tsx src/generate-openapi.ts",
-    "generate:install": "tsx src/generate-install-script.ts"
+    "generate:install": "tsx src/generate-install-script.ts",
+    "generate:cli-docs": "tsx src/generate-cli-docs.ts"
   },
   "dependencies": {
     "@ascii-kit/font": "^0.0.6",
     "@ascii-kit/fonts-flf": "^0.0.6",
     "@base-ui/react": "^1.4.0",
     "@better-auth/drizzle-adapter": "https://pkg.pr.new/@better-auth/drizzle-adapter@9489",
+    "@holocron.so/vite": "^0.13.0",
     "@tailwindcss/vite": "^4.2.2",
     "@tanstack/react-table": "^8.21.3",
     "better-auth": "https://pkg.pr.new/better-auth@9489",
@@ -41,6 +43,7 @@
     "spiceflow": "1.25.3-rsc.0",
     "superjson": "^2.2.6",
     "tailwind-merge": "^3.5.0",
+    "three": "^0.184.0",
     "tailwindcss": "^4.2.2",
     "ulid": "latest",
     "vaul": "^1.1.2",

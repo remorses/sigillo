@@ -1,4 +1,6 @@
-/* Import shared theme from app — single source of truth for colors and tokens. */
+/* Provider needs its own Tailwind import since it doesn't use holocron.
+   App's globals.css uses @reference (holocron provides the actual import). */
+@import 'tailwindcss';
 @import 'sigillo-app/src/globals.css';
 @source '../../app/src/components/ui/**/*.tsx';
 
