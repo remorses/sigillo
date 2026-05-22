@@ -1,4 +1,4 @@
-<div align='center'>
+<div align='center' class='hidden'>
     <br/>
     <br/>
     <h3>sigillo</h3>
@@ -17,7 +17,7 @@ source .env && next dev
 sigillo run -- next dev
 ```
 
-```
+```diagram
                                                  ┌────────────────┐
   sigillo run -- next dev                        │   App Worker   │
          │                                       │  (sigillo.dev) │
@@ -133,7 +133,7 @@ The Quick Start above assumes you already have a project with secrets. This sect
 
 Sigillo organizes secrets into a simple hierarchy:
 
-```
+```diagram
 Organization (my-company)
 │
 ├── Project (api)
@@ -521,7 +521,7 @@ sigillo secrets download --format dotnet-json > appsettings.Secrets.json
 
 Sigillo runs on **Cloudflare Workers + D1**. You only need to deploy the **App Worker**. The Provider Worker (authentication) is optional because your self-hosted instance can use the hosted provider at `auth.sigillo.dev` by default.
 
-```
+```diagram
 Your Cloudflare account              Sigillo Cloud
 ┌──────────────────────┐             ┌──────────────────────┐
 │   App Worker         │   OAuth     │  Provider Worker     │
@@ -600,7 +600,7 @@ Then redeploy the app. It will auto-register with your provider on the next requ
 
 Sigillo is two Cloudflare Workers in a monorepo, each backed by a D1 (SQLite) database:
 
-```
+```diagram
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Your Machine                            │
 │                                                                 │
@@ -641,7 +641,7 @@ Sigillo is two Cloudflare Workers in a monorepo, each backed by a D1 (SQLite) da
 <details>
 <summary><b>Auth flow</b></summary>
 
-```
+```diagram
 CLI/Agent                    App (self-hosted)              Provider (auth.sigillo.dev)
    │                              │                                │
    │  POST /api/auth/device/code  │                                │
@@ -672,7 +672,7 @@ CLI/Agent                    App (self-hosted)              Provider (auth.sigil
 
 Two auth paths depending on the environment:
 
-```
+```diagram
   Local development                     CI / GitHub Actions
   ─────────────────                     ───────────────────
 
@@ -709,7 +709,7 @@ Every secret value is **AES-256-GCM** encrypted before storage. Each write gener
 - `ENCRYPTION_KEY`: 32 random bytes, base64-encoded (`openssl rand -base64 32`)
 - Derived from `BETTER_AUTH_SECRET` via SHA-256 (default if `ENCRYPTION_KEY` is not set)
 
-```
+```diagram
   plaintext value ("sk-live-xxx")
         │
         ▼
