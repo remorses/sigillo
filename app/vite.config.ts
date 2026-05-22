@@ -38,7 +38,7 @@ export default defineConfig(async () => {
       // which conflicts with cloudflareTest). In dev/build: use holocron.
       ...(process.env.VITEST
         ? [react(), spiceflowPlugin({ entry: './src/app.tsx' })]
-        : [holocron({ entry: './src/app.tsx', pagesDir: './src/docs' })]),
+        : [holocron({ entry: './src/app.tsx', pagesDir: './src' })]),
       // cloudflare() must come AFTER spiceflow/holocron — spiceflow sets ssr outDir to
       // dist/rsc/ssr (nested inside the worker root) so workerd can resolve the
       // cross-environment import. cloudflare's config hook unconditionally sets

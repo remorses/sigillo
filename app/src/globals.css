@@ -3,6 +3,8 @@
    @reference gives access to Tailwind variables, @apply, and @variant without duplication. */
 @reference 'tailwindcss';
 
+
+
 @theme inline {
   --font-sans: var(--font-sans);
   --font-heading: var(--font-heading);
@@ -62,7 +64,7 @@
   --card-foreground: var(--foreground);
   --popover: var(--color-white);
   --popover-foreground: var(--foreground);
-  --primary: color-mix(in srgb, var(--color-blue-600) 80%, var(--color-black));
+  --primary: color-mix(in srgb, var(--color-green-600) 80%, var(--color-black));
   --primary-foreground: var(--color-white);
   --secondary: --alpha(var(--color-black) / 3%);
   --secondary-foreground: var(--foreground);
@@ -101,7 +103,7 @@
     --card-foreground: var(--color-neutral-100);
     --popover: var(--color-neutral-900);
     --popover-foreground: var(--color-neutral-100);
-    --primary: color-mix(in srgb, var(--color-blue-200) 80%, var(--color-white));
+    --primary: color-mix(in srgb, var(--color-green-200) 80%, var(--color-white));
     --primary-foreground: var(--color-neutral-950);
     --secondary: --alpha(var(--color-white) / 6%);
     --secondary-foreground: var(--color-neutral-100);
@@ -206,10 +208,10 @@
   }
 
   .cli-token-plain {
-    color: var(--color-blue-600);
+    color: var(--color-green-600);
 
     @variant dark {
-      color: var(--color-blue-300);
+      color: var(--color-green-300);
     }
   }
 }
@@ -225,5 +227,3 @@
   );
   background-size: 6px 100%;
 }
-
-

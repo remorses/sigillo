@@ -40,8 +40,8 @@ type Environment = {
 };
 
 const knownEnvColors: Record<string, string> = {
-  development: "bg-blue-500",
-  dev: "bg-blue-500",
+  development: "bg-primary",
+  dev: "bg-primary",
   preview: "bg-amber-500",
   staging: "bg-amber-500",
   production: "bg-emerald-500",

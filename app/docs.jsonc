@@ -37,7 +37,7 @@
           {
             "group": "Getting Started",
             "icon": "lucide:rocket",
-            "pages": ["docs/index"]
+            "pages": ["index"]
           }
         ]
       },

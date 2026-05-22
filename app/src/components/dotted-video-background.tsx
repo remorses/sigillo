@@ -348,7 +348,7 @@ const DEFAULT_CONFIG: Required<DottedVideoConfig> = {
   dotSize: 8,
   minDotSize: 1,
   dotMargin: 0,
-  dotColor: '#5865F2', // Discord blurple to match kimaki theme
+  dotColor: '', // empty = resolve from CSS --primary at runtime
   dotAlphaMultiplier: 1,
   gridLayout: 'straight',
   enableMask: false,
@@ -794,8 +794,26 @@ export function DottedVideoBackground({
     const container = containerRef.current
     if (!container) return
 
+    // Resolve dotColor from CSS --primary variable when not explicitly set.
+    // CSS custom properties return raw strings (e.g. color-mix(...)), so we set
+    // the container's color to var(--primary) and read the computed value which
+    // browsers always serialize as rgb(). The container has no visible text, so
+    // temporarily setting its color has zero visual impact.
+    let dotColor = config?.dotColor
+    if (!dotColor) {
+      const savedColor = container.style.color
+      container.style.color = 'var(--primary)'
+      const rgb = getComputedStyle(container).color
+      container.style.color = savedColor
+      const m = rgb.match(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/)
+      if (m) {
+        dotColor = `#${Number(m[1]).toString(16).padStart(2, '0')}${Number(m[2]).toString(16).padStart(2, '0')}${Number(m[3]).toString(16).padStart(2, '0')}`
+      }
+    }
+
     const engine = createDottedVideoEngine(container, {
       ...config,
+      ...(dotColor ? { dotColor } : {}),
     })
 
     return () => {

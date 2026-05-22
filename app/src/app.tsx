@@ -196,11 +196,15 @@ export const app = new Spiceflow()
   // ── Root redirect for authenticated users ──────────────────────
   // Logged-in users hitting "/" get sent to their dashboard.
   // Unauthenticated users fall through to holocron's landing page.
-  .get('/', async ({ request }) => {
+  // Uses middleware instead of .get() so unauthenticated requests
+  // pass through to holocron without returning null.
+  .use('/', async ({ request }) => {
+    if (request.method !== 'GET') return
+    const url = new URL(request.url)
+    if (url.pathname !== '/') return
     const session = await getSession(request)
     if (!session) return // fall through to holocron landing page
     const db = getDb()
-    const base = new URL(request.url)
     try {
       const members = await db.query.orgMember.findMany({
         where: { userId: session.userId },
@@ -211,10 +215,10 @@ export const app = new Spiceflow()
         .sort((a, b) => b.org!.createdAt! - a.org!.createdAt!)
         [0]
       if (lastOrg) {
-        return Response.redirect(new URL(`/dash/orgs/${encodeURIComponent(lastOrg.org!.id)}`, base).toString(), 302)
+        return Response.redirect(new URL(`/dash/orgs/${encodeURIComponent(lastOrg.org!.id)}`, url).toString(), 302)
       }
     } catch {}
-    return Response.redirect(new URL('/dash/new-org', base).toString(), 302)
+    return Response.redirect(new URL('/dash/new-org', url).toString(), 302)
   })
 
   // ── Org root redirect → first project ─────────────────────────

@@ -5,7 +5,7 @@
  * Breaks out of the Above column constraint via w-screen + negative margin
  * (same pattern as holocron's own hero-section.tsx and kimaki's hero).
  *
- * Dark mode: blue dots on near-black background.
+ * Dark mode: primary-colored dots on near-black background.
  * Light mode: video is CSS-inverted, dots blend with light background.
  * Gradient overlays use var(--background) so they adapt to theme automatically.
  */
@@ -77,7 +77,6 @@ export function HeroSection() {
         <DottedVideoBackground
           className='w-full h-full'
           config={{
-            dotColor: '#2563eb',
             dotSize: 6,
             minDotSize: 1,
             dotMargin: 1,
