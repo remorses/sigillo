@@ -804,6 +804,10 @@ fn runAction(args: Run.Args, opts: Run.Options, global: Global.Options) !void {
     defer env_map.deinit();
     try mergeSecretsIntoEnvMap(&env_map, secrets);
 
+    // Marker so child processes can detect they're running inside sigillo.
+    // Tools like tuistory use this to skip their own session management.
+    try env_map.put("SIGILLO", "1");
+
     // ── Mount: write secrets to a file ────────────────────────────
     const exit_code: u8 = if (opts.mount) |mount_path| mount_block: {
         const mount_format = opts.mount_format orelse "env";
