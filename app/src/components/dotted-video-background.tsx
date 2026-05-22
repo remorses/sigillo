@@ -794,20 +794,23 @@ export function DottedVideoBackground({
     const container = containerRef.current
     if (!container) return
 
-    // Resolve dotColor from CSS --primary variable when not explicitly set.
-    // CSS custom properties return raw strings (e.g. color-mix(...)), so we set
-    // the container's color to var(--primary) and read the computed value which
-    // browsers always serialize as rgb(). The container has no visible text, so
-    // temporarily setting its color has zero visual impact.
+    // Resolve dotColor from CSS --primary when not explicitly set.
+    // Tailwind/Vite resolves color-mix() at build time, so getPropertyValue
+    // returns a hex string directly. If for some reason it's not hex (e.g. rgb()),
+    // fall back to setting color on the container and parsing the computed value.
     let dotColor = config?.dotColor
     if (!dotColor) {
-      const savedColor = container.style.color
-      container.style.color = 'var(--primary)'
-      const rgb = getComputedStyle(container).color
-      container.style.color = savedColor
-      const m = rgb.match(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/)
-      if (m) {
-        dotColor = `#${Number(m[1]).toString(16).padStart(2, '0')}${Number(m[2]).toString(16).padStart(2, '0')}${Number(m[3]).toString(16).padStart(2, '0')}`
+      const raw = getComputedStyle(container).getPropertyValue('--primary').trim()
+      if (/^#[0-9a-f]{6}$/i.test(raw)) {
+        dotColor = raw
+      } else {
+        container.style.color = 'var(--primary)'
+        const rgb = getComputedStyle(container).color
+        container.style.color = ''
+        const m = rgb.match(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/)
+        if (m) {
+          dotColor = `#${Number(m[1]).toString(16).padStart(2, '0')}${Number(m[2]).toString(16).padStart(2, '0')}${Number(m[3]).toString(16).padStart(2, '0')}`
+        }
       }
     }
 
