@@ -115,12 +115,21 @@ jobs:
             echo "Will publish $PACKAGE_VERSION (current: $PUBLISHED_VERSION)"
           fi
 
+      # The npm publish token (NPM_TOKEN) is stored in Sigillo, not as a GitHub
+      # secret, so when it expires we only update it once in the Sigillo web UI.
+      # CI only needs the long-lived SIGILLO_TOKEN here. We use the linux-x64
+      # binary just built in the build job to fetch + inject NPM_TOKEN, then map
+      # it to NODE_AUTH_TOKEN (which the setup-node .npmrc reads) for npm publish.
       - name: Publish to npm
         if: steps.version-check.outputs.skip == 'false'
         working-directory: cli
-        run: npm publish --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          SIGILLO_TOKEN: ${{ secrets.SIGILLO_TOKEN }}
+          SIGILLO_PROJECT: ${{ vars.SIGILLO_PROJECT }}
+          SIGILLO_ENVIRONMENT: prod
+        run: |
+          chmod +x dist/linux-x64/sigillo
+          dist/linux-x64/sigillo run --command 'NODE_AUTH_TOKEN=$NPM_TOKEN npm publish --access public'
 
       - name: Upload binaries to GitHub Release
         if: steps.version-check.outputs.skip == 'false'
