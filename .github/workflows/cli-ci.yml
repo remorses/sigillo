@@ -40,7 +40,7 @@ jobs:
           node-version: "22"
 
       - name: Install pnpm
-        run: npm install -g pnpm
+        run: npm install -g pnpm@10.33.4
 
       # Install only the cli workspace's dependencies. The cli package has no
       # workspace deps and only public-npm devDependencies, so this avoids
@@ -81,7 +81,7 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Install pnpm
-        run: npm install -g pnpm
+        run: npm install -g pnpm@10.33.4
 
       - name: Install dependencies
         run: pnpm install --filter sigillo --frozen-lockfile
