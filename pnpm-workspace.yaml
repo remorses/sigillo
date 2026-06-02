@@ -1,2 +1,9 @@
+# pnpm v10+ reads build-script approval and version overrides from this file,
+# not from the package.json "pnpm" field (which is now ignored).
 packages:
   - ./*
+
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+  - workerd
