@@ -14,7 +14,7 @@ import * as schema from './schema.ts'
 import { betterAuth } from 'better-auth'
 import { jwt } from 'better-auth/plugins'
 import { oauthProvider } from '@better-auth/oauth-provider'
-import { drizzleAdapter } from '@better-auth/drizzle-adapter/relations-v2'
+import { drizzleAdapter } from 'better-auth-drizzle-adapter'
 
 // ── Drizzle client via D1 ───────────────────────────────────────────
 

@@ -12,7 +12,7 @@ import * as orm from 'drizzle-orm'
 import { getDb, schema } from 'db'
 import { betterAuth } from 'better-auth'
 import { genericOAuth, deviceAuthorization, bearer } from 'better-auth/plugins'
-import { drizzleAdapter } from '@better-auth/drizzle-adapter/relations-v2'
+import { drizzleAdapter } from 'better-auth-drizzle-adapter'
 import { redirect } from 'spiceflow'
 import { memoize } from './lib/memoize.ts'
 

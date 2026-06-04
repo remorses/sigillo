@@ -7,7 +7,6 @@
   "scripts": {
     "dev": "pnpm db:migrate:local && vite dev --port 5432",
     "build": "vite build",
-
     "typecheck": "tsc --noEmit",
     "types": "wrangler types",
     "db:generate": "drizzle-kit generate --config drizzle.config.ts && tsx ../db/scripts/flatten-migrations.ts ./drizzle",
@@ -18,15 +17,15 @@
     "deployment:prod": "pnpm db:migrate:prod && pnpm build && wrangler deploy"
   },
   "dependencies": {
-    "@better-auth/drizzle-adapter": "https://pkg.pr.new/@better-auth/drizzle-adapter@9489",
+    "better-auth-drizzle-adapter": "^1.0.4",
     "@better-auth/oauth-provider": "latest",
     "@tailwindcss/vite": "^4.2.2",
-    "better-auth": "https://pkg.pr.new/better-auth@9489",
+    "better-auth": "^1.7.0-beta.4",
     "drizzle-orm": "1.0.0-rc.1",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "sigillo-app": "workspace:^",
-    "spiceflow": "1.25.3-rsc.0",
+    "spiceflow": "1.26.0-rsc.0",
     "tailwindcss": "^4.2.2",
     "ulid": "latest",
     "zod": "latest"

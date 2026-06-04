@@ -10,7 +10,7 @@ import { Spiceflow } from 'spiceflow'
 import { Head } from 'spiceflow/react'
 import { getAuth } from './db.ts'
 import { ConsentButtons } from './components/consent-buttons.tsx'
-import { SigilloLogo } from 'sigillo-app/src/components/logo'
+import { SigilloLogo } from 'sigillo-app/src/components/logo.tsx'
 
 
 function ConsentScreen({ redirectDomain }: { redirectDomain: string | null }) {
