@@ -1,13 +1,15 @@
 // Worker-level database client and BetterAuth instance for the provider.
 //
-// getDb() creates a drizzle-orm/d1 client bound to env.DB. The schema uses
-// epochMs custom columns that accept both Date and number inputs, so
-// BetterAuth's Date params are converted to epoch ms before reaching D1.
+// getDb() creates a drizzle-orm/sqlite-proxy client bound to env.DB.
+// Uses sqlite-proxy instead of drizzle-orm/d1 to avoid the batch findFirst
+// crash (drizzle-team/drizzle-orm#2721). The schema uses epochMs custom
+// columns that accept both Date and number inputs, so BetterAuth's Date
+// params are converted to epoch ms before reaching D1.
 // getAuth() creates a BetterAuth instance backed by the same drizzle client
 // with oauthProvider + jwt + Google social.
 
 import { env } from 'cloudflare:workers'
-import { drizzle } from 'drizzle-orm/d1'
+import { drizzle } from 'drizzle-orm/sqlite-proxy'
 import * as schema from './schema.ts'
 import { betterAuth } from 'better-auth'
 import { jwt } from 'better-auth/plugins'
@@ -16,8 +18,30 @@ import { drizzleAdapter } from '@better-auth/drizzle-adapter/relations-v2'
 
 // ── Drizzle client via D1 ───────────────────────────────────────────
 
+function d1ToRawRows(results: Record<string, unknown>[]) {
+  return results.map((row) => Object.keys(row).map((k) => row[k]))
+}
+
 export function getDb() {
-  return drizzle(env.DB, { schema, relations: schema.relations })
+  return drizzle(
+    async (sql, params, method) => {
+      const stmt = env.DB.prepare(sql).bind(...params)
+      if (method === 'run') { await stmt.run(); return { rows: [] as any[] } }
+      const rows = await stmt.raw()
+      if (method === 'get') return { rows: rows[0] as any }
+      return { rows: rows as any[] }
+    },
+    async (queries) => {
+      const stmts = queries.map((q) => env.DB.prepare(q.sql).bind(...q.params))
+      const results = await env.DB.batch(stmts)
+      return results.map((r, i) => {
+        const rows = d1ToRawRows(r.results as Record<string, unknown>[])
+        if (queries[i]!.method === 'get') return { rows: rows[0] as any }
+        return { rows: rows as any[] }
+      })
+    },
+    { schema, relations: schema.relations },
+  )
 }
 
 // ── BetterAuth ──────────────────────────────────────────────────────
