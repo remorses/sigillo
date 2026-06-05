@@ -17,6 +17,9 @@
       "esbuild",
       "sharp",
       "workerd"
-    ]
+    ],
+    "overrides": {
+      "spiceflow": "1.26.0-rsc.0"
+    }
   }
 }

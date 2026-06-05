@@ -5,6 +5,8 @@ import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { XIcon } from "lucide-react";
 import type React from "react";
+import { useEffect, useRef } from "react";
+import { useRouterState } from "spiceflow/react";
 import { cn } from "sigillo-app/src/lib/utils";
 import { Button } from "sigillo-app/src/components/ui/button";
 import { ScrollArea } from "sigillo-app/src/components/ui/scroll-area";
@@ -12,7 +14,22 @@ import { ScrollArea } from "sigillo-app/src/components/ui/scroll-area";
 export const DialogCreateHandle: typeof DialogPrimitive.createHandle =
   DialogPrimitive.createHandle;
 
-export const Dialog: typeof DialogPrimitive.Root = DialogPrimitive.Root;
+// Wraps base-ui Dialog.Root to auto-close on client-side navigation.
+// Every controlled dialog in the app gets this behavior for free.
+export function Dialog(props: DialogPrimitive.Root.Props): React.ReactElement {
+  const { pathname } = useRouterState();
+  const prevPathname = useRef(pathname);
+  const { onOpenChange } = props;
+
+  useEffect(() => {
+    if (prevPathname.current !== pathname) {
+      prevPathname.current = pathname;
+      onOpenChange?.(false, undefined as never);
+    }
+  }, [pathname, onOpenChange]);
+
+  return <DialogPrimitive.Root {...props} />;
+}
 
 export const DialogPortal: typeof DialogPrimitive.Portal =
   DialogPrimitive.Portal;
