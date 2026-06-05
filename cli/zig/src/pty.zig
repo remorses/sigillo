@@ -40,7 +40,9 @@ pub const PtyPair = struct {
 /// Without this, multiline secrets containing \n would be emitted as \r\n,
 /// breaking exact-byte redaction matching and leaking secrets.
 /// Silently ignores errors (fd may not be a terminal).
+/// No-op on Windows (no POSIX termios).
 pub fn disableOutputProcessing(fd: std.posix.fd_t) void {
+    if (builtin.os.tag == .windows) return;
     var term = std.posix.tcgetattr(fd) catch return;
     term.oflag.OPOST = false;
     std.posix.tcsetattr(fd, .NOW, term) catch {};

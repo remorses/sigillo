@@ -974,6 +974,11 @@ fn runChildProcessWithWriters(
 
 /// Core implementation. `force_stdout_pty`/`force_stderr_pty` allow tests
 /// to exercise the PTY branch even when the test runner's stdout is a pipe.
+///
+/// Ownership model for PTY fds:
+///   - Slave fds: closed in the parent after spawn (child inherited them via dup2)
+///   - Master fds: transferred to stream threads which close them on exit
+///   - On error before transfer, errdefer closes whatever hasn't been handed off
 fn runChildProcessImpl(
     child_allocator: std.mem.Allocator,
     env_map: *std.process.EnvMap,
@@ -987,6 +992,15 @@ fn runChildProcessImpl(
     const needs_redaction = redact_values.len > 0;
     const is_posix = (builtin.os.tag != .windows);
 
+    // Build redaction plan FIRST so its `defer free` is registered before
+    // the master errdefer below. Zig defers/errdefers unwind LIFO, so the
+    // errdefer (which joins threads still reading the plan) runs BEFORE
+    // the defer that frees the plan's memory. This prevents use-after-free
+    // when a thread-spawn failure triggers the errdefer while a thread is
+    // still reading sorted_values.
+    const redaction_plan = try createRedactionPlan(child_allocator, redact_values);
+    defer child_allocator.free(redaction_plan.sorted_values);
+
     // When redaction is needed and parent streams are TTYs, use PTYs so
     // child processes still see isatty()=true for colored output, progress
     // bars, interactive prompts, etc. Fall back to plain pipes when the
@@ -995,139 +1009,190 @@ fn runChildProcessImpl(
     const use_stdout_pty = is_posix and needs_redaction and (force_stdout_pty or std.posix.isatty(File.stdout().handle));
     const use_stderr_pty = is_posix and needs_redaction and (force_stderr_pty or std.posix.isatty(File.stderr().handle));
 
-    const stdout_pty: ?pty.PtyPair = if (use_stdout_pty) pty.openPty() catch null else null;
-    errdefer if (stdout_pty) |p| {
-        p.closeMaster();
-        p.closeSlave();
-    };
+    // Track fd ownership with nullable fds. Set to null after closing or
+    // transferring ownership so errdefer never double-closes.
+    var stdout_master: ?std.posix.fd_t = null;
+    var stdout_slave: ?std.posix.fd_t = null;
+    var stderr_master: ?std.posix.fd_t = null;
+    var stderr_slave: ?std.posix.fd_t = null;
 
-    const stderr_pty: ?pty.PtyPair = if (use_stderr_pty) pty.openPty() catch null else null;
-    errdefer if (stderr_pty) |p| {
-        p.closeMaster();
-        p.closeSlave();
-    };
+    if (use_stdout_pty) {
+        const p = pty.openPty() catch null;
+        if (p) |pair| {
+            stdout_master = pair.master;
+            stdout_slave = pair.slave;
+        }
+    }
+    if (use_stderr_pty) {
+        const p = pty.openPty() catch null;
+        if (p) |pair| {
+            stderr_master = pair.master;
+            stderr_slave = pair.slave;
+        }
+    }
+
+    // Saved stdio fds for the dup2 restore pattern.
+    var saved_stdout: ?std.posix.fd_t = null;
+    var saved_stderr: ?std.posix.fd_t = null;
+    var stdio_restored = false;
+
+    // Track thread and child state for cleanup.
+    var stdout_thread: ?std.Thread = null;
+    var stderr_thread: ?std.Thread = null;
+
+    // Initialize child early so the errdefer can reap it.
+    var child = std.process.Child.init(argv, child_allocator);
+    var child_spawned = false;
+
+    // Master errdefer: cleans up everything that hasn't been transferred.
+    // Registered BEFORE any dup2 so it covers partial-initialization errors.
+    errdefer {
+        // Restore stdio if dup2 was done but not yet restored.
+        if (is_posix and !stdio_restored) {
+            if (saved_stdout) |fd| {
+                std.posix.dup2(fd, std.posix.STDOUT_FILENO) catch {};
+                std.posix.close(fd);
+            }
+            if (saved_stderr) |fd| {
+                std.posix.dup2(fd, std.posix.STDERR_FILENO) catch {};
+                std.posix.close(fd);
+            }
+        }
+
+        // Close any PTY fds still owned by us (not yet transferred to threads
+        // or closed in the normal path). Null means already closed/transferred.
+        if (stdout_master) |fd| std.posix.close(fd);
+        if (stdout_slave) |fd| std.posix.close(fd);
+        if (stderr_master) |fd| std.posix.close(fd);
+        if (stderr_slave) |fd| std.posix.close(fd);
+
+        // If threads were started, join them before we free redaction_plan.
+        if (stdout_thread) |t| t.join();
+        if (stderr_thread) |t| t.join();
+
+        // Reap child if spawned, to avoid zombies.
+        if (child_spawned) {
+            _ = child.wait() catch {};
+        }
+    }
 
     // Disable output post-processing (OPOST/ONLCR) on PTY slaves so the
     // terminal line discipline does not transform \n → \r\n. Without this,
     // multiline secrets containing \n would be emitted as \r\n, breaking
     // exact-byte redaction matching and leaking secrets.
-    if (stdout_pty) |p| pty.disableOutputProcessing(p.slave);
-    if (stderr_pty) |p| pty.disableOutputProcessing(p.slave);
+    if (stdout_slave) |fd| pty.disableOutputProcessing(fd);
+    if (stderr_slave) |fd| pty.disableOutputProcessing(fd);
 
     // Copy terminal window size from parent to PTY masters so the child
     // sees the correct COLUMNS/LINES values.
-    if (stdout_pty) |p| pty.copyWinsize(File.stdout().handle, p.master);
-    if (stderr_pty) |p| pty.copyWinsize(File.stderr().handle, p.master);
+    if (stdout_master) |fd| pty.copyWinsize(File.stdout().handle, fd);
+    if (stderr_master) |fd| pty.copyWinsize(File.stderr().handle, fd);
 
     // To make the child inherit the PTY slave as its stdout/stderr, we
     // temporarily dup2 the slave fds onto the parent's STDOUT/STDERR,
     // spawn the child with .Inherit, then restore the originals.
     // This is safe because the CLI is single-threaded at spawn time.
-    var saved_stdout: ?std.posix.fd_t = null;
-    var saved_stderr: ?std.posix.fd_t = null;
-    var stdio_restored = false;
     if (is_posix) {
-        if (stdout_pty) |p| {
+        if (stdout_slave) |fd| {
             saved_stdout = try std.posix.dup(std.posix.STDOUT_FILENO);
-            try std.posix.dup2(p.slave, std.posix.STDOUT_FILENO);
+            try std.posix.dup2(fd, std.posix.STDOUT_FILENO);
         }
-        if (stderr_pty) |p| {
+        if (stderr_slave) |fd| {
             saved_stderr = try std.posix.dup(std.posix.STDERR_FILENO);
-            try std.posix.dup2(p.slave, std.posix.STDERR_FILENO);
+            try std.posix.dup2(fd, std.posix.STDERR_FILENO);
         }
     }
 
-    // If anything fails between dup2 and the normal restore below (e.g.
-    // createRedactionPlan or child.spawn), restore the parent's original
-    // stdout/stderr so the process isn't left with broken fds.
-    errdefer if (is_posix and !stdio_restored) {
-        if (saved_stdout) |fd| {
-            std.posix.dup2(fd, std.posix.STDOUT_FILENO) catch {};
-            std.posix.close(fd);
-        }
-        if (saved_stderr) |fd| {
-            std.posix.dup2(fd, std.posix.STDERR_FILENO) catch {};
-            std.posix.close(fd);
-        }
-    };
-
-    var child = std.process.Child.init(argv, child_allocator);
     child.stdin_behavior = .Inherit;
     child.env_map = env_map;
 
-    if (stdout_pty != null) {
-        child.stdout_behavior = .Inherit;
-    } else if (needs_redaction) {
-        child.stdout_behavior = .Pipe;
-    } else {
-        child.stdout_behavior = .Inherit;
-    }
-
-    if (stderr_pty != null) {
-        child.stderr_behavior = .Inherit;
-    } else if (needs_redaction) {
-        child.stderr_behavior = .Pipe;
-    } else {
-        child.stderr_behavior = .Inherit;
-    }
-
-    const redaction_plan = try createRedactionPlan(child_allocator, redact_values);
-    defer child_allocator.free(redaction_plan.sorted_values);
+    child.stdout_behavior = if (stdout_master != null) .Inherit else if (needs_redaction) .Pipe else .Inherit;
+    child.stderr_behavior = if (stderr_master != null) .Inherit else if (needs_redaction) .Pipe else .Inherit;
 
     try child.spawn();
+    child_spawned = true;
 
     // Restore parent's original stdout/stderr immediately after fork.
     if (is_posix) {
         if (saved_stdout) |fd| {
             std.posix.dup2(fd, std.posix.STDOUT_FILENO) catch {};
             std.posix.close(fd);
+            saved_stdout = null;
         }
         if (saved_stderr) |fd| {
             std.posix.dup2(fd, std.posix.STDERR_FILENO) catch {};
             std.posix.close(fd);
+            saved_stderr = null;
         }
     }
     stdio_restored = true;
 
     // Close slave ends in the parent — only the child uses them.
-    if (stdout_pty) |p| p.closeSlave();
-    if (stderr_pty) |p| p.closeSlave();
+    if (stdout_slave) |fd| {
+        std.posix.close(fd);
+        stdout_slave = null;
+    }
+    if (stderr_slave) |fd| {
+        std.posix.close(fd);
+        stderr_slave = null;
+    }
 
     if (needs_redaction) {
         // Determine the read source for each stream: PTY master or pipe.
-        const stdout_read: File = if (stdout_pty) |p| p.masterFile() else if (child.stdout) |pipe| pipe else unreachable;
-        const stderr_read: File = if (stderr_pty) |p| p.masterFile() else if (child.stderr) |pipe| pipe else unreachable;
-        const stdout_is_pty = stdout_pty != null;
-        const stderr_is_pty = stderr_pty != null;
-
-        child.stdout = null;
-        child.stderr = null;
+        const stdout_read: File = if (stdout_master) |fd| (File{ .handle = fd }) else if (child.stdout) |pipe| pipe else unreachable;
+        const stderr_read: File = if (stderr_master) |fd| (File{ .handle = fd }) else if (child.stderr) |pipe| pipe else unreachable;
+        const stdout_is_pty = stdout_master != null;
+        const stderr_is_pty = stderr_master != null;
 
         var stdout_result = PipeStreamResult{};
         var stderr_result = PipeStreamResult{};
 
-        const stdout_thread = try std.Thread.spawn(.{}, streamPipeRedactedThread, .{
+        // Spawn threads one at a time and null the fd ownership ONLY after
+        // each thread successfully spawns. If the second spawn fails, the
+        // errdefer still owns (and closes) the un-transferred fd, and joins
+        // the first thread before freeing redaction_plan.
+        stdout_thread = try std.Thread.spawn(.{}, streamPipeRedactedThread, .{
             stdout_read,
             redaction_plan,
             stdout_writer,
             &stdout_result,
             stdout_is_pty,
         });
-        const stderr_thread = try std.Thread.spawn(.{}, streamPipeRedactedThread, .{
+        stdout_master = null; // thread now owns this fd
+        child.stdout = null;
+
+        stderr_thread = try std.Thread.spawn(.{}, streamPipeRedactedThread, .{
             stderr_read,
             redaction_plan,
             stderr_writer,
             &stderr_result,
             stderr_is_pty,
         });
+        stderr_master = null; // thread now owns this fd
+        child.stderr = null;
 
-        stdout_thread.join();
-        stderr_thread.join();
+        // Always join both threads before checking errors or returning,
+        // so redaction_plan remains valid while threads read it.
+        stdout_thread.?.join();
+        stderr_thread.?.join();
+        stdout_thread = null;
+        stderr_thread = null;
+
+        // Always reap child, even when stream errors occurred, to avoid zombies.
+        const term = try child.wait();
+        child_spawned = false;
 
         if (stdout_result.err) |err| return err;
         if (stderr_result.err) |err| return err;
+
+        return switch (term) {
+            .Exited => |code| code,
+            else => 1,
+        };
     }
+
     const term = try child.wait();
+    child_spawned = false;
     return switch (term) {
         .Exited => |code| code,
         else => 1,
@@ -2485,13 +2550,22 @@ test "child process sees isatty=true through PTY-backed redaction" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    // Create a PTY pair to serve as the child's stdout
+    // Create a PTY pair to serve as the child's stdout.
     const stdout_pair = try pty.openPty();
     defer stdout_pair.closeMaster();
+    var slave_fd: ?std.posix.fd_t = stdout_pair.slave;
+    defer if (slave_fd) |fd| std.posix.close(fd);
 
-    // Save real stdout, replace with PTY slave
+    // Save real stdout, replace with PTY slave. Register errdefer for
+    // restore BEFORE the dup2 so partial failures are safe.
     const saved = try std.posix.dup(std.posix.STDOUT_FILENO);
-    try std.posix.dup2(stdout_pair.slave, std.posix.STDOUT_FILENO);
+    var stdout_saved: ?std.posix.fd_t = saved;
+    errdefer if (stdout_saved) |fd| {
+        std.posix.dup2(fd, std.posix.STDOUT_FILENO) catch {};
+        std.posix.close(fd);
+    };
+
+    try std.posix.dup2(slave_fd.?, std.posix.STDOUT_FILENO);
 
     var env_map = std.process.EnvMap.init(allocator);
     defer env_map.deinit();
@@ -2509,7 +2583,11 @@ test "child process sees isatty=true through PTY-backed redaction" {
     // Restore stdout immediately after fork
     std.posix.dup2(saved, std.posix.STDOUT_FILENO) catch {};
     std.posix.close(saved);
-    stdout_pair.closeSlave();
+    stdout_saved = null;
+
+    // Close slave — child inherited it via dup2
+    std.posix.close(slave_fd.?);
+    slave_fd = null;
 
     const term = try child.wait();
     const exit_code = switch (term) {
@@ -2528,16 +2606,28 @@ test "redaction works through PTY: secrets are masked in child output" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    // Create PTY pair to intercept child output
+    // Create PTY pair to intercept child output.
+    // Track ownership with nullable fds for safe cleanup.
     const pair = try pty.openPty();
-    // Don't defer closeMaster — streamPipeRedactedThread takes ownership
-    // and closes it via `defer pipe.close()` in streamPipeRedacted.
+    var master_fd: ?std.posix.fd_t = pair.master;
+    var slave_fd: ?std.posix.fd_t = pair.slave;
+
+    // Master will be transferred to stream thread; only close if we still own it.
+    defer if (master_fd) |fd| std.posix.close(fd);
+    defer if (slave_fd) |fd| std.posix.close(fd);
 
     const secret = "xK9mP2nQ4rS6tU8vW0yA1bC3dE5fG7hJ";
 
-    // Save real stdout, replace with PTY slave so the child inherits it
+    // Save real stdout. Register errdefer BEFORE dup2 so partial failures
+    // restore stdout.
     const saved_stdout = try std.posix.dup(std.posix.STDOUT_FILENO);
-    try std.posix.dup2(pair.slave, std.posix.STDOUT_FILENO);
+    var stdout_saved: ?std.posix.fd_t = saved_stdout;
+    errdefer if (stdout_saved) |fd| {
+        std.posix.dup2(fd, std.posix.STDOUT_FILENO) catch {};
+        std.posix.close(fd);
+    };
+
+    try std.posix.dup2(slave_fd.?, std.posix.STDOUT_FILENO);
 
     var env_map = std.process.EnvMap.init(allocator);
     defer env_map.deinit();
@@ -2556,11 +2646,14 @@ test "redaction works through PTY: secrets are masked in child output" {
     // Restore stdout immediately after fork
     std.posix.dup2(saved_stdout, std.posix.STDOUT_FILENO) catch {};
     std.posix.close(saved_stdout);
-    pair.closeSlave();
+    stdout_saved = null;
+
+    // Close slave — child inherited it via dup2
+    std.posix.close(slave_fd.?);
+    slave_fd = null;
 
     // Read child's output from PTY master, applying redaction.
-    // streamPipeRedactedThread closes the fd when done, so we must not
-    // close it again ourselves.
+    // Transfer master fd ownership to the stream thread.
     const redaction_plan = try createRedactionPlan(allocator, &.{secret});
     var output = std.ArrayListUnmanaged(u8).empty;
     defer output.deinit(allocator);
@@ -2568,9 +2661,12 @@ test "redaction works through PTY: secrets are masked in child output" {
     var stderr_discard = std.ArrayListUnmanaged(u8).empty;
     defer stderr_discard.deinit(allocator);
 
+    const master_file = File{ .handle = master_fd.? };
+    master_fd = null; // thread takes ownership
+
     var stdout_result = PipeStreamResult{};
     const stdout_thread = try std.Thread.spawn(.{}, streamPipeRedactedThread, .{
-        pair.masterFile(),
+        master_file,
         redaction_plan,
         output.writer(allocator),
         &stdout_result,
