@@ -1046,8 +1046,15 @@ fn runChildProcessImpl(
 
     // Master errdefer: cleans up everything that hasn't been transferred.
     // Registered BEFORE any dup2 so it covers partial-initialization errors.
+    //
+    // Cleanup order matters to avoid deadlocks:
+    //   1. Restore parent stdio (so our own output works)
+    //   2. Kill child (so it stops writing to pipes/PTYs)
+    //   3. Close still-owned pipes and PTY fds (unblocks reader threads)
+    //   4. Join threads (safe now: child killed, fds closed, plan still alive)
+    //   5. Reap child (waitpid to avoid zombies)
     errdefer {
-        // Restore stdio if dup2 was done but not yet restored.
+        // 1. Restore stdio if dup2 was done but not yet restored.
         if (is_posix and !stdio_restored) {
             if (saved_stdout) |fd| {
                 std.posix.dup2(fd, std.posix.STDOUT_FILENO) catch {};
@@ -1059,21 +1066,33 @@ fn runChildProcessImpl(
             }
         }
 
-        // Close any PTY fds still owned by us (not yet transferred to threads
-        // or closed in the normal path). Null means already closed/transferred.
+        // 2. Kill the child process so it stops writing to pipes/PTYs.
+        // Without this, a stderr thread spawn failure could deadlock:
+        // the child blocks writing to a full stderr pipe, stdout never
+        // reaches EOF, and joining the stdout thread hangs forever.
+        if (child_spawned) {
+            _ = child.kill() catch {};
+        }
+
+        // 3. Close still-owned pipes and PTY fds. This unblocks any
+        // reader thread waiting on a read() that would never return.
         if (stdout_master) |fd| std.posix.close(fd);
         if (stdout_slave) |fd| std.posix.close(fd);
         if (stderr_master) |fd| std.posix.close(fd);
         if (stderr_slave) |fd| std.posix.close(fd);
+        if (child.stdout) |pipe| pipe.close();
+        if (child.stderr) |pipe| pipe.close();
+        child.stdout = null;
+        child.stderr = null;
 
-        // If threads were started, join them before we free redaction_plan.
+        // 4. Join threads. Safe because: child is killed (no more writes),
+        // fds are closed (threads get EOF/EIO), redaction_plan is still
+        // alive (its defer free is registered before this errdefer).
         if (stdout_thread) |t| t.join();
         if (stderr_thread) |t| t.join();
 
-        // Reap child if spawned, to avoid zombies.
-        if (child_spawned) {
-            _ = child.wait() catch {};
-        }
+        // 5. child.kill() above already called waitpid internally, so
+        // child_spawned is effectively reaped. No separate wait needed.
     }
 
     // Disable output post-processing (OPOST/ONLCR) on PTY slaves so the
@@ -1179,7 +1198,13 @@ fn runChildProcessImpl(
         stderr_thread = null;
 
         // Always reap child, even when stream errors occurred, to avoid zombies.
-        const term = try child.wait();
+        // Use catch to handle exec failures (e.g. command not found) where
+        // wait() returns a spawn error. child.kill() in errdefer already
+        // called waitpid, so we don't need the errdefer reap path here.
+        const term = child.wait() catch |err| {
+            child_spawned = false;
+            return err;
+        };
         child_spawned = false;
 
         if (stdout_result.err) |err| return err;
@@ -1191,7 +1216,10 @@ fn runChildProcessImpl(
         };
     }
 
-    const term = try child.wait();
+    const term = child.wait() catch |err| {
+        child_spawned = false;
+        return err;
+    };
     child_spawned = false;
     return switch (term) {
         .Exited => |code| code,
