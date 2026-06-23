@@ -1729,9 +1729,9 @@ fn secretsSetAction(args: SecretsSet.Args, opts: SecretsSet.Options, global: Glo
                 std.process.exit(1);
             };
             if (entered.len == 0) {
-                try color.err(stderr, "error");
-                try stderr.print(": value cannot be empty\n", .{});
-                std.process.exit(1);
+                // Empty value is allowed — useful for placeholder secrets
+                // the user will fill in later via the dashboard.
+                try color.dim(stderr, "note: setting empty value (fill in later via dashboard)\n");
             }
             break :blk entered;
         }

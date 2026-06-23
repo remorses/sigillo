@@ -199,6 +199,40 @@ After setup, `sigillo run` in any subdirectory uses that project + environment a
 
 Avoid `sigillo secrets download` unless a specific tool requires a file. Prefer injecting directly via `sigillo run --` so values never touch the filesystem.
 
+## Placeholder secrets (user fills in later)
+
+When the user asks to add a secret but will provide the actual value later via the dashboard, set it with an empty value:
+
+```bash
+sigillo secrets set DATABASE_URL ""
+```
+
+This creates the secret as a placeholder. The CLI shows `empty: true` when listing secrets so empty placeholders are visible. After setting the placeholder, always print the dashboard URL so the user can fill it in:
+
+```
+https://sigillo.dev/dash/projects/<PROJECT_ID>/envs/<ENV_SLUG>
+```
+
+Replace `<PROJECT_ID>` and `<ENV_SLUG>` with the actual values from the current setup. To find them:
+
+```bash
+sigillo secrets
+```
+
+The `environment_id` in the output is the env ID. The project ID is from `sigillo setup` or `sigillo projects`.
+
+To set placeholders across all environments at once:
+
+```bash
+sigillo secrets set DATABASE_URL "" -c dev -c preview -c prod
+```
+
+For secrets that need real random values immediately (auth secrets, encryption keys), generate them instead of leaving empty:
+
+```bash
+sigillo secrets set AUTH_SECRET "$(openssl rand -base64 32)" -c dev -c preview -c prod
+```
+
 ## Bootstrapping a project for a new codebase
 
 When a codebase needs Sigillo for the first time, the agent creates the org, project, and placeholder secrets. The user fills in real values later via the web UI.
