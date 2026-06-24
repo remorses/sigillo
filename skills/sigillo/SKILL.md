@@ -158,13 +158,21 @@ If a `package.json` script requires secrets, embed `sigillo run` directly in the
 {
   "scripts": {
     "dev": "sigillo run -c dev -- vite dev",
-    "deployment": "sigillo run -c preview -- pnpm db:migrate:preview && CLOUDFLARE_ENV=preview sigillo run -c preview --command 'vite build && wrangler deploy --env preview'",
-    "deployment:prod": "sigillo run -c prod -- pnpm db:migrate:prod && sigillo run -c prod --command 'vite build && wrangler deploy'"
+    "deploy": "pnpm db:migrate:preview && CLOUDFLARE_ENV=preview sigillo run -c preview --command 'tsc && vite build && wrangler deploy --env preview'",
+    "deploy:prod": "pnpm db:migrate:prod && sigillo run -c prod --command 'tsc && vite build && wrangler deploy'"
   }
 }
 ```
 
+These scripts work because pnpm adds `node_modules/.bin` to PATH before executing the script string, and sigillo inherits that PATH. Commands like `tsc`, `vite`, and `wrangler` resolve correctly inside `--command` as long as the entry point is `pnpm run deploy`.
+
 Use `-c dev` for local development, `-c preview` for staging or preview deployments, and `-c prod` or the repo's production slug for production.
+
+### Always run `sigillo run` via pnpm scripts, not directly
+
+`sigillo run --command` spawns `$SHELL -c '...'` and passes the inherited `PATH`. But pnpm only adds `node_modules/.bin` to `PATH` when it's running a `package.json` script. If you call `sigillo run --command 'tsc && vite build'` directly from the terminal, `tsc` and `vite` won't be found because `node_modules/.bin` is not in PATH.
+
+Always invoke deploy/build commands through `pnpm run <script>` so pnpm augments PATH before sigillo inherits it. If you must run sigillo directly, use `pnpm exec` to resolve binaries: `sigillo run --command 'pnpm exec tsc && pnpm exec vite build'`.
 
 ### Use `--command` for shell expansion
 
