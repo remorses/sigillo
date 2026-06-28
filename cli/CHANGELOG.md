@@ -1,5 +1,7 @@
 # Changelog
 
+<!-- https://github.com/remorses/sigillo/releases -->
+
 ## 0.12.0
 
 1. **Pipe-friendly output across all commands** — when stdout is piped (not a TTY), commands now output minimal machine-readable text instead of verbose YAML. This makes scripting and piping natural without any extra flags:
