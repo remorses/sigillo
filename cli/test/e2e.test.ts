@@ -36,8 +36,9 @@ let cliContext: CliContext
 
 // One build of the binary for every suite in this file
 beforeAll(() => {
-  const build = spawnSync('zig', ['build'], { cwd: cliDir, encoding: 'utf8' })
-  expect(build.status, build.stderr).toBe(0)
+  // spawnSync blocks the event loop, so the hook timeout below can never fire; this one kills zig
+  const build = spawnSync('zig', ['build'], { cwd: cliDir, encoding: 'utf8', timeout: 120_000 })
+  expect(build.status, build.error?.message ?? build.stderr).toBe(0)
 }, 120_000)
 
 describe('sigillo cli e2e', () => {
