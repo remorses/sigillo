@@ -24,6 +24,7 @@ import {
   getAccessibleProjectIds,
   getEnvironmentAccessError,
   getProjectMemberAccess,
+  listUserSessions,
 } from './db.ts'
 import { apiApp } from './api.ts'
 import { rememberCacheOrigin } from './lib/memoize.ts'
@@ -526,6 +527,21 @@ export const app = new Spiceflow({ tracer })
     )
   })
 
+  // ── Your sessions ──────────────────────────────────────────────────
+  .loader('/dash/sessions', async ({ request }) => {
+    const sessions = await listUserSessions(request)
+    return { sessions: sessions ?? [], signInAgain: sessions === null }
+  })
+
+  .page('/dash/sessions', async () => {
+    const { SessionsPage } = await import('sigillo-app/src/components/sessions-page')
+    return (
+      <div className="flex flex-col gap-3 w-full">
+        <SessionsPage />
+      </div>
+    )
+  })
+
   // ── Tokens page ────────────────────────────────────────────────────
   .loader('/dash/projects/:projectId/tokens', async ({ params }) => {
     const db = getDb()
@@ -621,9 +637,13 @@ export const app = new Spiceflow({ tracer })
   // follows, so the provider can set its own expired Set-Cookie.
   .get('/logout', async ({ request }) => {
     const origin = getRequestOrigin(request)
+    // "Sign in again" comes back to the page it was on
+    const login = new URL('/login', origin)
+    const back = new URL(request.url).searchParams.get('redirect')
+    if (back) login.searchParams.set('redirect', safeRedirectPath(back))
     const providerSignOut = new URL('/sign-out', env.PROVIDER_URL)
     providerSignOut.searchParams.set('client_id', await ensureOAuthClient(request))
-    providerSignOut.searchParams.set('post_logout_redirect_uri', new URL('/login', origin).toString())
+    providerSignOut.searchParams.set('post_logout_redirect_uri', login.toString())
 
     const res = new Response(null, { status: 302, headers: { Location: providerSignOut.toString() } })
 

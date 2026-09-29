@@ -15,9 +15,10 @@ import { describe, test, expect, beforeAll } from 'vitest'
 import { createSpiceflowFetch } from 'spiceflow/client'
 import * as orm from 'drizzle-orm'
 import { app } from './app.js'
-import { getAuth, encrypt, decrypt, deriveSecrets, deriveEnvironmentSecretsAndNames, generateApiToken, getDb, autoJoinOrgsByDomain, getMemberProjectAccess, getAccessibleProjectIds } from './db.js'
+import { getAuth, encrypt, decrypt, deriveSecrets, deriveEnvironmentSecretsAndNames, generateApiToken, getDb, autoJoinOrgsByDomain, getMemberProjectAccess, getAccessibleProjectIds, listUserSessions, endUserSession, endOtherUserSessions } from './db.js'
 import { schema } from 'db'
-import { formatAbsoluteDate, formatTime } from './lib/utils.js'
+import { makeSignature } from 'better-auth/crypto'
+import { formatAbsoluteDate, formatTime, describeUserAgent, formatIp } from './lib/utils.js'
 
 // ── Test helpers ────────────────────────────────────────────────────
 
@@ -1832,5 +1833,148 @@ describe('formatTime', () => {
     const ts = ssr - 119_600
     expect(formatTime({ ts, now: ssr, timeZone: 'UTC' })).toMatchInlineSnapshot(`"1m ago"`)
     expect(formatTime({ ts, now: hydration, timeZone: 'UTC' })).toMatchInlineSnapshot(`"2m ago"`)
+  })
+})
+
+describe('your sessions', () => {
+  const me = (headers: Record<string, string>) => app.handle(new Request('http://e.ly/api/v0/me', { headers }))
+  const bearer = (token: string) => ({ authorization: `Bearer ${token}` })
+  const as = (token: string) => new Request('http://e.ly/dash/sessions', { headers: bearer(token) })
+  const sessionIds = async (userId: string) =>
+    (await getDb().select({ id: schema.session.id }).from(schema.session).where(orm.eq(schema.session.userId, userId))).map((row) => row.id)
+  const signed = async (token: string) => `${token}.${await makeSignature(token, (await (await getTestAuth()).$context).secret)}`
+  // A second session for the same user, like signing in on another device
+  const signInAgain = async (email: string) => {
+    const auth = await getTestAuth()
+    return signed((await auth.api.signInEmail({ body: { email, password: 'test-password-123' } })).token)
+  }
+
+  test('lists only your own sessions and marks the current one', async () => {
+    const alice = await createTestUser({ email: `alice-${Date.now()}@example.com` })
+    await signInAgain(alice.user.email)
+    await createTestUser()
+    const listed = await listUserSessions(as(alice.token))
+    expect({ count: listed.length, current: listed.filter((row) => row.isCurrent).length, tokens: listed.some((row) => 'token' in row) })
+      .toEqual({ count: 2, current: 1, tokens: false })
+  })
+
+  test('ends only your own sessions, and an ended one stops working at once', async () => {
+    const alice = await createTestUser({ email: `alice2-${Date.now()}@example.com` })
+    const other = await signInAgain(alice.user.email)
+    const bob = await createTestUser()
+    const [bobSession] = await sessionIds(bob.user.id)
+    await endUserSession(as(alice.token), bobSession!)
+    const aliceOther = (await listUserSessions(as(alice.token))).find((row) => !row.isCurrent)!.id
+    await endUserSession(as(alice.token), aliceOther)
+    expect({
+      bob: (await me(bearer(bob.token))).status,
+      aliceEnded: (await me(bearer(other))).status,
+      aliceCurrent: (await me(bearer(alice.token))).status,
+    }).toEqual({ bob: 200, aliceEnded: 401, aliceCurrent: 200 })
+  })
+
+  test('a login older than a day can still end all others, and signs in again where better-auth wants a recent one to list them', async () => {
+    const alice = await createTestUser({ email: `alice-old-${Date.now()}@example.com` })
+    await signInAgain(alice.user.email)
+    // Logins last 7 days; this one is 2 days old
+    const current = (await getDb().query.session.findFirst({ where: { token: alice.token.split('.')[0]! }, columns: { id: true } }))!.id
+    await getDb().update(schema.session).set({ createdAt: Date.now() - 2 * 86_400_000 }).where(orm.eq(schema.session.id, current))
+    const listed = await listUserSessions(as(alice.token))
+    await endOtherUserSessions(as(alice.token))
+    const left = (await sessionIds(alice.user.id)).length
+    const fresh = await signInAgain(alice.user.email)
+    // better-auth 1.7.6 lists sessions only for a login from the last day
+    // (null: sign in again); 1.7.0-beta.4 lists them for any login
+    expect({ listed: listed === null ? 'sign in again' : listed.length, left, afterSignIn: (await listUserSessions(as(fresh)))?.length })
+      .toEqual({ listed: expect.toBeOneOf(['sign in again', 2]), left: 1, afterSignIn: 2 })
+  })
+
+  test('signing in again comes back to the page it was on', async () => {
+    const location = async (path: string) => new URL((await app.handle(new Request(`http://e.ly${path}`))).headers.get('location')!).searchParams.get('post_logout_redirect_uri')
+    expect({ sessions: await location('/logout?redirect=/dash/sessions'), elsewhere: await location('/logout?redirect=https://evil.example'), none: await location('/logout') })
+      .toEqual({ sessions: 'http://e.ly/login?redirect=%2Fdash%2Fsessions', elsewhere: 'http://e.ly/login?redirect=%2Fdash', none: 'http://e.ly/login' })
+  })
+
+  test('ends all your other sessions, but not this one', async () => {
+    const alice = await createTestUser({ email: `alice3-${Date.now()}@example.com` })
+    await signInAgain(alice.user.email)
+    await signInAgain(alice.user.email)
+    await endOtherUserSessions(as(alice.token))
+    const listed = await listUserSessions(as(alice.token))
+    expect(listed.map((row) => row.isCurrent)).toEqual([true])
+  })
+
+  test('records the IP from cf-connecting-ip, and none when a request has no IP', async () => {
+    const email = `ip-${Date.now()}@example.com`
+    const signUp = await app.handle(new Request('http://e.ly/api/auth/sign-up/email', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'http://e.ly', 'cf-connecting-ip': '203.0.113.7', 'x-forwarded-for': '198.51.100.1' },
+      body: JSON.stringify({ email, name: 'IP', password: 'test-password-123' }),
+    }))
+    expect(signUp.status).toBe(200)
+    const withoutIp = await signInAgain(email)
+    const listed = await listUserSessions(as(withoutIp))
+    expect(listed.map((row) => row.ipAddress).sort()).toEqual(['203.0.113.7', null])
+  })
+
+  test('an ended browser session stops at its next request, not minutes later', async () => {
+    const email = `browser-${Date.now()}@example.com`
+    const signUp = await app.handle(new Request('http://e.ly/api/auth/sign-up/email', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'http://e.ly' },
+      body: JSON.stringify({ email, name: 'Browser', password: 'test-password-123' }),
+    }))
+    const cookie = signUp.headers.getSetCookie().map((header) => header.split(';')[0]).join('; ')
+    const before = (await me({ cookie })).status
+    const other = await signInAgain(email)
+    const [browserSession] = (await listUserSessions(as(other))).filter((row) => !row.isCurrent)
+    await endUserSession(as(other), browserSession!.id)
+    expect({ before, after: (await me({ cookie })).status }).toEqual({ before: 200, after: 401 })
+  })
+})
+
+describe('formatIp', () => {
+  test('writes IPv6 short, and leaves IPv4 and short forms as they are', () => {
+    expect([
+      '2a01:04f8:0c17:6611:0000:0000:0000:0000',
+      '2001:0db8:0000:0000:0001:0000:0000:0001',
+      '2001:0db8:0001:0002:0003:0004:0005:0006',
+      '2a01:4f8:c17:6611::1',
+      '203.0.113.7',
+      null,
+    ].map(formatIp)).toEqual([
+      '2a01:4f8:c17:6611::',
+      '2001:db8::1:0:0:1',
+      '2001:db8:1:2:3:4:5:6',
+      '2a01:4f8:c17:6611::1',
+      '203.0.113.7',
+      null,
+    ])
+  })
+})
+
+describe('describeUserAgent', () => {
+  test('names the CLI, a browser and its OS, or else the client itself', () => {
+    expect([
+      'sigillo-cli/0.14.1',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Safari/605.1.15',
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
+      'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36',
+      'Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0',
+      'zig/0.15.2 (std.http)',
+      'curl/8.15.0',
+      null,
+    ].map(describeUserAgent)).toEqual([
+      'Sigillo CLI 0.14.1',
+      'Edge on Windows',
+      'Safari on macOS',
+      'Safari on iOS',
+      'Chrome on Android',
+      'Firefox on Linux',
+      'zig/0.15.2',
+      'curl/8.15.0',
+      'Unknown device',
+    ])
   })
 })

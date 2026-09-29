@@ -3942,6 +3942,24 @@ test "requests with a token send it as a bearer header" {
     try std.testing.expect(std.ascii.indexOfIgnoreCase(server.request(), "authorization: Bearer tok123\r\n") != null);
 }
 
+test "requests name the CLI in their user agent" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var server = try OneShotServer.init();
+    defer server.server.deinit();
+
+    // The device flow polls without a token, and that request creates the
+    // CLI's session: the Sessions page lists it by this user agent
+    const thread = try std.Thread.spawn(.{}, OneShotServer.serve, .{ &server, "HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}" });
+    const result = client.request(.{ .allocator = allocator, .method = .POST, .base_url = try server.baseUrl(allocator), .path = "/api/auth/device/token", .token = null, .json_body = "{}" });
+    thread.join();
+    _ = try result;
+    const expected = "user-agent: sigillo-cli/" ++ @import("build_options").version ++ "\r\n";
+    try std.testing.expect(std.ascii.indexOfIgnoreCase(server.request(), expected) != null);
+}
+
 test "requests with a token never follow a redirect" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);

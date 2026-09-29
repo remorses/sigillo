@@ -40,6 +40,45 @@ export function formatTime({ ts, now, timeZone }: { ts: number; now: number; tim
   return formatAbsoluteDate({ ts, timeZone })
 }
 
+// Short label for a session's user agent: the CLI and its version, a browser
+// and its OS, or else the client's own name (curl/8.15.0)
+// An IPv6 address written short, the usual way: leading zeros dropped and the
+// longest run of zero groups as ::. better-auth keeps only the /64 network of
+// a login, written out in full, which doesn't fit a table column. IPv4 as is.
+export function formatIp(ip: string | null): string | null {
+  if (!ip || !ip.includes(':') || ip.includes('::')) return ip
+  const groups = ip.toLowerCase().split(':').map((group) => group.replace(/^0+(?=.)/, ''))
+  let best = { start: -1, length: 1 }
+  for (let i = 0; i < groups.length; i++) {
+    let end = i
+    while (end < groups.length && groups[end] === '0') end++
+    if (end - i > best.length) best = { start: i, length: end - i }
+  }
+  if (best.start < 0) return groups.join(':')
+  return `${groups.slice(0, best.start).join(':')}::${groups.slice(best.start + best.length).join(':')}`
+}
+
+export function describeUserAgent(userAgent: string | null): string {
+  if (!userAgent) return 'Unknown device'
+  const cli = /^sigillo-cli\/(\S+)/.exec(userAgent)
+  if (cli) return `Sigillo CLI ${cli[1]}`
+  // Order matters: Edge also says Chrome, Chrome also says Safari, Android
+  // also says Linux, and iOS also says Mac OS X
+  const browser = /Edg\//.test(userAgent) ? 'Edge'
+    : /Firefox\//.test(userAgent) ? 'Firefox'
+    : /Chrome\//.test(userAgent) ? 'Chrome'
+    : /Safari\//.test(userAgent) ? 'Safari'
+    : null
+  if (!browser) return userAgent.split(' ')[0]!
+  const os = /Windows/.test(userAgent) ? 'Windows'
+    : /Android/.test(userAgent) ? 'Android'
+    : /iPhone|iPad/.test(userAgent) ? 'iOS'
+    : /Mac OS X/.test(userAgent) ? 'macOS'
+    : /Linux/.test(userAgent) ? 'Linux'
+    : null
+  return os ? `${browser} on ${os}` : browser
+}
+
 // ── Email domain helpers (client-safe) ──────────────────────────────
 // These are used by both server code (db.ts, actions.ts) and client
 // components (create-org-form, settings-page), so they must not import

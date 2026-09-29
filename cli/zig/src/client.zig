@@ -3,6 +3,10 @@
 const std = @import("std");
 pub const api = @import("generated/sigillo-api.zig");
 
+// Instead of std.http's zig/<version>, so the Sessions page can tell the CLI
+// apart from other tools
+const user_agent = "sigillo-cli/" ++ @import("build_options").version;
+
 pub const ApiResult = struct {
     status: u16,
     body: []u8,
@@ -37,7 +41,7 @@ pub fn request(args: RequestArgs) !ApiResult {
     defer response_body.deinit();
 
     const accept_header = [_]std.http.Header{.{ .name = "accept", .value = args.accept }};
-    var headers: std.http.Client.Request.Headers = .{};
+    var headers: std.http.Client.Request.Headers = .{ .user_agent = .{ .override = user_agent } };
     if (args.json_body != null) {
         headers.content_type = .{ .override = "application/json" };
     }
