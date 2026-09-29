@@ -1,12 +1,23 @@
 // Page-width hero with an ASCII VideoBackgroundShader, serif title, and two CTAs.
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { VideoBackgroundShader } from '@holocron.so/vite/mdx'
 import { buttonVariants } from './ui/button.tsx'
 
 const HERO_FONT = "'IvarText', serif"
 const GITHUB_URL = 'https://github.com/remorses/sigillo'
+
+// Shader color is a WebGL uniform, so CSS dark: variants cannot reach it.
+// Colors sit close to the page background so the title keeps contrast.
+const DOT_COLOR_LIGHT = '#72c29c'
+const DOT_COLOR_DARK = '#4a9a75'
+
+function subscribeToThemeClass(onChange: () => void) {
+  const observer = new MutationObserver(onChange)
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+  return () => observer.disconnect()
+}
 
 function GoogleIcon({ className }: { className?: string }) {
   return (
@@ -21,6 +32,11 @@ function GoogleIcon({ className }: { className?: string }) {
 
 export function HeroSection() {
   const [fontsReady, setFontsReady] = useState(false)
+  const isDark = useSyncExternalStore(
+    subscribeToThemeClass,
+    () => document.documentElement.classList.contains('dark'),
+    () => false,
+  )
 
   useEffect(() => {
     const timeout = setTimeout(() => setFontsReady(true), 3000)
@@ -33,9 +49,8 @@ export function HeroSection() {
       <VideoBackgroundShader
         src='/assets/hero-bg.mp4'
         className='absolute inset-0 w-full h-full'
-        canvasClassName='dark:opacity-60 opacity-40'
         dotStyle='ascii'
-        dotColor='#6ec9a0'
+        dotColor={isDark ? DOT_COLOR_DARK : DOT_COLOR_LIGHT}
         dotSize={9}
         minDotSize={1}
         dotMargin={1}
@@ -44,6 +59,16 @@ export function HeroSection() {
         enableMask={false}
         fluidStrength={0.2}
         fluidCurl={80}
+      />
+
+      {/* Soft background scrim behind the title/CTAs so text stays readable over glyphs */}
+      <div
+        aria-hidden
+        className='absolute inset-0 z-[1] pointer-events-none'
+        style={{
+          background:
+            'radial-gradient(ellipse 45% 40% at 50% 42%, color-mix(in srgb, var(--background) 85%, transparent) 0%, color-mix(in srgb, var(--background) 60%, transparent) 50%, transparent 100%)',
+        }}
       />
 
       <div
