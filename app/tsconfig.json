@@ -4,6 +4,10 @@
     "rootDir": "src",
     "outDir": "dist",
     "noEmit": true,
+    // Nothing is emitted, so no declarations either. With them on, tsc wants
+    // portable names for better-auth's inferred types (TS2883 on better-call).
+    "declaration": false,
+    "declarationMap": false,
     "lib": ["ESNext", "DOM"],
     "types": ["@cloudflare/vitest-pool-workers/types"],
     "module": "esnext",

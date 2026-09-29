@@ -58,6 +58,6 @@
   "dependencies": {
     "@clack/prompts": "^1.7.0",
     "goke": "^6.14.1",
-    "zod": "^4.4.3"
+    "zod": "^4.6.5"
   }
 }

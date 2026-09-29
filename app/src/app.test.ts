@@ -15,7 +15,7 @@ import { describe, test, expect, beforeAll } from 'vitest'
 import { createSpiceflowFetch } from 'spiceflow/client'
 import * as orm from 'drizzle-orm'
 import { app } from './app.js'
-import { getAuth, encrypt, decrypt, deriveSecrets, deriveEnvironmentSecretsAndNames, generateApiToken, getDb, autoJoinOrgsByDomain, getMemberProjectAccess, getAccessibleProjectIds } from './db.js'
+import { getAuth, encrypt, decrypt, deriveSecrets, deriveEnvironmentSecretsAndNames, generateApiToken, getDb, autoJoinOrgsByDomain, getMemberProjectAccess, getAccessibleProjectIds, oauthClientRegistration } from './db.js'
 import { schema } from 'db'
 import { formatAbsoluteDate, formatTime } from './lib/utils.js'
 
@@ -1832,5 +1832,14 @@ describe('formatTime', () => {
     const ts = ssr - 119_600
     expect(formatTime({ ts, now: ssr, timeZone: 'UTC' })).toMatchInlineSnapshot(`"1m ago"`)
     expect(formatTime({ ts, now: hydration, timeZone: 'UTC' })).toMatchInlineSnapshot(`"2m ago"`)
+  })
+})
+
+describe('oauthClientRegistration', () => {
+  // oauth-provider 1.7.6 refuses http redirect URIs for web clients
+  test('registers local dev as a native client and a deployment as a web client', () => {
+    const local = oauthClientRegistration({ origin: 'http://localhost:5188', callbackUrl: 'http://localhost:5188/api/auth/callback/sigillo', isLocal: true })
+    const deployed = oauthClientRegistration({ origin: 'https://secrets.example.com', callbackUrl: 'https://secrets.example.com/api/auth/callback/sigillo', isLocal: false })
+    expect({ local: local.application_type, deployed: 'application_type' in deployed }).toEqual({ local: 'native', deployed: false })
   })
 })

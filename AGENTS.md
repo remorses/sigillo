@@ -111,11 +111,11 @@ Rules:
 
 ## better-auth version alignment (never use `latest`)
 
-`better-auth` and `@better-auth/oauth-provider` are published from the same repo and **must stay on the same release line**. `provider/package.json` pins the plugin to an exact version (`1.7.0-beta.4`) on purpose:
+`better-auth` and `@better-auth/oauth-provider` are published from the same repo and **must stay on the same release line**. `provider/package.json` pins the plugin to an exact version (`1.7.6`) on purpose:
 
 ```json
-"@better-auth/oauth-provider": "1.7.0-beta.4",
-"better-auth": "^1.7.0-beta.4",
+"@better-auth/oauth-provider": "1.7.6",
+"better-auth": "^1.7.6",
 ```
 
 `@better-auth/oauth-provider` used to be `"latest"`, which silently floated onto the **stable 1.6.x line** while `better-auth` stayed on `1.7.0-beta`. That mismatch produced two separate failures that look unrelated but share one cause:
@@ -168,7 +168,7 @@ Rules:
 
 - Use the `jsonArray()` helper in `provider/src/schema.ts` for `string[]` fields; it keeps the TS type as `string[]`.
 - `string[]` columns have the same on-disk bytes either way (TEXT holding single-encoded JSON), so flipping one to `{ mode: 'json' }` needs **no data migration**. `json` columns do not: before adapter `1.2.0` they were double-encoded as `"{\"a\":1}"`, and pre-1.2.0 rows now decode to a **string** instead of an object. `oauthClient.metadata` is the only `json` column here and is always NULL, because the oauth-provider plugin only fills it from unrecognized registration fields and `ensureOAuthClient` sends just the standard RFC 7591 keys.
-- After bumping `better-auth` or `@better-auth/oauth-provider`, diff the drizzle schema against the plugin schema. `getAuthTables({ plugins: [...] })` from `better-auth/db` gives the authoritative field list; compare it with `getTableColumns()` to catch both missing columns and wrong column modes. Any column whose drizzle `dataType` is not `object json` while better-auth types it `string[]`/`number[]`/`json` is a bug. 1.7 added `oauth_client.jwks`, `oauth_client.jwks_uri`, `resources` on the consent/token tables, and `jwks.expires_at`.
+- After bumping `better-auth` or `@better-auth/oauth-provider`, diff the drizzle schema against the plugin schema. `getAuthTables({ plugins: [...] })` from `better-auth/db` gives the authoritative field list; compare it with `getTableColumns()` to catch both missing columns and wrong column modes. Any column whose drizzle `dataType` is not `object json` while better-auth types it `string[]`/`number[]`/`json` is a bug. 1.7 added `oauth_client.jwks`, `oauth_client.jwks_uri`, `resources` on the consent/token tables, and `jwks.expires_at`. 1.7.6 added 19 more columns and the `oauth_resource`, `oauth_client_resource` and `oauth_client_assertion` tables (provider migration `0003`).
 - Typecheck and build both pass with the wrong mode. Only a real request against D1 catches it, so exercise `/oauth2/register` plus `/oauth2/authorize` locally after any schema or adapter change.
 
 ## Direct `auth.api.oauth2*` calls need `request` AND `asResponse: false`

@@ -3,7 +3,7 @@
 // oauthProvider plugin tables (oauthClient, oauthConsent, oauthAccessToken,
 // oauthRefreshToken) and jwt plugin table (jwks).
 //
-// Field names and types match @better-auth/oauth-provider@1.7.0-beta.4 exactly.
+// Field names and types match @better-auth/oauth-provider@1.7.6 exactly.
 //
 // IMPORTANT: every field BetterAuth types as `string[]` or `json` MUST be
 // declared here as `text(name, { mode: 'json' })`, never a plain `text()`.
@@ -98,7 +98,7 @@ export const verification = sqliteCore.sqliteTable('verification', {
 })
 
 // ── oauthProvider plugin tables ─────────────────────────────────────
-// Field names match @better-auth/oauth-provider@1.6.3 schema definition.
+// Field names match @better-auth/oauth-provider@1.7.6 schema definition.
 // string[] fields are stored as JSON text by BetterAuth's drizzle adapter.
 
 export const oauthClient = sqliteCore.sqliteTable('oauth_client', {
@@ -116,6 +116,12 @@ export const oauthClient = sqliteCore.sqliteTable('oauth_client', {
   softwareStatement: sqliteCore.text('software_statement'),
   jwks: sqliteCore.text('jwks'),
   jwksUri: sqliteCore.text('jwks_uri'),
+  clientDiscoveryId: sqliteCore.text('client_discovery_id'),
+  clientCredentialsScopes: jsonArray('client_credentials_scopes'),
+  backchannelLogoutUri: sqliteCore.text('backchannel_logout_uri'),
+  backchannelLogoutSessionRequired: sqliteCore.integer('backchannel_logout_session_required', { mode: 'boolean' }),
+  applicationType: sqliteCore.text('application_type'),
+  dpopBoundAccessTokens: sqliteCore.integer('dpop_bound_access_tokens', { mode: 'boolean' }).default(false),
   redirectUris: jsonArray('redirect_uris').notNull(),
   postLogoutRedirectUris: jsonArray('post_logout_redirect_uris'),
   tokenEndpointAuthMethod: sqliteCore.text('token_endpoint_auth_method'),
@@ -143,6 +149,7 @@ export const oauthConsent = sqliteCore.sqliteTable('oauth_consent', {
   referenceId: sqliteCore.text('reference_id'),
   scopes: jsonArray('scopes').notNull(),
   resources: jsonArray('resources'),
+  requestedUserInfoClaims: jsonArray('requested_user_info_claims'),
   createdAt: epochMs('created_at').$defaultFn(() => Date.now()),
   updatedAt: epochMs('updated_at').$defaultFn(() => Date.now()),
 }, (table) => [
@@ -162,8 +169,15 @@ export const oauthRefreshToken = sqliteCore.sqliteTable('oauth_refresh_token', {
   authTime: epochMs('auth_time'),
   scopes: jsonArray('scopes').notNull(),
   resources: jsonArray('resources'),
+  authorizationCodeId: sqliteCore.text('authorization_code_id'),
+  requestedUserInfoClaims: jsonArray('requested_user_info_claims'),
+  rotatedAt: epochMs('rotated_at'),
+  rotationReplayResponse: sqliteCore.text('rotation_replay_response'),
+  rotationReplayExpiresAt: epochMs('rotation_replay_expires_at'),
+  confirmation: sqliteCore.text('confirmation', { mode: 'json' }),
 }, (table) => [
   sqliteCore.index('oauth_refresh_token_user_id_idx').on(table.userId),
+  sqliteCore.index('oauth_refresh_token_authorization_code_id_idx').on(table.authorizationCodeId),
 ])
 
 export const oauthAccessToken = sqliteCore.sqliteTable('oauth_access_token', {
@@ -176,11 +190,50 @@ export const oauthAccessToken = sqliteCore.sqliteTable('oauth_access_token', {
   refreshId: sqliteCore.text('refresh_id').references(() => oauthRefreshToken.id),
   expiresAt: epochMs('expires_at').notNull(),
   createdAt: epochMs('created_at').$defaultFn(() => Date.now()),
+  revoked: epochMs('revoked'),
   scopes: jsonArray('scopes').notNull(),
   resources: jsonArray('resources'),
+  authorizationCodeId: sqliteCore.text('authorization_code_id'),
+  requestedUserInfoClaims: jsonArray('requested_user_info_claims'),
+  confirmation: sqliteCore.text('confirmation', { mode: 'json' }),
 }, (table) => [
   sqliteCore.index('oauth_access_token_user_id_idx').on(table.userId),
+  sqliteCore.index('oauth_access_token_authorization_code_id_idx').on(table.authorizationCodeId),
 ])
+
+export const oauthResource = sqliteCore.sqliteTable('oauth_resource', {
+  id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
+  identifier: sqliteCore.text('identifier').notNull().unique(),
+  name: sqliteCore.text('name').notNull(),
+  accessTokenTtl: sqliteCore.integer('access_token_ttl'),
+  refreshTokenTtl: sqliteCore.integer('refresh_token_ttl'),
+  signingAlgorithm: sqliteCore.text('signing_algorithm'),
+  signingKeyId: sqliteCore.text('signing_key_id'),
+  allowedScopes: jsonArray('allowed_scopes'),
+  customClaims: sqliteCore.text('custom_claims', { mode: 'json' }),
+  dpopBoundAccessTokensRequired: sqliteCore.integer('dpop_bound_access_tokens_required', { mode: 'boolean' }).default(false),
+  disabled: sqliteCore.integer('disabled', { mode: 'boolean' }).default(false),
+  createdAt: epochMs('created_at').$defaultFn(() => Date.now()),
+  updatedAt: epochMs('updated_at').$defaultFn(() => Date.now()),
+  policyVersion: sqliteCore.integer('policy_version').default(1),
+  metadata: sqliteCore.text('metadata', { mode: 'json' }),
+})
+
+export const oauthClientResource = sqliteCore.sqliteTable('oauth_client_resource', {
+  id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
+  clientId: sqliteCore.text('client_id').notNull().references(() => oauthClient.clientId, { onDelete: 'cascade' }),
+  resourceId: sqliteCore.text('resource_id').notNull().references(() => oauthResource.identifier, { onDelete: 'cascade' }),
+  metadata: sqliteCore.text('metadata', { mode: 'json' }),
+  createdAt: epochMs('created_at').$defaultFn(() => Date.now()),
+}, (table) => [
+  sqliteCore.index('oauth_client_resource_client_id_idx').on(table.clientId),
+  sqliteCore.index('oauth_client_resource_resource_id_idx').on(table.resourceId),
+])
+
+export const oauthClientAssertion = sqliteCore.sqliteTable('oauth_client_assertion', {
+  id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
+  expiresAt: epochMs('expires_at').notNull(),
+})
 
 // ── jwks table (jwt plugin) ────────────────────────────────────────
 
@@ -190,12 +243,14 @@ export const jwks = sqliteCore.sqliteTable('jwks', {
   privateKey: sqliteCore.text('private_key').notNull(),
   createdAt: epochMs('created_at').notNull().$defaultFn(() => Date.now()),
   expiresAt: epochMs('expires_at'),
+  alg: sqliteCore.text('alg'),
+  crv: sqliteCore.text('crv'),
 })
 
 // ── Relations (v2 API) ──────────────────────────────────────────────
 
 export const relations = defineRelations(
-  { user, session, account, verification, oauthClient, oauthConsent, oauthRefreshToken, oauthAccessToken, jwks },
+  { user, session, account, verification, oauthClient, oauthConsent, oauthRefreshToken, oauthAccessToken, oauthResource, oauthClientResource, oauthClientAssertion, jwks },
   (r) => ({
     user: {
       sessions: r.many.session(),
@@ -222,6 +277,9 @@ export const relations = defineRelations(
     },
     verification: {},
     oauthClient: {},
+    oauthResource: {},
+    oauthClientResource: {},
+    oauthClientAssertion: {},
     jwks: {},
   }),
 )

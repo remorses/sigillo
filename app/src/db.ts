@@ -142,6 +142,26 @@ const lookupOAuthClientId = memoize({
   fn: readOAuthClientId,
 })
 
+// The RFC 7591 registration the app sends to the provider.
+export function oauthClientRegistration({ origin, callbackUrl, isLocal }: {
+  origin: string
+  callbackUrl: string
+  isLocal: boolean
+}) {
+  return {
+    client_name: `Sigillo Self-Hosted (${origin})`,
+    redirect_uris: [callbackUrl],
+    grant_types: ['authorization_code', 'refresh_token'],
+    response_types: ['code'],
+    scope: 'openid email profile',
+    token_endpoint_auth_method: 'none',
+    // oauth-provider 1.7.6 only lets web clients use https on a real host.
+    // Loopback http is for native clients (OpenID Connect Dynamic Client
+    // Registration, application_type), so local dev registers as one.
+    ...(isLocal ? { application_type: 'native' } : {}),
+  }
+}
+
 export async function ensureOAuthClient(request: Request): Promise<string> {
   const pathname = new URL(request.url).pathname
   const host = getRequestHost(request)
@@ -176,14 +196,7 @@ export async function ensureOAuthClient(request: Request): Promise<string> {
   const res = await fetch(`${env.PROVIDER_URL}/api/auth/oauth2/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      client_name: `Sigillo Self-Hosted (${origin})`,
-      redirect_uris: [callbackUrl],
-      grant_types: ['authorization_code', 'refresh_token'],
-      response_types: ['code'],
-      scope: 'openid email profile',
-      token_endpoint_auth_method: 'none',
-    }),
+    body: JSON.stringify(oauthClientRegistration({ origin, callbackUrl, isLocal })),
   })
   if (!res.ok) {
     const body = await res.text()

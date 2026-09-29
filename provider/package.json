@@ -17,10 +17,10 @@
     "deployment:prod": "pnpm db:migrate:prod && pnpm build && wrangler deploy"
   },
   "dependencies": {
-    "@better-auth/oauth-provider": "1.7.0-beta.4",
+    "@better-auth/oauth-provider": "1.7.6",
     "@opentelemetry/api": "^1.9.1",
     "@tailwindcss/vite": "^4.3.3",
-    "better-auth": "^1.7.0-beta.4",
+    "better-auth": "^1.7.6",
     "better-auth-drizzle-adapter": "^1.2.1",
     "drizzle-orm": "1.0.0-rc.1",
     "react": "^19.2.8",
