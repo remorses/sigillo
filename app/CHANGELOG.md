@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1
+
+1. **Manage access dialog keeps restrictions.** It could open with **Full access** checked for a restricted member, so saving without changes removed the restriction.
+
+2. **Device login page recovers from errors.** It returns to code entry when Approve or Deny fails, so you can enter the new code.
+
+3. **Homepage hero background is easier to see.** The ASCII shader no longer gets an extra opacity fade, each theme uses its own green, and a soft scrim keeps the title and buttons readable.
+
 ## 0.1.0
 
 1. **API tokens can cover more than one environment.** Create a token for **dev** and **preview** without also granting **prod**. Project-wide tokens still mean every environment. The CLI setup picker lists only the environments the token can use.

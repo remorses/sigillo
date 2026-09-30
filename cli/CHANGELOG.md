@@ -2,6 +2,23 @@
 
 <!-- https://github.com/remorses/sigillo/releases -->
 
+## 0.14.1
+
+1. **`self-host` checks the keys before recreating a worker.** When it creates a new worker for a database that already stores secrets, it first decrypts a stored value with the keys it has. Before, a lost `BETTER_AUTH_SECRET` or a hand-added `ENCRYPTION_KEY` missing from `~/.sigillo/selfhost.json` made every stored secret unreadable. If you set your own key, pass it again to recover:
+
+   ```bash
+   SIGILLO_ENCRYPTION_KEY='<original key>' npx sigillo self-host
+   ```
+
+2. **`sigillo login` signs in again when a token is already saved.** It used to re-save the saved token and stop, so a login that had stopped working could only be replaced after `sigillo logout`. `--token` and `SIGILLO_TOKEN` are still saved as given.
+
+3. **`sigillo run` exits with `128 + N` when its command is killed by signal N.** Before, a command stopped by `SIGTERM` or Ctrl+C made sigillo exit `1`, so Docker, turbo and make reported a failure. Now it exits `143` for `SIGTERM` and `130` for Ctrl+C.
+
+4. **Self-hosted dashboard fixes**, shipped with the next `self-host` deploy:
+
+   - The **Manage access** dialog could open with **Full access** checked for a restricted member, so saving without changes removed the restriction.
+   - The device login page returns to code entry when Approve or Deny fails, so you can enter the new code.
+
 ## 0.14.0
 
 1. **Git worktrees pick up the right project and env**, including in monorepo subfolders.
