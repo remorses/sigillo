@@ -110,7 +110,7 @@ describe('sigillo cli e2e', () => {
   afterAll(async () => {
     if (!cliContext) return
     rmSync(cliContext.tmpDir, { recursive: true, force: true })
-    await apiRequest({ method: 'DELETE', path: `/api/v0/projects/${cliContext.projectId}`, context: cliContext }).catch(() => undefined)
+    await apiRequest({ method: 'DELETE', path: `/api/v0/projects/${cliContext.projectId}`, context: cliContext })
   }, 60_000)
 
   test('lists and downloads secrets from the configured environment', async () => {

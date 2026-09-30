@@ -3791,6 +3791,8 @@ test "login leaves scope unset when flag is omitted" {
 }
 
 fn openBrowser(allocator: std.mem.Allocator, url: []const u8) void {
+    // Vitest sets VITEST; e2e tests must not open real browser tabs
+    if ((config.getEnvVarOptional(allocator, "VITEST") catch null) != null) return;
     const argv: []const []const u8 = switch (builtin.os.tag) {
         .macos => &.{ "open", url },
         .windows => blk: {
