@@ -19,6 +19,8 @@
    - The **Manage access** dialog could open with **Full access** checked for a restricted member, so saving without changes removed the restriction.
    - The device login page returns to code entry when Approve or Deny fails, so you can enter the new code.
 
+5. **Linux x64 binary runs on every x86_64 CPU.** It was built for the CPU of the build machine, so on older or different CPUs it could crash at start with `Illegal instruction`.
+
 ## 0.14.0
 
 1. **Git worktrees pick up the right project and env**, including in monorepo subfolders.

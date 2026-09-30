@@ -113,12 +113,10 @@ function resolveExePath(): string | undefined {
 async function buildTarget({ target }: { target: Target }): Promise<void> {
   fs.rmSync(path.join(rootDirectory, 'zig-out'), { recursive: true, force: true })
 
-  // When building for the host platform, omit -Dtarget so Zig uses the
-  // native system include/lib paths.
-  const isNativeBuild = target.name === hostTarget
-  const zigArgs = isNativeBuild
-    ? ['build', '-Doptimize=ReleaseFast', `-Dversion=${packageVersion}`]
-    : ['build', '-Doptimize=ReleaseFast', `-Dtarget=${target.zigTarget}`, `-Dversion=${packageVersion}`]
+  // Always pass -Dtarget, even for the host. Without it Zig builds for the
+  // native CPU, and the binary dies with SIGILL on any machine lacking the
+  // build machine's instruction set extensions (it crashed CI's publish job).
+  const zigArgs = ['build', '-Doptimize=ReleaseFast', `-Dtarget=${target.zigTarget}`, `-Dversion=${packageVersion}`]
 
   await runCommand({
     command: 'zig',
