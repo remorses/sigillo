@@ -1,3 +1,6 @@
+'use server'
+// Directive stays on line 1: spiceflow strips it in vitest only when it is the first statement.
+
 // Shared server actions for the Sigillo app UI.
 // Client components import these directly instead of receiving action props.
 //
@@ -5,12 +8,16 @@
 // verifies org membership before mutating data. No action accepts a raw
 // userId — it always comes from the session cookie.
 //
+// Every action parses its arguments with a zod schema first. Arguments come
+// from the client, and drizzle's relational `where` reads an object value as
+// filter operators ({ id: { gt: '0' } } -> id > '0'), so an unchecked id can
+// match rows the caller never knew about.
+//
 // Actions throw on error (caught by ErrorBoundary in the UI) and return
 // objects on success. Never return strings or scalar values.
 
-'use server'
-
 import { ulid } from 'ulid'
+import { z } from 'zod'
 import { getSecretNameError } from './lib/utils.ts'
 import * as orm from 'drizzle-orm'
 import type { BatchItem } from 'drizzle-orm/batch'
@@ -31,6 +38,18 @@ import {
   getUserEnvironmentAccess,
   getEnvironmentAccessError,
 } from './db.ts'
+
+const idSchema = z.string().min(1)
+const idListSchema = z.array(idSchema)
+const roleSchema = z.enum(['admin', 'member'])
+
+// Input is typed for callers, but the wire can carry anything. Throws the first
+// issue message so UI error states stay readable.
+function parseInput<T extends z.ZodType>(schema: T, input: z.input<T>): z.output<T> {
+  const result = schema.safeParse(input)
+  if (!result.success) throw new Error(result.error.issues[0]?.message ?? 'Invalid input')
+  return result.data
+}
 
 async function requireSession() {
   const request = getActionRequest()
@@ -95,9 +114,13 @@ async function ensureAnotherAdminExists(orgId: string, userId: string) {
   }
 }
 
-export async function createProjectAction({ name, orgId }: { name: string; orgId: string }) {
-  if (!name) throw new Error('Name is required')
-  if (!orgId) throw new Error('No org selected')
+const createProjectInput = z.object({
+  name: z.string().min(1, 'Name is required'),
+  orgId: z.string().min(1, 'No org selected'),
+})
+
+export async function createProjectAction(input: z.input<typeof createProjectInput>) {
+  const { name, orgId } = parseInput(createProjectInput, input)
   const session = await requireSession()
   await requireOrgMember(session.userId, orgId)
   const db = getDb()
@@ -114,10 +137,10 @@ export async function createProjectAction({ name, orgId }: { name: string; orgId
 
 // All secret mutations append to the secretEvent log. Never update or delete events.
 
-export async function deleteSecretAction({ name, environmentIds }: {
-  name: string
-  environmentIds: string[]
-}) {
+const deleteSecretInput = z.object({ name: z.string().min(1), environmentIds: idListSchema })
+
+export async function deleteSecretAction(input: z.input<typeof deleteSecretInput>) {
+  const { name, environmentIds } = parseInput(deleteSecretInput, input)
   const unique = Array.from(new Set(environmentIds))
   if (!unique.length) throw new Error('No environments selected')
   const session = await requireSession()
@@ -138,10 +161,13 @@ export async function deleteSecretAction({ name, environmentIds }: {
 // Save edited secrets to the current environment and optionally apply
 // the same changes to additional environments. Each edit appends a "set"
 // event to the log. Renames are handled as delete old name + set new name.
-export async function saveSecretsAction({ edits, environmentIds }: {
-  edits: { name: string; originalName?: string; value: string }[]
-  environmentIds: string[]
-}) {
+const saveSecretsInput = z.object({
+  edits: z.array(z.object({ name: z.string(), originalName: z.string().optional(), value: z.string() })),
+  environmentIds: idListSchema,
+})
+
+export async function saveSecretsAction(input: z.input<typeof saveSecretsInput>) {
+  const { edits, environmentIds } = parseInput(saveSecretsInput, input)
   if (edits.length === 0 || environmentIds.length === 0) return
   const session = await requireSession()
   const currentEnvId = environmentIds[0]!
@@ -211,19 +237,24 @@ export async function saveSecretsAction({ edits, environmentIds }: {
   }
 }
 
-export async function deleteEnvAction({ id }: { id: string }) {
+const deleteEnvInput = z.object({ id: idSchema })
+
+export async function deleteEnvAction(input: z.input<typeof deleteEnvInput>) {
+  const { id } = parseInput(deleteEnvInput, input)
   const session = await requireSession()
   await requireEnvironmentAccess(session.userId, id)
   const db = getDb()
   await db.delete(schema.environment).where(orm.eq(schema.environment.id, id))
 }
 
-export async function createEnvAction({ name, slug, projectId }: {
-  name: string
-  slug: string
-  projectId: string
-}) {
-  if (!name || !slug) throw new Error('Name and slug are required')
+const createEnvInput = z.object({
+  name: z.string().min(1, 'Name and slug are required'),
+  slug: z.string().min(1, 'Name and slug are required'),
+  projectId: idSchema,
+})
+
+export async function createEnvAction(input: z.input<typeof createEnvInput>) {
+  const { name, slug, projectId } = parseInput(createEnvInput, input)
   const session = await requireSession()
   await requireProjectAccess(session.userId, projectId)
   const db = getDb()
@@ -231,11 +262,10 @@ export async function createEnvAction({ name, slug, projectId }: {
   return { name }
 }
 
-export async function renameEnvAction({ id, name, slug }: {
-  id: string
-  name?: string
-  slug?: string
-}) {
+const renameEnvInput = z.object({ id: idSchema, name: z.string().optional(), slug: z.string().optional() })
+
+export async function renameEnvAction(input: z.input<typeof renameEnvInput>) {
+  const { id, name, slug } = parseInput(renameEnvInput, input)
   if (!name && !slug) throw new Error('At least one of name or slug is required')
   const session = await requireSession()
   await requireEnvironmentAccess(session.userId, id)
@@ -249,8 +279,13 @@ export async function renameEnvAction({ id, name, slug }: {
 
 const INVITE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
-export async function createInviteAction({ orgId, projectIds }: { orgId: string; projectIds?: string[] }) {
-  if (!orgId) throw new Error('No org selected')
+const createInviteInput = z.object({
+  orgId: z.string().min(1, 'No org selected'),
+  projectIds: idListSchema.optional(),
+})
+
+export async function createInviteAction(input: z.input<typeof createInviteInput>) {
+  const { orgId, projectIds } = parseInput(createInviteInput, input)
   const session = await requireSession()
   const { role } = await requireOrgMember(session.userId, orgId)
   if (role !== 'admin') throw new Error('Only admins can create invites')
@@ -278,8 +313,11 @@ export async function createInviteAction({ orgId, projectIds }: { orgId: string;
   return { id: invite!.id }
 }
 
-export async function acceptInviteAction({ invitationId }: { invitationId: string }) {
-  if (!invitationId) throw new Error('Invitation ID is required')
+const acceptInviteInput = z.object({ invitationId: z.string().min(1, 'Invitation ID is required') })
+
+// Finding the invitation IS the authorization here, so the id must be a plain string.
+export async function acceptInviteAction(input: z.input<typeof acceptInviteInput>) {
+  const { invitationId } = parseInput(acceptInviteInput, input)
   const session = await requireSession()
   const db = getDb()
   // Look up the invite without deleting — it stays valid until it expires.
@@ -321,10 +359,10 @@ export async function acceptInviteAction({ invitationId }: { invitationId: strin
   throw redirect(router.href('/dash/orgs/:orgId', { orgId: invite.orgId }))
 }
 
-export async function updateOrgMemberRoleAction({ memberId, role }: {
-  memberId: string
-  role: 'admin' | 'member'
-}) {
+const updateOrgMemberRoleInput = z.object({ memberId: idSchema, role: roleSchema })
+
+export async function updateOrgMemberRoleAction(input: z.input<typeof updateOrgMemberRoleInput>) {
+  const { memberId, role } = parseInput(updateOrgMemberRoleInput, input)
   const session = await requireSession()
   const db = getDb()
   const member = await db.query.orgMember.findFirst({
@@ -351,7 +389,10 @@ export async function updateOrgMemberRoleAction({ memberId, role }: {
   return { id: member.id, role }
 }
 
-export async function removeOrgMemberAction({ memberId }: { memberId: string }) {
+const removeOrgMemberInput = z.object({ memberId: idSchema })
+
+export async function removeOrgMemberAction(input: z.input<typeof removeOrgMemberInput>) {
+  const { memberId } = parseInput(removeOrgMemberInput, input)
   const session = await requireSession()
   const db = getDb()
   const member = await db.query.orgMember.findFirst({
@@ -372,13 +413,14 @@ export async function removeOrgMemberAction({ memberId }: { memberId: string }) 
 
 // ── API Token actions ───────────────────────────────────────────────
 
-export async function createTokenAction({ name, projectId, environmentIds }: {
-  name: string
-  projectId: string
-  environmentIds?: string[]
-}) {
-  if (!name) throw new Error('Name is required')
-  if (!projectId) throw new Error('Project is required')
+const createTokenInput = z.object({
+  name: z.string().min(1, 'Name is required'),
+  projectId: z.string().min(1, 'Project is required'),
+  environmentIds: idListSchema.optional(),
+})
+
+export async function createTokenAction(input: z.input<typeof createTokenInput>) {
+  const { name, projectId, environmentIds } = parseInput(createTokenInput, input)
   const session = await requireSession()
   const uniqueEnvIds = Array.from(new Set(environmentIds ?? []))
   await requireTokenScopeAccess({ userId: session.userId, projectId, environmentIds: uniqueEnvIds })
@@ -404,8 +446,10 @@ export async function createTokenAction({ name, projectId, environmentIds }: {
   return { id: tokenId, key }
 }
 
-export async function deleteTokenAction({ tokenId }: { tokenId: string }) {
-  if (!tokenId) throw new Error('Token ID is required')
+const deleteTokenInput = z.object({ tokenId: z.string().min(1, 'Token ID is required') })
+
+export async function deleteTokenAction(input: z.input<typeof deleteTokenInput>) {
+  const { tokenId } = parseInput(deleteTokenInput, input)
   const session = await requireSession()
   const db = getDb()
   const token = await db.query.apiToken.findFirst({
@@ -422,16 +466,14 @@ export async function deleteTokenAction({ tokenId }: { tokenId: string }) {
   await db.delete(schema.apiToken).where(orm.eq(schema.apiToken.id, tokenId))
 }
 
-export async function syncMissingSecretsAction({
-  sourceEnvironmentId,
-  targetEnvironmentId,
-  names,
-}: {
-  sourceEnvironmentId: string
-  targetEnvironmentId: string
-  names: string[]
-}) {
-  if (!sourceEnvironmentId || !targetEnvironmentId) throw new Error('Both environment IDs are required')
+const syncMissingSecretsInput = z.object({
+  sourceEnvironmentId: z.string().min(1, 'Both environment IDs are required'),
+  targetEnvironmentId: z.string().min(1, 'Both environment IDs are required'),
+  names: z.array(z.string()),
+})
+
+export async function syncMissingSecretsAction(input: z.input<typeof syncMissingSecretsInput>) {
+  const { sourceEnvironmentId, targetEnvironmentId, names } = parseInput(syncMissingSecretsInput, input)
   if (sourceEnvironmentId === targetEnvironmentId) throw new Error('Source and target environments must be different')
   if (!names.length) throw new Error('No secret names provided')
   const session = await requireSession()
@@ -473,8 +515,13 @@ export async function syncMissingSecretsAction({
   return { count: toSync.length }
 }
 
-export async function createOrgAction({ name, enableAutoJoin }: { name: string; enableAutoJoin?: boolean }) {
-  if (!name) throw new Error('Name is required')
+const createOrgInput = z.object({
+  name: z.string().min(1, 'Name is required'),
+  enableAutoJoin: z.boolean().optional(),
+})
+
+export async function createOrgAction(input: z.input<typeof createOrgInput>) {
+  const { name, enableAutoJoin } = parseInput(createOrgInput, input)
   const session = await requireSession()
 
   let autoJoinDomain: string | null = null
@@ -496,8 +543,13 @@ export async function createOrgAction({ name, enableAutoJoin }: { name: string; 
   throw redirect(router.href('/dash/orgs/:orgId', { orgId: org!.id }))
 }
 
-export async function updateAutoJoinDomainAction({ orgId, enabled }: { orgId: string; enabled: boolean }) {
-  if (!orgId) throw new Error('Org ID is required')
+const updateAutoJoinDomainInput = z.object({
+  orgId: z.string().min(1, 'Org ID is required'),
+  enabled: z.boolean(),
+})
+
+export async function updateAutoJoinDomainAction(input: z.input<typeof updateAutoJoinDomainInput>) {
+  const { orgId, enabled } = parseInput(updateAutoJoinDomainInput, input)
   const session = await requireSession()
   await requireAdminRole(session.userId, orgId)
 
@@ -525,10 +577,10 @@ export async function updateAutoJoinDomainAction({ orgId, enabled }: { orgId: st
 // are restricted. Passing an empty projects array reverts to "all access".
 
 // projectIds null = all projects; [] = no projects.
-export async function updateMemberAccessAction({ memberId, projectIds }: {
-  memberId: string
-  projectIds: string[] | null
-}) {
+const updateMemberAccessInput = z.object({ memberId: idSchema, projectIds: idListSchema.nullable() })
+
+export async function updateMemberAccessAction(input: z.input<typeof updateMemberAccessInput>) {
+  const { memberId, projectIds } = parseInput(updateMemberAccessInput, input)
   const session = await requireSession()
   const db = getDb()
   const member = await db.query.orgMember.findFirst({
@@ -569,10 +621,10 @@ export async function updateMemberAccessAction({ memberId, projectIds }: {
 // Admins can restrict an environment (e.g. production) so only admins
 // can read/write secrets in it. Members get 403 on all secret operations.
 
-export async function updateEnvironmentAccessRoleAction({ environmentId, accessRole }: {
-  environmentId: string
-  accessRole: 'admin' | 'member'
-}) {
+const updateEnvironmentAccessRoleInput = z.object({ environmentId: idSchema, accessRole: roleSchema })
+
+export async function updateEnvironmentAccessRoleAction(input: z.input<typeof updateEnvironmentAccessRoleInput>) {
+  const { environmentId, accessRole } = parseInput(updateEnvironmentAccessRoleInput, input)
   const session = await requireSession()
   const orgId = await getOrgIdForEnvironment(environmentId)
   if (!orgId) throw new Error('Environment not found')
@@ -585,8 +637,10 @@ export async function updateEnvironmentAccessRoleAction({ environmentId, accessR
   return { ok: true, environmentId, accessRole }
 }
 
-export async function deleteOrgAction({ orgId }: { orgId: string }) {
-  if (!orgId) throw new Error('Org ID is required')
+const deleteOrgInput = z.object({ orgId: z.string().min(1, 'Org ID is required') })
+
+export async function deleteOrgAction(input: z.input<typeof deleteOrgInput>) {
+  const { orgId } = parseInput(deleteOrgInput, input)
   const session = await requireSession()
   await requireAdminRole(session.userId, orgId)
   const db = getDb()

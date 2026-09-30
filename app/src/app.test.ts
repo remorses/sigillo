@@ -14,7 +14,9 @@
 import { describe, test, expect, beforeAll } from 'vitest'
 import { createSpiceflowFetch } from 'spiceflow/client'
 import * as orm from 'drizzle-orm'
+import { runAction } from 'spiceflow/testing'
 import { app } from './app.js'
+import { acceptInviteAction } from './actions.js'
 import { getAuth, encrypt, decrypt, deriveSecrets, deriveEnvironmentSecretsAndNames, generateApiToken, getDb, autoJoinOrgsByDomain, getMemberProjectAccess, getAccessibleProjectIds } from './db.js'
 import { schema } from 'db'
 import { formatAbsoluteDate, formatTime } from './lib/utils.js'
@@ -966,11 +968,13 @@ describe('security — cross-user isolation', () => {
   let userAProjectId: string
   let userAEnvId: string
   let userAOrgId: string
+  let userAId: string
   let userBToken: string
 
   beforeAll(async () => {
     const userA = await createTestUser({ name: 'Alice', email: 'alice-sec@test.com' })
     userAToken = userA.token
+    userAId = userA.user.id
     const userB = await createTestUser({ name: 'Bob', email: 'bob-sec@test.com' })
     userBToken = userB.token
 
@@ -1054,6 +1058,24 @@ describe('security — cross-user isolation', () => {
   test('user B cannot delete user A environment (403)', async () => {
     const res = await req({ path: `/api/v0/projects/${userAProjectId}/environments/${userAEnvId}`, token: userBToken, method: 'DELETE' })
     expect(res.status).toBe(403)
+  })
+
+  // Regression: an object id reached drizzle's relational `where`
+  // as filter operators ({ gt: '0' } -> id > '0') and matched a live invite.
+  test('invitation accept rejects filter-operator objects as the id', async () => {
+    const intruder = await createTestUser({ name: 'Invite Intruder' })
+    const db = getDb()
+    await db.insert(schema.orgInvitation).values({ orgId: userAOrgId, createdBy: userAId, expiresAt: Date.now() + 60_000 })
+    const request = new Request('http://e.ly', { method: 'POST', headers: { authorization: `Bearer ${intruder.token}` } })
+    // The cast simulates a malicious client; the type says string, the wire can carry anything.
+    const attempt = (invitationId: unknown) => runAction(
+      () => acceptInviteAction({ invitationId } as { invitationId: string }),
+      { request },
+    ).then(() => 'accepted', (e) => e instanceof Error ? e.message : 'accepted (redirect)')
+
+    expect(await attempt({ gt: '0' })).toMatchInlineSnapshot(`"Invalid input: expected string, received object"`)
+    expect(await attempt({ isNotNull: true })).toMatchInlineSnapshot(`"Invalid input: expected string, received object"`)
+    expect(await db.query.orgMember.findFirst({ where: { orgId: userAOrgId, userId: intruder.user.id } })).toBeUndefined()
   })
 })
 
