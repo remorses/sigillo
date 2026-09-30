@@ -135,6 +135,21 @@ export async function createProjectAction(input: z.input<typeof createProjectInp
   throw redirect(router.href('/dash/projects/:projectId', { projectId: proj!.id }))
 }
 
+const renameProjectInput = z.object({
+  id: idSchema,
+  name: z.string().trim().min(1, 'Name is required'),
+})
+
+export async function renameProjectAction(input: z.input<typeof renameProjectInput>) {
+  const { id, name } = parseInput(renameProjectInput, input)
+  const session = await requireSession()
+  await requireProjectAccess(session.userId, id)
+  await getDb().update(schema.project)
+    .set({ name, updatedAt: Date.now() })
+    .where(orm.eq(schema.project.id, id))
+  return { id, name }
+}
+
 // All secret mutations append to the secretEvent log. Never update or delete events.
 
 const deleteSecretInput = z.object({ name: z.string().min(1), environmentIds: idListSchema })

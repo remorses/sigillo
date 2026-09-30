@@ -9,6 +9,7 @@ import { useState } from "react"
 import { z } from "zod"
 import { parseFormData } from "spiceflow"
 import { useLoaderData } from "spiceflow/react"
+import { ProjectTitle } from "sigillo-app/src/components/sidebar"
 import { KeyIcon, TrashIcon, PlusIcon, CopyIcon, CheckIcon } from "lucide-react"
 import { EmptyState } from "sigillo-app/src/components/ui/empty-state"
 import { Button } from "sigillo-app/src/components/ui/button"
@@ -27,13 +28,13 @@ import { createTokenAction, deleteTokenAction } from "../actions.ts"
 
 
 export function TokensPage() {
-  const { projectName, projectId, environments, tokens } = useLoaderData('/dash/projects/:projectId/tokens')
+  const { projectId, environments, tokens } = useLoaderData('/dash/projects/:projectId/tokens')
   const [createOpen, setCreateOpen] = useState(false)
 
   return (
     <>
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">{projectName}</h1>
+        <ProjectTitle />
         <Button variant="outline" onClick={() => setCreateOpen(true)}>
           <PlusIcon className="size-4" />
           Create token

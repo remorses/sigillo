@@ -2,6 +2,7 @@
 // Top: org switcher dropdown (like team-switcher)
 // Middle: project list
 // Bottom: user section with avatar, email, logout
+// Also exports project UI shared across pages (new project dialog, ProjectTitle rename).
 //
 // SidebarContent is the shared inner UI used by both the desktop <aside> and
 // the mobile Drawer, so the project list / org switcher / user footer are
@@ -23,6 +24,7 @@ import {
   LogOutIcon,
   CheckIcon,
   MenuIcon,
+  PencilIcon,
 } from "lucide-react";
 import { cn } from "sigillo-app/src/lib/utils";
 import { Button } from "sigillo-app/src/components/ui/button";
@@ -46,7 +48,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from "sigillo-app/src/components/ui/dropdown-menu";
-import { createProjectAction } from "../actions.ts";
+import { createProjectAction, renameProjectAction } from "../actions.ts";
 
 // ── Shared sidebar content ─────────────────────────────────────
 // Used by both the desktop aside and the mobile drawer so the org
@@ -346,6 +348,75 @@ export function NewProjectDialog({
         </ErrorBoundary>
       </DialogPopup>
     </Dialog>
+  );
+}
+
+// ── Project title with inline rename ───────────────────────────
+// Header of every project tab. Click to edit, Enter or blur saves, Escape cancels.
+// The action re-runs loaders, so the sidebar list updates too.
+
+export function ProjectTitle() {
+  const { projectId, projectName } = useLoaderData('/dash/projects/:projectId/*');
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  if (!projectId) return null;
+
+  const save = async (input: HTMLInputElement) => {
+    const name = input.value.trim();
+    if (!name || name === projectName) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      await renameProjectAction({ id: projectId, name });
+      setEditing(false);
+    } catch (e: any) {
+      alert(e?.message || "Failed to rename project");
+      input.value = projectName;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <form
+        className="min-w-0 flex-1"
+        onSubmit={(e) => {
+          e.preventDefault();
+          e.currentTarget.querySelector("input")?.blur();
+        }}
+      >
+        <Input
+          aria-label="Project name"
+          defaultValue={projectName}
+          disabled={saving}
+          autoFocus
+          onFocus={(e) => e.currentTarget.select()}
+          onBlur={(e) => save(e.currentTarget)}
+          onKeyDown={(e) => {
+            if (e.key !== "Escape") return;
+            e.currentTarget.value = projectName;
+            e.currentTarget.blur();
+          }}
+          className="h-9 max-w-md text-2xl font-bold tracking-tight"
+        />
+      </form>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      className="group flex min-w-0 items-center gap-2 cursor-pointer text-left"
+      title="Click to rename project"
+    >
+      <h1 className="truncate text-2xl font-bold tracking-tight">{projectName}</h1>
+      <PencilIcon className="size-4 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+    </button>
   );
 }
 

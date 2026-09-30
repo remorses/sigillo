@@ -13,6 +13,7 @@ import { NativeSelect } from "sigillo-app/src/components/ui/native-select"
 import { Spinner } from "sigillo-app/src/components/ui/spinner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "sigillo-app/src/components/ui/dialog"
 import { useLoaderData } from "spiceflow/react"
+import { ProjectTitle } from "sigillo-app/src/components/sidebar"
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "sigillo-app/src/components/ui/table"
@@ -33,12 +34,12 @@ type Member = {
 }
 
 export function AccessPage() {
-  const { projectName, orgId, role } = useLoaderData('/dash/projects/:projectId/access')
+  const { orgId, role } = useLoaderData('/dash/projects/:projectId/access')
 
   return (
     <div className="flex flex-col gap-3 w-full">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">{projectName}</h1>
+        <ProjectTitle />
         {role === 'admin' ? <InviteButton orgId={orgId} /> : null}
       </div>
       <AccessTable />

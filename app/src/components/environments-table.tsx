@@ -15,6 +15,7 @@ import { useState, useRef } from "react";
 import { z } from "zod";
 import { parseFormData } from "spiceflow";
 import { ErrorBoundary, useLoaderData } from "spiceflow/react";
+import { ProjectTitle } from "sigillo-app/src/components/sidebar";
 import { Badge } from "sigillo-app/src/components/ui/badge";
 import { cn } from "sigillo-app/src/lib/utils";
 import { Button } from "sigillo-app/src/components/ui/button";
@@ -145,12 +146,11 @@ const envSchema = z.object({ name: z.string().min(1, "Name is required"), slug: 
 const envFields = envSchema.keyof().enum;
 
 export function EnvironmentsPage() {
-  const { projectName } = useLoaderData('/dash/projects/:projectId/environments');
 
   return (
     <div className="flex flex-col gap-3 w-full">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">{projectName}</h1>
+        <ProjectTitle />
       </div>
       <EnvironmentsTable />
     </div>

@@ -18,6 +18,7 @@ import {
     SelectValue,
 } from "sigillo-app/src/components/ui/select";
 import { router, useLoaderData } from "spiceflow/react";
+import { ProjectTitle } from "sigillo-app/src/components/sidebar";
 
 const cliBannerCookieName = "sigillo-cli-banner-dismissed";
 const cliBannerCodeLines = [
@@ -104,7 +105,6 @@ function CliBanner() {
 export function ProjectPage() {
   const {
     projectId,
-    projectName,
     environments,
     selectedEnvId,
     locked,
@@ -118,7 +118,7 @@ export function ProjectPage() {
 
       {/* Header: project name + env select */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">{projectName}</h1>
+        <ProjectTitle />
         <div className="flex items-center gap-2">
           {secrets.length > 0 && (
             <Button variant="ghost" size="sm" onClick={() => setAllVisible((v) => !v)}>

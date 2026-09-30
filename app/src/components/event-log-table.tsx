@@ -9,6 +9,7 @@ import { cn } from "sigillo-app/src/lib/utils";
 import { AdminOnlyEnvironment, EmptyState } from "sigillo-app/src/components/ui/empty-state";
 import { useState } from "react";
 import { router, useLoaderData } from "spiceflow/react";
+import { ProjectTitle } from "sigillo-app/src/components/sidebar";
 import { Badge } from "sigillo-app/src/components/ui/badge";
 import { Frame } from "sigillo-app/src/components/ui/frame";
 import {
@@ -32,7 +33,6 @@ import { TimeAgo } from "sigillo-app/src/components/ui/time-ago";
 
 export function EventLogTable() {
   const {
-    projectName,
     events,
     environments,
     selectedEnvId,
@@ -48,7 +48,7 @@ export function EventLogTable() {
   return (
     <>
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">{projectName}</h1>
+        <ProjectTitle />
         <Select
           defaultValue={selectedEnvId || ""}
           onValueChange={(val: string | null) => {
