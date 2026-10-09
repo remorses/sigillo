@@ -324,13 +324,16 @@ const EnvironmentsCreate = zeke.cmd("environments create", "Create an env")
     .option("--name <name>", "Env name")
     .option("--slug <slug>", "Env slug");
 
-const EnvironmentsGet = zeke.cmd("environments get <id>", "Get env details by id or slug");
+const EnvironmentsGet = zeke.cmd("environments get <id>", "Get env details by id or slug")
+    .option("-p, --project [id]", "Project ID override");
 
 const EnvironmentsRename = zeke.cmd("environments rename <id>", "Rename an env by id or slug")
+    .option("-p, --project [id]", "Project ID override")
     .option("--name [name]", "Updated env name")
     .option("--slug [slug]", "Updated env slug");
 
-const EnvironmentsDelete = zeke.cmd("environments delete <id>", "Delete an env by id or slug");
+const EnvironmentsDelete = zeke.cmd("environments delete <id>", "Delete an env by id or slug")
+    .option("-p, --project [id]", "Project ID override");
 
 // The real self-host implementation is TypeScript-only and lives in the npm
 // package (cli/src/selfhost/); bin.ts intercepts `self-host` before exec'ing
@@ -2346,7 +2349,7 @@ fn environmentsCreateAction(_: EnvironmentsCreate.Args, opts: EnvironmentsCreate
     }
 }
 
-fn environmentsGetAction(args: EnvironmentsGet.Args, _: EnvironmentsGet.Options, global: Global.Options) !void {
+fn environmentsGetAction(args: EnvironmentsGet.Args, opts: EnvironmentsGet.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -2355,9 +2358,8 @@ fn environmentsGetAction(args: EnvironmentsGet.Args, _: EnvironmentsGet.Options,
     defer arena.deinit();
     const allocator = arena.allocator();
     const cwd = try config.getCwd(allocator);
-    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url });
-    const project_ctx = try requireProjectContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url });
-    const res = try client.getEnvironment(.{ .allocator = allocator, .api_url = api_ctx.api_url, .token = api_ctx.token, .project_id = project_ctx.project_id, .environment_id = args.id });
+    const ctx = try requireProjectContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url, .project = opts.project });
+    const res = try client.getEnvironment(.{ .allocator = allocator, .api_url = ctx.api.api_url, .token = ctx.api.token, .project_id = ctx.project_id, .environment_id = args.id });
     if (res.status != 200 or res.value == null) {
         const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
         try color.err(stderr, "error");
@@ -2382,18 +2384,17 @@ fn environmentsRenameAction(args: EnvironmentsRename.Args, opts: EnvironmentsRen
     defer arena.deinit();
     const allocator = arena.allocator();
     const cwd = try config.getCwd(allocator);
-    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url });
     if (opts.name == null and opts.slug == null) {
         try color.err(stderr, "error");
         try stderr.print(": pass --name, --slug, or both\n", .{});
         std.process.exit(1);
     }
-    const project_ctx = try requireProjectContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url });
+    const ctx = try requireProjectContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url, .project = opts.project });
     const res = try client.updateEnvironment(.{
         .allocator = allocator,
-        .api_url = api_ctx.api_url,
-        .token = api_ctx.token,
-        .project_id = project_ctx.project_id,
+        .api_url = ctx.api.api_url,
+        .token = ctx.api.token,
+        .project_id = ctx.project_id,
         .environment_id = args.id,
         .name = opts.name,
         .slug = opts.slug,
@@ -2413,7 +2414,7 @@ fn environmentsRenameAction(args: EnvironmentsRename.Args, opts: EnvironmentsRen
     });
 }
 
-fn environmentsDeleteAction(args: EnvironmentsDelete.Args, _: EnvironmentsDelete.Options, global: Global.Options) !void {
+fn environmentsDeleteAction(args: EnvironmentsDelete.Args, opts: EnvironmentsDelete.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -2422,9 +2423,8 @@ fn environmentsDeleteAction(args: EnvironmentsDelete.Args, _: EnvironmentsDelete
     defer arena.deinit();
     const allocator = arena.allocator();
     const cwd = try config.getCwd(allocator);
-    const api_ctx = try requireApiContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url });
-    const project_ctx = try requireProjectContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url });
-    const res = try client.deleteEnvironment(.{ .allocator = allocator, .api_url = api_ctx.api_url, .token = api_ctx.token, .project_id = project_ctx.project_id, .environment_id = args.id });
+    const ctx = try requireProjectContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url, .project = opts.project });
+    const res = try client.deleteEnvironment(.{ .allocator = allocator, .api_url = ctx.api.api_url, .token = ctx.api.token, .project_id = ctx.project_id, .environment_id = args.id });
     if (res.status != 200 or res.value == null) {
         const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
         try color.err(stderr, "error");
@@ -3730,14 +3730,16 @@ test "projects create parses required options" {
     try std.testing.expectEqualStrings("backend", State.name.?);
 }
 
-test "environments rename parses optional name and slug" {
+test "environments rename parses project, name and slug" {
     const State = struct {
         var id: ?[]const u8 = null;
+        var project: ?[]const u8 = null;
         var name: ?[]const u8 = null;
         var slug: ?[]const u8 = null;
 
         fn action(args: EnvironmentsRename.Args, opts: EnvironmentsRename.Options, _: Global.Options) !void {
             id = args.id;
+            project = opts.project;
             name = opts.name;
             slug = opts.slug;
         }
@@ -3745,9 +3747,10 @@ test "environments rename parses optional name and slug" {
 
     const TestEnvironmentsRename = EnvironmentsRename.bindWith(Global, State.action);
     var app = zeke.AppWith(.{TestEnvironmentsRename}, Global).init(std.testing.allocator, "sigillo");
-    try app.dispatch(&.{ "environments", "rename", "env_123", "--name", "prod", "--slug", "production" });
+    try app.dispatch(&.{ "environments", "rename", "env_123", "-p", "proj_1", "--name", "prod", "--slug", "production" });
 
     try std.testing.expectEqualStrings("env_123", State.id.?);
+    try std.testing.expectEqualStrings("proj_1", State.project.?);
     try std.testing.expectEqualStrings("prod", State.name.?);
     try std.testing.expectEqualStrings("production", State.slug.?);
 }
