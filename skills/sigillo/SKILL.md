@@ -127,6 +127,27 @@ sigillo run -c production -- next build # use production
 sigillo secrets get DATABASE_URL -c preview  # override for a single secrets command
 ```
 
+## Never use `sigillo run` output as secret data
+
+**Redaction changes output.** `sigillo run` replaces matching secret values in stdout and stderr with literal `*` characters by default, even when output is piped. Never pipe its stdout or stderr into another tool to pass a secret value. The tool can receive asterisks instead of the password or token, with no separate notice that the value was replaced.
+
+**Use a direct secret pipe** when a tool needs the value on stdin:
+
+```bash
+sigillo secrets get ICLOUD_PASS -c dev --raw | some-tool --stdin
+```
+
+Piped `secrets get` output is not redacted and has no added newline. `--raw` makes the intent explicit; piped stdout already enables raw mode automatically. Keep the value in the pipe so it does not enter the agent context.
+
+**Let the child read its environment** when the tool supports it:
+
+```bash
+# some-tool reads ICLOUD_PASS from its environment.
+sigillo run -c dev -- some-tool
+```
+
+Pipes inside a `--command` child shell connect child processes before Sigillo filters their final output. They are different from piping `sigillo run` output into an external tool.
+
 ## Self-hosting on Cloudflare
 
 Deploy Sigillo to the user's own Cloudflare account with one command (npm package only, needs Node.js):
@@ -252,6 +273,8 @@ sigillo setup --scope /path/to/main/checkout --project proj_abc --env dev
 ### Redaction details
 
 `sigillo run` replaces secret values in stdout/stderr with `*`. Threshold: **Shannon entropy ≥ 3.5 bits/char AND length ≥ 16 chars** — short values like `true`, `1`, `development` are not redacted.
+
+This also applies to piped output. Follow **Never use `sigillo run` output as secret data** above when passing a secret to another tool.
 
 ### Prefer `sigillo run` over downloading secrets
 

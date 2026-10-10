@@ -250,7 +250,7 @@ const Setup = zeke.cmd("setup", "Save default project and env for the current di
     .example("sigillo setup --project website --env dev")
     .example("sigillo setup --scope /path/to/main/checkout  # from a git worktree: apply to all worktrees");
 
-const Run = zeke.cmd("run <...cmd>", "Run a command with secrets injected")
+const Run = zeke.cmd("run <...cmd>", "Run a command with secrets injected. Stdout/stderr are redacted by default, including pipes. Never use this output to pass secret values to another tool. Use `sigillo secrets get NAME --raw | tool`, or let the child tool read the injected environment variable.")
     .option("--command [cmd]", "Run a shell command string")
     .option("--mount [path]", "Write secrets to a new owner-only file (must not exist), deleted when the command exits")
     .option("--mount-format [fmt]", "Format for mounted file: env, env-no-quotes, json, yaml, docker, dotnet-json (default: env)")
@@ -261,7 +261,8 @@ const Run = zeke.cmd("run <...cmd>", "Run a command with secrets injected")
     .example("sigillo run -- env")
     .example("sigillo run --mount .env -- npm start")
     .example("sigillo run --mount config.json --mount-format json -- next dev")
-    .example("sigillo run --command 'echo $MY_SECRET'");
+    .example("sigillo run --command 'psql \"$DATABASE_URL\" -c \"select 1\"'")
+    .example("sigillo secrets get ICLOUD_PASS -c dev --raw | some-tool --stdin");
 
 const Secrets = zeke.cmd("secrets", "List secrets for the configured env")
     .option("-p, --project [id]", "Project ID override")
