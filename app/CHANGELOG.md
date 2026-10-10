@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0
+
+1. **Rename projects from the dashboard.** Click the project name at the top of any project tab, type the new name, then press Enter. Escape cancels.
+
+2. **Secrets page marks only real changes.** An input gets the amber ring only when its value differs from the saved value. Typing and then restoring the original value clears the ring and removes the row from the save count. Key and value inputs ring independently.
+
 ## 0.1.1
 
 1. **Manage access dialog keeps restrictions.** It could open with **Full access** checked for a restricted member, so saving without changes removed the restriction.

@@ -19,7 +19,29 @@
    - The **Manage access** dialog could open with **Full access** checked for a restricted member, so saving without changes removed the restriction.
    - The device login page returns to code entry when Approve or Deny fails, so you can enter the new code.
 
-5. **Linux x64 binary runs on every x86_64 CPU.** It was built for the CPU of the build machine, so on older or different CPUs it could crash at start with `Illegal instruction`.
+## 0.14.2
+
+1. **`sigillo environments get`, `rename` and `delete` accept `-p, --project`.** Before, they only worked from a directory linked with `sigillo setup`, even when you passed a full env ID.
+
+   ```bash
+   sigillo environments delete dev -p <PROJECT_ID>
+   sigillo environments rename dev -p <PROJECT_ID> --name Development
+   ```
+
+2. **Linux x64 binary runs on every x86_64 CPU.** It was built for the CPU of the build machine, so on older or different CPUs it could crash at start with `Illegal instruction`.
+
+3. **`sigillo run --help` and the agent skill explain that redaction also applies to pipes.** Piping `sigillo run` output into another tool can send literal `*` characters instead of the secret. Pipe the value directly instead:
+
+   ```bash
+   sigillo secrets get ICLOUD_PASS -c dev --raw | some-tool --stdin
+   ```
+
+   For tools that read secrets from environment variables, use `sigillo run -- tool`.
+
+4. **Self-hosted dashboard updates**, shipped with the next `self-host` deploy:
+
+   - Rename a project by clicking its name at the top of any project tab. Enter saves, Escape cancels.
+   - The secrets page marks an input as changed only when its value differs from the saved one. Key and value inputs are marked separately.
 
 ## 0.14.0
 
