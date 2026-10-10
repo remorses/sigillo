@@ -73,7 +73,7 @@ Secrets are **automatically redacted** from process output so they never leak in
 ## Install skill for AI agents
 
 ```bash
-npx -y skills add remorses/sigillo
+npx -y skills add remorses/sigillo -g -y
 ```
 
 This installs [skills](https://skills.sh) for AI coding agents like Claude Code, Cursor, Windsurf, and others.
