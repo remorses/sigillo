@@ -153,7 +153,7 @@ export function SecretsTable({
     const e = edits[s.id];
     if (!e) return false;
     if (e.name !== undefined && e.name !== s.name) return true;
-    if (e.value !== undefined) return true;
+    if (e.value !== undefined && e.value !== s.value) return true;
     return false;
   });
 
@@ -291,6 +291,9 @@ export function SecretsTable({
           <TableBody>
             {secrets.map((secret) => {
               const isDirty = dirtySecrets.includes(secret);
+              const edit = edits[secret.id];
+              const isNameDirty = edit?.name !== undefined && edit.name !== secret.name;
+              const isValueDirty = edit?.value !== undefined && edit.value !== secret.value;
               const isVisible = allVisible || (rowVisible[secret.id] ?? false);
               return (
                 <TableRow key={secret.id} className={isDirty ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}>
@@ -302,7 +305,7 @@ export function SecretsTable({
                       onChange={(e) => setEdit(secret.id, "name", e.target.value)}
                       className={cn(
                         "w-full min-w-0 border-transparent bg-transparent px-1.5 mono-sm font-medium focus:border-input hover:border-input",
-                        isDirty && "text-amber-700 dark:text-amber-400 border-amber-400/50 focus:ring-amber-500",
+                        isNameDirty && "text-amber-700 dark:text-amber-400 border-amber-400/50 focus:ring-amber-500",
                       )}
                     />
                   </TableCell>
@@ -313,7 +316,7 @@ export function SecretsTable({
                       onValueChange={(v) => setEdit(secret.id, "value", v)}
                       visible={isVisible}
                       onToggle={() => setRowVisible((prev) => ({ ...prev, [secret.id]: !isVisible }))}
-                      isDirty={isDirty}
+                      isDirty={isValueDirty}
                     />
                   </TableCell>
                   <TableCell className="whitespace-nowrap">
