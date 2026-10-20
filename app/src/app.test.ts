@@ -19,6 +19,7 @@ import { app } from './app.js'
 import { acceptInviteAction } from './actions.js'
 import { getAuth, encrypt, decrypt, deriveSecrets, deriveEnvironmentSecretsAndNames, generateApiToken, getDb, autoJoinOrgsByDomain, getMemberProjectAccess, getAccessibleProjectIds } from './db.js'
 import { schema } from 'db'
+import { makeSignature } from 'better-auth/crypto'
 import { formatAbsoluteDate, formatTime } from './lib/utils.js'
 
 // ── Test helpers ────────────────────────────────────────────────────
@@ -67,7 +68,9 @@ async function createTestUser(overrides?: { email?: string; name?: string }) {
   const res = await auth.api.signUpEmail({
     body: { email, name, password: 'test-password-123' },
   })
-  return { user: res.user, token: res.token! }
+  // Signed like the session cookie and the CLI's token; bearer() refuses raw tokens
+  const { secret } = await auth.$context
+  return { user: res.user, token: `${res.token!}.${await makeSignature(res.token!, secret)}` }
 }
 
 /** Throw if Error, return the success result */
@@ -1854,5 +1857,42 @@ describe('formatTime', () => {
     const ts = ssr - 119_600
     expect(formatTime({ ts, now: ssr, timeZone: 'UTC' })).toMatchInlineSnapshot(`"1m ago"`)
     expect(formatTime({ ts, now: hydration, timeZone: 'UTC' })).toMatchInlineSnapshot(`"2m ago"`)
+  })
+})
+
+describe('session tokens read out of D1', () => {
+  const call = (path: string, init: { body?: unknown; token?: string } = {}) => app.handle(new Request(`http://e.ly${path}`, {
+    method: init.body === undefined ? 'GET' : 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...(init.token ? { authorization: `Bearer ${init.token}` } : {}),
+    },
+    body: init.body === undefined ? undefined : JSON.stringify(init.body),
+  }))
+
+  test('a raw session token copied out of D1 is refused', async () => {
+    const { user } = await createTestUser()
+    const [row] = await getDb().select().from(schema.session).where(orm.eq(schema.session.userId, user.id))
+    const res = await call('/api/v0/me', { token: row!.token })
+    // CLI logins from before this change are raw tokens too: tell them what to do
+    expect({ status: res.status, body: await res.json() }).toEqual({
+      status: 401,
+      body: { error: 'not signed in, or the session expired: run `sigillo login`' },
+    })
+  })
+
+  test('the device flow hands the CLI a signed token, and its raw part alone is refused', async () => {
+    const { token: approver } = await createTestUser()
+    const code = await (await call('/api/auth/device/code', { body: { client_id: 'sigillo-cli' } })).json() as { device_code: string; user_code: string }
+    // Like the /device page: claim the code while signed in, then approve it
+    expect((await call(`/api/auth/device?user_code=${code.user_code}`, { token: approver })).status).toBe(200)
+    expect((await call('/api/auth/device/approve', { body: { userCode: code.user_code }, token: approver })).status).toBe(200)
+    const issued = await (await call('/api/auth/device/token', {
+      body: { grant_type: 'urn:ietf:params:oauth:grant-type:device_code', device_code: code.device_code, client_id: 'sigillo-cli' },
+    })).json() as { access_token: string }
+    expect({
+      signed: (await call('/api/v0/me', { token: issued.access_token })).status,
+      raw: (await call('/api/v0/me', { token: issued.access_token.split('.')[0] })).status,
+    }).toEqual({ signed: 200, raw: 401 })
   })
 })

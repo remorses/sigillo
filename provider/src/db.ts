@@ -52,6 +52,9 @@ export function getAuth() {
     baseURL: env.BETTER_AUTH_URL,
     secret: env.BETTER_AUTH_SECRET,
     database: drizzleAdapter(db, { provider: 'sqlite' }),
+    // Google's OAuth tokens are encrypted in D1. Rows written
+    // before this stay readable: better-auth passes unencrypted values through.
+    account: { encryptOAuthTokens: true },
     session: {
       cookieCache: {
         enabled: true,

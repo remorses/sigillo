@@ -12,6 +12,8 @@ import * as orm from 'drizzle-orm'
 import { getDb, schema } from 'db'
 import { betterAuth } from 'better-auth/minimal'
 import { genericOAuth, deviceAuthorization, bearer } from 'better-auth/plugins'
+import { createAuthMiddleware } from 'better-auth/api'
+import { makeSignature } from 'better-auth/crypto'
 import { drizzleAdapter } from 'better-auth-drizzle-adapter'
 import { redirect } from 'spiceflow'
 import { memoize } from './lib/memoize.ts'
@@ -226,6 +228,21 @@ export async function getAuth(request: Request) {
         maxAge: 5 * 60, // 5 minutes — avoids a D1 round-trip on every request
       },
     },
+    // The provider's OAuth tokens are encrypted in D1. Rows written before
+    // this stay readable: better-auth passes unencrypted values through.
+    account: { encryptOAuthTokens: true },
+    // A session token read out of D1 must not work on its own.
+    // bearer() below only accepts the signed form, which needs
+    // BETTER_AUTH_SECRET, so the device flow hands the CLI that form.
+    hooks: {
+      after: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== '/device/token') return
+        const issued = ctx.context.returned as { access_token?: unknown } | undefined
+        if (typeof issued?.access_token !== 'string') return
+        const signature = await makeSignature(issued.access_token, ctx.context.secret)
+        return ctx.json({ ...issued, access_token: `${issued.access_token}.${signature}` })
+      }),
+    },
     plugins: [
       genericOAuth({
         config: [
@@ -250,7 +267,7 @@ export async function getAuth(request: Request) {
         ],
       }),
       deviceAuthorization({ verificationUri: '/device', schema: {} }),
-      bearer(),
+      bearer({ requireSignature: true }),
 
     ],
   })
@@ -298,7 +315,7 @@ async function resolveSession(request: Request): Promise<Session | null> {
 
 export async function requireApiSession(request: Request): Promise<Session> {
   const session = await getSession(request)
-  if (!session) throw new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'content-type': 'application/json' } })
+  if (!session) throw unauthorizedResponse()
   return session
 }
 
@@ -661,8 +678,8 @@ export async function deriveEnvironmentSecretsAndNames(
 // directly to secretEvent columns — the event log shows either the user
 // name or the API token name depending on which performed the action.
 
-function unauthorizedResponse(): Response {
-  return new Response(JSON.stringify({ error: 'unauthorized' }), {
+function unauthorizedResponse(error = 'not signed in, or the session expired: run `sigillo login`'): Response {
+  return new Response(JSON.stringify({ error }), {
     status: 401, headers: { 'content-type': 'application/json' },
   })
 }
@@ -809,7 +826,7 @@ export async function getRequestApiToken(request: Request): Promise<{
   const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
   if (!bearer?.startsWith('sig_')) return null
   const token = await verifyApiToken(bearer)
-  if (!token) throw unauthorizedResponse()
+  if (!token) throw unauthorizedResponse('invalid or revoked API token')
   return token
 }
 
