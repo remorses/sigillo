@@ -1856,3 +1856,15 @@ describe('formatTime', () => {
     expect(formatTime({ ts, now: hydration, timeZone: 'UTC' })).toMatchInlineSnapshot(`"2m ago"`)
   })
 })
+
+describe('sign-in with an id_token', () => {
+  test('an id_token copied out of D1 cannot be used to sign in', async () => {
+    // account.id_token is stored as is; /sign-in/social would verify it and sign in
+    const res = await app.handle(new Request('http://e.ly/api/auth/sign-in/social', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ provider: 'sigillo', idToken: { token: 'eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.c2ln' } }),
+    }))
+    expect({ status: res.status, body: await res.json() }).toEqual({ status: 400, body: { message: 'id_token sign-in is disabled', code: 'ID_TOKEN_SIGN_IN_DISABLED' } })
+  })
+})

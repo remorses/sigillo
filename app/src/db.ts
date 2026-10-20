@@ -12,6 +12,7 @@ import * as orm from 'drizzle-orm'
 import { getDb, schema } from 'db'
 import { betterAuth } from 'better-auth/minimal'
 import { genericOAuth, deviceAuthorization, bearer } from 'better-auth/plugins'
+import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { drizzleAdapter } from 'better-auth-drizzle-adapter'
 import { redirect } from 'spiceflow'
 import { memoize } from './lib/memoize.ts'
@@ -225,6 +226,16 @@ export async function getAuth(request: Request) {
         enabled: true,
         maxAge: 5 * 60, // 5 minutes — avoids a D1 round-trip on every request
       },
+    },
+    hooks: {
+      // /sign-in/social also signs in with a raw id_token, and
+      // account.id_token is stored as is, so a D1 reader could replay a recent
+      // one. Signing in only ever goes through the redirect flow.
+      before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path === '/sign-in/social' && ctx.body?.idToken) {
+          throw new APIError('BAD_REQUEST', { message: 'id_token sign-in is disabled', code: 'ID_TOKEN_SIGN_IN_DISABLED' })
+        }
+      }),
     },
     plugins: [
       genericOAuth({

@@ -63,6 +63,9 @@ export function getAuth() {
         clientId: env.GOOGLE_CLIENT_ID,
         clientSecret: env.GOOGLE_CLIENT_SECRET,
         prompt: 'select_account',
+        // No sign-in with a raw Google id_token: account.id_token is stored
+        // as is, so a D1 reader could replay a recent one. Redirects only.
+        disableIdTokenSignIn: true,
       },
     },
     plugins: [
