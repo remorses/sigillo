@@ -60,6 +60,9 @@
                   "name": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "enableAutoJoin": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -259,6 +262,9 @@
                                 "slug": {
                                   "type": "string"
                                 },
+                                "description": {
+                                  "type": "string"
+                                },
                                 "createdAt": {},
                                 "updatedAt": {}
                               },
@@ -267,6 +273,7 @@
                                 "projectId",
                                 "name",
                                 "slug",
+                                "description",
                                 "createdAt",
                                 "updatedAt"
                               ]
@@ -358,6 +365,9 @@
                           "slug": {
                             "type": "string"
                           },
+                          "description": {
+                            "type": "string"
+                          },
                           "createdAt": {},
                           "updatedAt": {}
                         },
@@ -366,6 +376,7 @@
                           "projectId",
                           "name",
                           "slug",
+                          "description",
                           "createdAt",
                           "updatedAt"
                         ]
@@ -380,6 +391,24 @@
                     "updatedAt",
                     "orgName",
                     "environments"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
                   ]
                 }
               }
@@ -455,6 +484,24 @@
                     "id",
                     "orgId",
                     "name"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
                   ]
                 }
               }
@@ -545,6 +592,24 @@
               }
             }
           },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
           "404": {
             "description": "",
             "content": {
@@ -618,6 +683,9 @@
                           "slug": {
                             "type": "string"
                           },
+                          "description": {
+                            "type": "string"
+                          },
                           "createdAt": {},
                           "updatedAt": {}
                         },
@@ -626,6 +694,7 @@
                           "projectId",
                           "name",
                           "slug",
+                          "description",
                           "createdAt",
                           "updatedAt"
                         ]
@@ -635,6 +704,24 @@
                   "required": [
                     "projectId",
                     "environments"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
                   ]
                 }
               }
@@ -691,11 +778,10 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "ok": {
-                      "type": "boolean",
-                      "const": true
-                    },
                     "id": {
+                      "type": "string"
+                    },
+                    "projectId": {
                       "type": "string"
                     },
                     "name": {
@@ -704,16 +790,39 @@
                     "slug": {
                       "type": "string"
                     },
-                    "projectId": {
+                    "description": {
+                      "type": "string"
+                    },
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "projectId",
+                    "name",
+                    "slug",
+                    "description",
+                    "ok"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
                       "type": "string"
                     }
                   },
                   "required": [
-                    "ok",
-                    "id",
-                    "name",
-                    "slug",
-                    "projectId"
+                    "error"
                   ]
                 }
               }
@@ -762,6 +871,10 @@
                   },
                   "slug": {
                     "type": "string"
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 1000
                   }
                 },
                 "required": [
@@ -814,6 +927,9 @@
                     "slug": {
                       "type": "string"
                     },
+                    "description": {
+                      "type": "string"
+                    },
                     "createdAt": {},
                     "updatedAt": {}
                   },
@@ -822,8 +938,27 @@
                     "projectId",
                     "name",
                     "slug",
+                    "description",
                     "createdAt",
                     "updatedAt"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
                   ]
                 }
               }
@@ -904,6 +1039,24 @@
               }
             }
           },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
           "404": {
             "description": "",
             "content": {
@@ -963,11 +1116,10 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "ok": {
-                      "type": "boolean",
-                      "const": true
-                    },
                     "id": {
+                      "type": "string"
+                    },
+                    "projectId": {
                       "type": "string"
                     },
                     "name": {
@@ -976,22 +1128,45 @@
                     "slug": {
                       "type": "string"
                     },
-                    "projectId": {
+                    "description": {
                       "type": "string"
+                    },
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
                     }
                   },
                   "required": [
-                    "ok",
                     "id",
+                    "projectId",
                     "name",
                     "slug",
-                    "projectId"
+                    "description",
+                    "ok"
                   ]
                 }
               }
             }
           },
           "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
             "description": "",
             "content": {
               "application/json": {
@@ -1052,6 +1227,10 @@
                   },
                   "slug": {
                     "type": "string"
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 1000
                   }
                 }
               }
@@ -1222,7 +1401,7 @@
                 "properties": {
                   "name": {
                     "type": "string",
-                    "minLength": 1
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
                   },
                   "value": {
                     "type": "string"
@@ -1310,7 +1489,8 @@
                   "secrets": {
                     "type": "object",
                     "propertyNames": {
-                      "type": "string"
+                      "type": "string",
+                      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
                     },
                     "additionalProperties": {
                       "type": "string"

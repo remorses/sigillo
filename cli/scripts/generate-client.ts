@@ -45,6 +45,12 @@ const operations = [
   { name: 'SecretDeleteResponse', path: '/api/v0/projects/{projectId}/environments/{environmentId}/secrets/{name}', method: 'delete', source: 'response' },
 ] as const
 
+// Response fields added after release. Older self-hosted servers omit them,
+// so they get a Zig default instead of failing the parse with MissingField.
+const ADDED_FIELD_DEFAULTS: Record<string, string> = {
+  description: '""', // environment.description
+}
+
 const emitted = new Set<string>()
 const blocks: string[] = []
 
@@ -99,6 +105,8 @@ function emitSchema(name: string, schema: JsonSchema): string {
       const required = new Set(schema.required ?? [])
       const fields = Object.entries(schema.properties ?? {}).map(([key, value]) => {
         const fieldType = emitSchema(`${typeName}${pascalCase(key)}`, value)
+        const addedDefault = ADDED_FIELD_DEFAULTS[key]
+        if (required.has(key) && addedDefault) return `    ${key}: ${fieldType} = ${addedDefault},`
         if (required.has(key)) return `    ${key}: ${fieldType},`
         return `    ${key}: ?${fieldType} = null,`
       })

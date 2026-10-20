@@ -39,7 +39,7 @@ import {
   ForbiddenError,
 } from './db.ts'
 import { memoize } from './lib/memoize.ts'
-import { SECRET_NAME_REGEX, isRenderableSecretName, renderEnvFile } from './lib/utils.ts'
+import { ENV_DESCRIPTION_MAX_LENGTH, SECRET_NAME_REGEX, isRenderableSecretName, renderEnvFile } from './lib/utils.ts'
 
 // Latest GitHub release carrying a self-host bundle asset. Memoized via the
 // Cache API so the GitHub API is hit at most every few minutes.
@@ -76,11 +76,12 @@ const projectCreateRequestSchema = createInsertSchema(schema.project).pick({
   orgId: true,
 })
 
-const environmentCreateRequestSchema = createInsertSchema(
-  schema.environment,
-).pick({
+const environmentCreateRequestSchema = createInsertSchema(schema.environment, {
+  description: (s) => s.trim().max(ENV_DESCRIPTION_MAX_LENGTH).optional(),
+}).pick({
   name: true,
   slug: true,
+  description: true,
 })
 
 const orgSummarySchema = orgSelectSchema
@@ -113,6 +114,7 @@ const environmentSummarySchema = environmentSelectSchema.pick({
   projectId: true,
   name: true,
   slug: true,
+  description: true,
   createdAt: true,
   updatedAt: true,
 })
@@ -122,13 +124,9 @@ const environmentListResponseSchema = z.object({
   environments: z.array(environmentSummarySchema),
 })
 
-const environmentMutationResponseSchema = z.object({
-  ok: z.literal(true),
-  id: z.string(),
-  name: z.string(),
-  slug: z.string(),
-  projectId: z.string(),
-})
+const environmentMutationResponseSchema = environmentSummarySchema
+  .pick({ id: true, projectId: true, name: true, slug: true, description: true })
+  .extend({ ok: z.literal(true) })
 
 const environmentDeleteResponseSchema = z.object({
   ok: z.literal(true),
@@ -164,6 +162,7 @@ function toEnvironmentSummary(environment: z.infer<typeof environmentSummarySche
     projectId: environment.projectId,
     name: environment.name,
     slug: environment.slug,
+    description: environment.description,
     createdAt: environment.createdAt,
     updatedAt: environment.updatedAt,
   }
@@ -673,8 +672,8 @@ export const apiApp = new Spiceflow()
         return json({ error: 'forbidden' }, { status: 403 })
       }
       const db = getDb()
-      const [row] = await db.insert(schema.environment).values({ projectId: params.projectId, name: body.name, slug: body.slug })
-        .returning({ id: schema.environment.id, projectId: schema.environment.projectId, name: schema.environment.name, slug: schema.environment.slug })
+      const [row] = await db.insert(schema.environment).values({ projectId: params.projectId, name: body.name, slug: body.slug, description: body.description })
+        .returning({ id: schema.environment.id, projectId: schema.environment.projectId, name: schema.environment.name, slug: schema.environment.slug, description: schema.environment.description })
       return { ok: true, ...row! }
     },
   })
@@ -730,17 +729,18 @@ export const apiApp = new Spiceflow()
     response: { 200: environmentMutationResponseSchema, 400: errorResponseSchema, 403: errorResponseSchema, 404: errorResponseSchema },
     async handler({ params, request }) {
       const body = await request.json()
-      if (!body.name && !body.slug) {
-        return json({ error: 'at least one of name or slug required' }, { status: 400 })
+      if (!body.name && !body.slug && body.description === undefined) {
+        return json({ error: 'at least one of name, slug or description required' }, { status: 400 })
       }
       const session = await requireApiSession(request)
       const environment = await requireApiEnvironmentAccess({ userId: session.userId, environmentRef: params.id, projectId: params.projectId })
       const db = getDb()
-      const updates: Partial<{ name: string; slug: string; updatedAt: number }> = { updatedAt: Date.now() }
+      const updates: Partial<{ name: string; slug: string; description: string; updatedAt: number }> = { updatedAt: Date.now() }
       if (body.name) updates.name = body.name
       if (body.slug) updates.slug = body.slug
+      if (body.description !== undefined) updates.description = body.description
       const [updated] = await db.update(schema.environment).set(updates).where(orm.eq(schema.environment.id, environment.id))
-        .returning({ id: schema.environment.id, projectId: schema.environment.projectId, name: schema.environment.name, slug: schema.environment.slug })
+        .returning({ id: schema.environment.id, projectId: schema.environment.projectId, name: schema.environment.name, slug: schema.environment.slug, description: schema.environment.description })
       if (!updated) return json({ error: 'not found' }, { status: 404 })
       return { ok: true, ...updated }
     },

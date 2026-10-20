@@ -1,0 +1,1 @@
+ALTER TABLE `environment` ADD `description` text DEFAULT '' NOT NULL;

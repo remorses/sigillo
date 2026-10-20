@@ -18,7 +18,7 @@
 
 import { ulid } from 'ulid'
 import { z } from 'zod'
-import { getSecretNameError } from './lib/utils.ts'
+import { ENV_DESCRIPTION_MAX_LENGTH, getSecretNameError } from './lib/utils.ts'
 import * as orm from 'drizzle-orm'
 import type { BatchItem } from 'drizzle-orm/batch'
 import { schema } from 'db'
@@ -277,17 +277,23 @@ export async function createEnvAction(input: z.input<typeof createEnvInput>) {
   return { name }
 }
 
-const renameEnvInput = z.object({ id: idSchema, name: z.string().optional(), slug: z.string().optional() })
+const updateEnvInput = z.object({
+  id: idSchema,
+  name: z.string().optional(),
+  slug: z.string().optional(),
+  description: z.string().trim().max(ENV_DESCRIPTION_MAX_LENGTH, `Description must be at most ${ENV_DESCRIPTION_MAX_LENGTH} characters`).optional(),
+})
 
-export async function renameEnvAction(input: z.input<typeof renameEnvInput>) {
-  const { id, name, slug } = parseInput(renameEnvInput, input)
-  if (!name && !slug) throw new Error('At least one of name or slug is required')
+export async function updateEnvAction(input: z.input<typeof updateEnvInput>) {
+  const { id, name, slug, description } = parseInput(updateEnvInput, input)
+  if (!name && !slug && description === undefined) throw new Error('At least one of name, slug or description is required')
   const session = await requireSession()
   await requireEnvironmentAccess(session.userId, id)
   const db = getDb()
-  const updates: Partial<{ name: string; slug: string; updatedAt: number }> = { updatedAt: Date.now() }
+  const updates: Partial<{ name: string; slug: string; description: string; updatedAt: number }> = { updatedAt: Date.now() }
   if (name) updates.name = name
   if (slug) updates.slug = slug
+  if (description !== undefined) updates.description = description
   await db.update(schema.environment).set(updates).where(orm.eq(schema.environment.id, id))
   return { id }
 }

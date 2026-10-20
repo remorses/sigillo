@@ -460,6 +460,7 @@ type ResolvedEnvironment = {
   projectId: string
   name: string
   slug: string
+  description: string
   accessRole: string
   createdAt: number
   updatedAt: number

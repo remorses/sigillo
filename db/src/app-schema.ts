@@ -145,6 +145,8 @@ export const environment = sqliteCore.sqliteTable('environment', {
   projectId: sqliteCore.text('project_id').notNull().references(() => project.id, { onDelete: 'cascade' }),
   name: sqliteCore.text('name').notNull(),
   slug: sqliteCore.text('slug').notNull(),
+  // Free-form note shown in the dashboard and CLI env lists. '' = none.
+  description: sqliteCore.text('description').notNull().default(''),
   // Minimum org role required to access secrets in this environment.
   // 'member' = everyone, 'admin' = only admins can read/write secrets.
   // Use this to restrict production environments to admins only.

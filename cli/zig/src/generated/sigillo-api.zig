@@ -32,12 +32,14 @@ pub const OrgMutationResponse = struct {
 };
 pub const OrgCreateRequest = struct {
     name: []const u8,
+    enableAutoJoin: ?bool = null,
 };
 pub const ProjectListResponseProjectsItemEnvironmentsItem = struct {
     id: []const u8,
     projectId: []const u8,
     name: []const u8,
     slug: []const u8,
+    description: []const u8 = "",
     createdAt: std.json.Value,
     updatedAt: std.json.Value,
 };
@@ -58,6 +60,7 @@ pub const ProjectSummaryEnvironmentsItem = struct {
     projectId: []const u8,
     name: []const u8,
     slug: []const u8,
+    description: []const u8 = "",
     createdAt: std.json.Value,
     updatedAt: std.json.Value,
 };
@@ -92,6 +95,7 @@ pub const EnvironmentListResponseEnvironmentsItem = struct {
     projectId: []const u8,
     name: []const u8,
     slug: []const u8,
+    description: []const u8 = "",
     createdAt: std.json.Value,
     updatedAt: std.json.Value,
 };
@@ -104,23 +108,27 @@ pub const EnvironmentSummary = struct {
     projectId: []const u8,
     name: []const u8,
     slug: []const u8,
+    description: []const u8 = "",
     createdAt: std.json.Value,
     updatedAt: std.json.Value,
 };
 pub const EnvironmentMutationResponse = struct {
-    ok: bool,
     id: []const u8,
+    projectId: []const u8,
     name: []const u8,
     slug: []const u8,
-    projectId: []const u8,
+    description: []const u8 = "",
+    ok: bool,
 };
 pub const EnvironmentCreateRequest = struct {
     name: []const u8,
     slug: []const u8,
+    description: ?[]const u8 = null,
 };
 pub const EnvironmentUpdateRequest = struct {
     name: ?[]const u8 = null,
     slug: ?[]const u8 = null,
+    description: ?[]const u8 = null,
 };
 pub const EnvironmentDeleteResponse = struct {
     ok: bool,

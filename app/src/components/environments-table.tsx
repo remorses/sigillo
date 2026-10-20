@@ -1,5 +1,6 @@
 // Environments table for a project (standalone tab).
-// Shows name, slug, timestamps. Supports inline rename, delete, and add.
+// Shows name, slug, description, timestamps. Supports inline rename,
+// description editing in a dialog, delete, and add.
 // All environments are user-managed — no hardcoded "default" protection.
 
 "use client";
@@ -10,19 +11,23 @@ import {
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { PencilIcon, TrashIcon } from "lucide-react";
+import { NotebookPenIcon, PencilIcon, TrashIcon } from "lucide-react";
 import { useState, useRef } from "react";
 import { z } from "zod";
 import { parseFormData } from "spiceflow";
 import { ErrorBoundary, useLoaderData } from "spiceflow/react";
 import { ProjectTitle } from "sigillo-app/src/components/sidebar";
 import { Badge } from "sigillo-app/src/components/ui/badge";
-import { cn } from "sigillo-app/src/lib/utils";
+import { cn, ENV_DESCRIPTION_MAX_LENGTH } from "sigillo-app/src/lib/utils";
 import { Button } from "sigillo-app/src/components/ui/button";
 import { Frame } from "sigillo-app/src/components/ui/frame";
-import { Input } from "sigillo-app/src/components/ui/input";
+import { Input, Textarea } from "sigillo-app/src/components/ui/input";
+import {
+  Dialog, DialogPopup, DialogHeader, DialogTitle,
+  DialogDescription, DialogClose, DialogFooter,
+} from "sigillo-app/src/components/ui/dialog";
 import { TimeAgo } from "sigillo-app/src/components/ui/time-ago";
-import { createEnvAction, deleteEnvAction, renameEnvAction, updateEnvironmentAccessRoleAction } from "../actions.ts";
+import { createEnvAction, deleteEnvAction, updateEnvAction, updateEnvironmentAccessRoleAction } from "../actions.ts";
 import { NativeSelect } from "sigillo-app/src/components/ui/native-select";
 import {
   Table,
@@ -37,6 +42,7 @@ type Environment = {
   id: string;
   name: string;
   slug: string;
+  description: string;
   accessRole: string;
   createdAt: number;
   updatedAt: number;
@@ -90,7 +96,7 @@ function EditableEnvCell({ env, field }: { env: Environment; field: "name" | "sl
       return;
     }
     try {
-      await renameEnvAction({ id: env.id, [field]: trimmed });
+      await updateEnvAction({ id: env.id, [field]: trimmed });
       setEditing(false);
     } catch (e: any) {
       alert(e?.message || `Failed to rename ${field}`);
@@ -142,6 +148,84 @@ function EditableEnvCell({ env, field }: { env: Environment; field: "name" | "sl
   );
 }
 
+// Description cell: shows the text (truncated) and opens a dialog to view
+// the full text and edit it.
+function EnvDescriptionCell({ env }: { env: Environment }) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState(env.description);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function handleOpenChange(next: boolean) {
+    if (next) {
+      setValue(env.description);
+      setError(null);
+    }
+    setOpen(next);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      await updateEnvAction({ id: env.id, description: value });
+      setOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save description");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => handleOpenChange(true)}
+        className="group flex w-full min-w-0 items-center gap-1.5 cursor-pointer text-left"
+        title={env.description || "Add description"}
+      >
+        {env.description ? (
+          <span className="truncate">{env.description}</span>
+        ) : (
+          <span className="truncate text-muted-foreground">Add description</span>
+        )}
+        <NotebookPenIcon className="size-3 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+      </button>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogPopup>
+          <DialogHeader>
+            <DialogTitle>{env.name} description</DialogTitle>
+            <DialogDescription>
+              Explain what this environment is for. Shown here and in <code className="mono-sm">sigillo environments</code>.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="px-6 pb-2"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              await handleSave();
+            }}
+          >
+            {error && <p className="text-sm text-destructive mb-3">{error}</p>}
+            <Textarea
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder="e.g. Production deploys on Cloudflare. Only admins can read secrets."
+              rows={5}
+              maxLength={ENV_DESCRIPTION_MAX_LENGTH}
+              autoFocus
+            />
+            <DialogFooter variant="bare" className="mt-4 px-0">
+              <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+              <Button type="submit" loading={saving}>Save</Button>
+            </DialogFooter>
+          </form>
+        </DialogPopup>
+      </Dialog>
+    </>
+  );
+}
+
 const envSchema = z.object({ name: z.string().min(1, "Name is required"), slug: z.string().min(1, "Slug is required") });
 const envFields = envSchema.keyof().enum;
 
@@ -173,6 +257,12 @@ export function EnvironmentsTable() {
       header: "Slug",
       size: 160,
       cell: ({ row }) => <EditableEnvCell env={row.original} field="slug" />,
+    },
+    {
+      accessorKey: "description",
+      header: "Description",
+      size: 260,
+      cell: ({ row }) => <EnvDescriptionCell env={row.original} />,
     },
     {
       accessorKey: "accessRole",

@@ -275,6 +275,31 @@ describe('environments CRUD', () => {
     expect(result.slug).toBe('staging')
   })
 
+  test('description is set on create, updated alone, trimmed, and cleared with ""', async () => {
+    const created = assertOk(await af('/api/v0/projects/:pid/environments', {
+      method: 'POST',
+      params: { pid: projectId },
+      body: { name: 'Qa', slug: 'qa', description: 'For QA runs' },
+    }))
+    const patch = async (description: string) => assertOk(await af('/api/v0/projects/:pid/environments/:id', {
+      method: 'PATCH',
+      params: { pid: projectId, id: created.id },
+      body: { description },
+    })).description
+    const listed = async () => assertOk(await af('/api/v0/projects/:pid/environments', { params: { pid: projectId } }))
+      .environments.find((e) => e.id === created.id)?.description
+    expect([created.description, await patch('  Nightly e2e  '), await listed(), await patch(''), await listed()])
+      .toMatchInlineSnapshot(`
+        [
+          "For QA runs",
+          "Nightly e2e",
+          "Nightly e2e",
+          "",
+          "",
+        ]
+      `)
+  })
+
   test('DELETE removes an environment', async () => {
     const created = assertOk(await af('/api/v0/projects/:pid/environments', {
       method: 'POST',

@@ -77,6 +77,9 @@ export function getEmailDomain(email: string): string | null {
   return domain || null
 }
 
+// Max env description length, shared by API, server action, and textarea.
+export const ENV_DESCRIPTION_MAX_LENGTH = 1000
+
 // ── Secret names and .env rendering (client-safe) ────────────────────
 // New secret names must be valid shell/env identifiers. A name with a
 // newline or "=" used to inject extra lines into env/docker/yaml downloads.

@@ -144,23 +144,31 @@ fn printAvailableProjects(
     }
 }
 
-const EnvOption = struct { name: []const u8, slug: []const u8 };
+const EnvOption = struct { name: []const u8, slug: []const u8, description: []const u8 };
+
+// One-line env label for hints and pickers: "Prod (prod): first description line".
+fn formatEnvOption(allocator: std.mem.Allocator, env: EnvOption) ![]const u8 {
+    const first_line = std.mem.sliceTo(env.description, '\n');
+    if (first_line.len == 0) return std.fmt.allocPrint(allocator, "{s} ({s})", .{ env.name, env.slug });
+    return std.fmt.allocPrint(allocator, "{s} ({s}): {s}", .{ env.name, env.slug, first_line });
+}
 
 fn printAvailableEnvs(
+    allocator: std.mem.Allocator,
     stderr: Writer,
     envs: []const EnvOption,
 ) !void {
     if (envs.len == 0) return;
     try stderr.writeAll("available envs:\n");
     for (envs) |env| {
-        try stderr.print("  - {s} ({s})\n", .{ env.name, env.slug });
+        try stderr.print("  - {s}\n", .{try formatEnvOption(allocator, env)});
     }
 }
 
 fn envOptionsFrom(allocator: std.mem.Allocator, envs: anytype) ![]const EnvOption {
     const options = try allocator.alloc(EnvOption, envs.len);
     for (envs, 0..) |env, index| {
-        options[index] = .{ .name = env.name, .slug = env.slug };
+        options[index] = .{ .name = env.name, .slug = env.slug, .description = env.description };
     }
     return options;
 }
@@ -210,7 +218,7 @@ fn printEnvNotFound(
         stderr.print(": env {s} was not found in project {s}\n", .{ env, project_id }) catch {};
         if (fetchAvailableEnvs(allocator, api_url, token, project_id) catch null) |available| {
             const env_options = envOptionsFrom(allocator, available.environments) catch &.{};
-            printAvailableEnvs(stderr, env_options) catch {};
+            printAvailableEnvs(allocator, stderr, env_options) catch {};
         }
     } else {
         stderr.print(": env {s} was not found or you do not have access to it\n", .{env}) catch {};
@@ -768,7 +776,7 @@ fn setupAction(_: Setup.Args, opts: Setup.Options, global: Global.Options) !void
     } else if (is_tty) env_sel: {
         const env_options = try allocator.alloc([]const u8, all_envs.len);
         for (all_envs, 0..) |e, i| {
-            env_options[i] = try std.fmt.allocPrint(allocator, "{s} ({s})", .{ e.name, e.slug });
+            env_options[i] = try formatEnvOption(allocator, e);
         }
         const env_choice = try prompt.select("Select env", env_options, 0) orelse {
             try color.err(stderr, "error");
@@ -1580,6 +1588,12 @@ fn quoteString(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
     return std.fmt.allocPrint(allocator, "{f}", .{std.json.fmt(value, .{})});
 }
 
+// Env descriptions are optional ('' = none), so skip the line when empty.
+fn printDescription(allocator: std.mem.Allocator, stdout: Writer, indent: []const u8, description: []const u8) !void {
+    if (description.len == 0) return;
+    try stdout.print("{s}description: {s}\n", .{ indent, try quoteString(allocator, description) });
+}
+
 fn requireApiContext(allocator: std.mem.Allocator, stderr: Writer, cwd: []const u8, flags: config.ResolvedConfig) !ApiContext {
     return resolveApiContext(allocator, cwd, flags) catch |err| switch (err) {
         error.NotLoggedIn => {
@@ -2232,6 +2246,7 @@ fn projectsGetAction(args: ProjectsGet.Args, _: ProjectsGet.Options, global: Glo
             try quoteString(allocator, environment.name),
             try quoteString(allocator, environment.slug),
         });
+        try printDescription(allocator, stdout, "    ", environment.description);
     }
 }
 
@@ -2308,6 +2323,7 @@ fn environmentsAction(_: Environments.Args, opts: Environments.Options, global: 
             try quoteString(allocator, environment.name),
             try quoteString(allocator, environment.slug),
         });
+        try printDescription(allocator, stdout, "    ", environment.description);
     }
 }
 
@@ -2374,6 +2390,7 @@ fn environmentsGetAction(args: EnvironmentsGet.Args, opts: EnvironmentsGet.Optio
         try quoteString(allocator, environment.name),
         try quoteString(allocator, environment.slug),
     });
+    try printDescription(allocator, stdout, "", environment.description);
 }
 
 fn environmentsRenameAction(args: EnvironmentsRename.Args, opts: EnvironmentsRename.Options, global: Global.Options) !void {
@@ -3973,4 +3990,14 @@ test "requests with a token never follow a redirect" {
     const result = client.request(.{ .allocator = allocator, .method = .GET, .base_url = try server.baseUrl(allocator), .path = "/api/v0/me", .token = "tok123" });
     thread.join();
     try std.testing.expectError(error.ApiUrlRedirected, result);
+}
+
+test "env responses from servers without description still parse" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const body =
+        \\{"projectId":"p","environments":[{"id":"e","projectId":"p","name":"Dev","slug":"dev","createdAt":1,"updatedAt":1}]}
+    ;
+    const parsed = try std.json.parseFromSliceLeaky(client.api.EnvironmentListResponse, arena.allocator(), body, .{ .ignore_unknown_fields = true });
+    try std.testing.expectEqualStrings("", parsed.environments[0].description);
 }
