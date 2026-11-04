@@ -212,8 +212,11 @@ download_with_progress() {
 
 download_and_install() {
   print_message info "\n${'${MUTED}'}Installing ${'${NC}'}sigillo"
-  local tmp_install_dir="sigillotmp_$$"
-  mkdir -p "$tmp_install_dir" && cd "$tmp_install_dir"
+  # mktemp, not a fixed name in the cwd: a pre-created world-writable dir
+  # (e.g. when run from /tmp) would let another user swap the binary.
+  local tmp_install_dir
+  tmp_install_dir=$(mktemp -d)
+  cd "$tmp_install_dir"
 
   trap "cd .. 2>/dev/null; rm -rf \"$tmp_install_dir\"" EXIT
 

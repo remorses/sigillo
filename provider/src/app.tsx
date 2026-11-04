@@ -126,7 +126,12 @@ function removePrompt(params: URLSearchParams, value: string) {
 function getRedirectDomain(redirectUri: string | null) {
   if (!redirectUri) return null
   try {
-    return new URL(redirectUri).hostname
+    const url = new URL(redirectUri)
+    // Custom schemes (evil://sigillo.dev/cb) have a hostname too, but the code
+    // goes to whatever app handles the scheme, not to that host. Open client
+    // registration accepts them, so they must never pass as first-party.
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null
+    return url.hostname
   } catch {
     return null
   }
