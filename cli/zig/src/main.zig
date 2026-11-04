@@ -3797,6 +3797,10 @@ test "login leaves scope unset when flag is omitted" {
 fn openBrowser(allocator: std.mem.Allocator, url: []const u8) void {
     // Vitest sets VITEST; e2e tests must not open real browser tabs
     if ((config.getEnvVarOptional(allocator, "VITEST") catch null) != null) return;
+    // The URL comes from the server. On Windows `start` runs through cmd.exe,
+    // so `&`, `|`, `%`... in it would run commands. The URL is printed anyway.
+    if (!std.mem.startsWith(u8, url, "https://") and !std.mem.startsWith(u8, url, "http://")) return;
+    if (std.mem.indexOfAny(u8, url, "&|<>^%\"! \t\r\n") != null) return;
     const argv: []const []const u8 = switch (builtin.os.tag) {
         .macos => &.{ "open", url },
         .windows => blk: {
