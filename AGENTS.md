@@ -1,4 +1,4 @@
-sigillo is still in pre release. ignore backwards compatibility, instead focus on making code as simple as possible
+sigillo is still in pre release. ignore backwards compatibility, instead focus on making code as simple as possible. exception: new CLI versions must keep working against older server deployments (see "New CLI versions MUST work against older server deployments")
 
 # Sigillo
 
@@ -443,6 +443,39 @@ on the macOS host binary to prevent this. If you ever see `zsh: killed` from
   lifetime management when a command-scoped arena is enough.
 - If command parsing behavior needs to change, check `zeke` first before adding
   local workarounds in Sigillo.
+
+### New CLI versions MUST work against older server deployments
+
+This is the one exception to "ignore backwards compatibility". Self-hosted
+instances lag behind npm: users upgrade the CLI with `npx sigillo@latest` long
+before they redeploy their worker. A CLI that errors against last month's server
+is a broken release.
+
+```
+sigillo CLI (latest from npm)  ──GET /api/v0/...──>  self-hosted app (months old)
+                               <──JSON without new fields──
+```
+
+Zig's `std.json` fails the whole parse with `error.MissingField` when a field
+with no default is absent, so a new **required** response field breaks every
+command that reads it. Rules:
+
+- **New response fields need a Zig default.** Add the field name to
+  `ADDED_FIELD_DEFAULTS` in `cli/scripts/generate-client.ts`, then run
+  `pnpm --dir cli generate:client`. The server can still mark the field as
+  required in OpenAPI.
+- **Add a zig test** that parses a response without the new field (see
+  `env responses from servers without description still parse` in `main.zig`).
+- **Never send new request fields unless the user passed them.** `jsonBody`
+  uses `emit_null_optional_fields = false`, so keep new request fields optional
+  (`?T = null`). Old servers strip unknown keys, but a new required key fails.
+- **Never rename or remove fields, routes, or query params the CLI uses.** Add
+  the new one next to the old one; the CLI keeps reading the old one until old
+  deployments are gone.
+- **New endpoints:** handle 404 from older servers with a clear message ("this
+  server is too old, redeploy it") instead of a raw parse error.
+- Response parsing already uses `ignore_unknown_fields = true`, so old CLIs
+  keep working against new servers. Do not remove it.
 
 ## better auth
 
