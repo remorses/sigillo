@@ -75,7 +75,7 @@ function TokensTable() {
   const { tokens } = useLoaderData('/dash/projects/:projectId/tokens')
   return (
     <Frame className="w-full">
-      <Table className="table-fixed">
+      <Table className="min-w-160 table-fixed">
         <colgroup>
           <col className="w-1/4" />
           <col className="w-1/4" />

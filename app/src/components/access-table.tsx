@@ -107,7 +107,7 @@ export function AccessTable() {
   return (
     <div className="flex flex-col gap-3">
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      <Frame className="w-full overflow-x-auto">
+      <Frame className="w-full">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
