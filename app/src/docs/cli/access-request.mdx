@@ -1,0 +1,33 @@
+---
+$schema: https://holocron.so/frontmatter.json
+title: "access request"
+description: "Ask for passkey approval to read protected secrets. Running it again adds to the same request and prints the same URL"
+icon: lucide:terminal
+---
+
+Ask for passkey approval to read protected secrets. Running it again adds to the same request and prints the same URL
+
+## Usage
+
+```sh
+sigillo access request
+```
+
+## Options
+
+| Option | Description |
+|--------|-------------|
+| `-p, --project [id]` | Project ID override |
+| `--env <slug>` | Env slug, repeatable (e.g. dev, prod) |
+| `-c, --config <slug>` | Env slug alias, repeatable |
+| `--secret <name>` | Secret name, repeatable (default: all secrets of each env) |
+| `--label [text]` | Why you need access, shown on the approve page (max 200 chars) |
+
+## Global Options
+
+| Option | Description |
+|--------|-------------|
+| `-h, --help` | Display this message |
+| `-v, --version` | Display version number |
+| `--token [token]` | Auth token override |
+| `--api-url [url]` | API URL override (default: https://sigillo.dev) |

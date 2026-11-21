@@ -13,12 +13,13 @@ icon: lucide:terminal
 | [`logout`](/docs/cli/logout) | Remove saved auth for a scope |
 | [`me`](/docs/cli/me) | Show current user info |
 | [`setup`](/docs/cli/setup) | Save default project and env for the current directory (stored in ~/.sigillo, not in the repo) |
-| [`run`](/docs/cli/run) | Run a command with secrets injected |
+| [`run`](/docs/cli/run) | Run a command with secrets injected. Stdout/stderr are redacted by default, including pipes. Never use this output to pass secret values to another tool. Use `sigillo secrets get NAME --raw | tool`, or let the child tool read the injected environment variable. |
 | [`secrets`](/docs/cli/secrets) | List secrets for the configured env |
 | [`secrets get`](/docs/cli/secrets-get) | Get a secret value |
 | [`secrets set`](/docs/cli/secrets-set) | Set a secret value (omit value for a masked prompt or stdin) |
 | [`secrets delete`](/docs/cli/secrets-delete) | Delete a secret |
 | [`secrets download`](/docs/cli/secrets-download) | Download all secrets in a chosen format |
+| [`access request`](/docs/cli/access-request) | Ask for passkey approval to read protected secrets. Running it again adds to the same request and prints the same URL |
 | [`orgs`](/docs/cli/orgs) | List organizations |
 | [`orgs create`](/docs/cli/orgs-create) | Create an organization |
 | [`projects`](/docs/cli/projects) | List projects across organizations |

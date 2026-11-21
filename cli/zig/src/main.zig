@@ -307,6 +307,15 @@ const SecretsDownload = zeke.cmd("secrets download", "Download all secrets in a 
     .example("sigillo secrets download --format json")
     .example("sigillo secrets download --format xargs | xargs -0 -n2 sh -c 'printf %s \"$2\" | vercel env add \"$1\" production --force' sh");
 
+const AccessRequest = zeke.cmd("access request", "Ask for passkey approval to read protected secrets. Running it again adds to the same request and prints the same URL")
+    .option("-p, --project [id]", "Project ID override")
+    .optionMany("--env <slug>", "Env slug, repeatable (e.g. dev, prod)")
+    .optionMany("-c, --config <slug>", "Env slug alias, repeatable")
+    .optionMany("--secret <name>", "Secret name, repeatable (default: all secrets of each env)")
+    .option("--label [text]", "Why you need access, shown on the approve page (max 200 chars)")
+    .example("sigillo access request -c dev -c prod --label 'Deploy website'")
+    .example("sigillo access request -c prod --secret STRIPE_KEY");
+
 const Orgs = zeke.cmd("orgs", "List organizations");
 
 const OrgsCreate = zeke.cmd("orgs create", "Create an organization")
@@ -892,18 +901,27 @@ fn runAction(args: Run.Args, opts: Run.Options, global: Global.Options) !void {
         std.process.exit(1);
     };
 
-    const res = client.downloadSecrets(.{
+    const api_ctx: ApiContext = .{ .api_url = api_url, .token = token };
+    const download_args: client.DownloadSecretsArgs = .{
         .allocator = allocator,
         .api_url = api_url,
         .token = token,
         .project_id = project,
         .environment_id = environment,
         .format = "json",
-    }) catch |err| {
+    };
+    var res = client.downloadSecrets(download_args) catch |err| {
         try color.err(stderr, "error");
         try stderr.print(": failed to fetch secrets: {s}\n", .{@errorName(err)});
         std.process.exit(1);
     };
+    if (res.status != 200 and try waitForReadApproval(allocator, stderr, api_ctx, res.status, res.body)) {
+        res = client.downloadSecrets(download_args) catch |err| {
+            try color.err(stderr, "error");
+            try stderr.print(": failed to fetch secrets: {s}\n", .{@errorName(err)});
+            std.process.exit(1);
+        };
+    }
 
     if (res.status != 200) {
         if (res.status == 404) {
@@ -950,18 +968,20 @@ fn runAction(args: Run.Args, opts: Run.Options, global: Global.Options) !void {
         const mount_body = if (std.mem.eql(u8, mount_format, "json"))
             res.body
         else blk: {
-            const mount_res = client.downloadSecrets(.{
-                .allocator = allocator,
-                .api_url = api_url,
-                .token = token,
-                .project_id = project,
-                .environment_id = environment,
-                .format = mount_format,
-            }) catch |err| {
+            var mount_args = download_args;
+            mount_args.format = mount_format;
+            var mount_res = client.downloadSecrets(mount_args) catch |err| {
                 try color.err(stderr, "error");
                 try stderr.print(": failed to fetch secrets for mount: {s}\n", .{@errorName(err)});
                 std.process.exit(1);
             };
+            if (mount_res.status != 200 and try waitForReadApproval(allocator, stderr, api_ctx, mount_res.status, mount_res.body)) {
+                mount_res = client.downloadSecrets(mount_args) catch |err| {
+                    try color.err(stderr, "error");
+                    try stderr.print(": failed to fetch secrets for mount: {s}\n", .{@errorName(err)});
+                    std.process.exit(1);
+                };
+            }
             if (mount_res.status != 200) {
                 if (mount_res.status == 404) {
                     exitEnvNotFound(allocator, stderr, api_url, token, environment, resolved.project);
@@ -1756,6 +1776,121 @@ fn presentEnv(env_map: *const std.process.EnvMap, key: []const u8) ?[]const u8 {
     return if (value.len == 0) null else value;
 }
 
+const approval_poll_interval_seconds = 2;
+const approval_poll_attempts = 300; // 10 minutes
+const approval_label_max_chars = 200;
+
+const ApprovalRequired = struct {
+    id: []const u8,
+    url: []const u8,
+};
+
+// Old servers never send `code`, so their 403s return null and keep the old error path.
+fn parseApprovalRequired(allocator: std.mem.Allocator, status: u16, body: []const u8) ?ApprovalRequired {
+    if (status != 403) return null;
+    const code = client.jsonString(allocator, body, "code") orelse return null;
+    if (!std.mem.eql(u8, code, "approval_required")) return null;
+    return .{
+        .id = client.jsonString(allocator, body, "approvalId") orelse return null,
+        .url = client.jsonString(allocator, body, "approvalUrl") orelse return null,
+    };
+}
+
+// Old servers answer the approvals routes with spiceflow's plain-text 404. The
+// new server sends JSON `{ "error": ... }` for real 404s (unknown project or env).
+fn isMissingApprovalsRoute(allocator: std.mem.Allocator, status: u16, body: []const u8) bool {
+    return status == 404 and client.parseError(allocator, body) == null;
+}
+
+fn exitApprovalsUnsupported(stderr: Writer) noreturn {
+    color.err(stderr, "error") catch {};
+    stderr.writeAll(": this server does not support approvals yet, redeploy it\n") catch {};
+    std.process.exit(1);
+}
+
+fn exitApprovalRequired(stderr: Writer, url: []const u8) noreturn {
+    color.err(stderr, "error") catch {};
+    stderr.print(": approval required\n{s}\n", .{url}) catch {};
+    stderr.writeAll("Ask the user to open this URL and approve with their passkey, then run the command again.\n") catch {};
+    std.process.exit(1);
+}
+
+/// Called by every secret read that got a non-200. Returns false when it is not
+/// an approval error, true when the user approved and the read should be retried
+/// once. Agent shells and non-TTY runs exit at once: agent shell tools show
+/// output only when the command ends, so waiting would hide the URL.
+fn waitForReadApproval(allocator: std.mem.Allocator, stderr: Writer, api: ApiContext, status: u16, body: []const u8) !bool {
+    const approval = parseApprovalRequired(allocator, status, body) orelse return false;
+
+    var env_map = try std.process.getEnvMap(allocator);
+    defer env_map.deinit();
+    const interactive = detectAgentNameFromEnvMap(&env_map) == null and
+        std.posix.isatty(File.stdin().handle) and
+        std.posix.isatty(File.stderr().handle);
+    if (!interactive) exitApprovalRequired(stderr, approval.url);
+
+    try color.bold(stderr, "Approval required. Open this URL and approve with your passkey:\n");
+    try stderr.writeAll("  ");
+    try color.cyan(stderr, approval.url);
+    try stderr.writeAll("\n\n");
+    try color.dim(stderr, "Waiting for approval...");
+    openBrowser(allocator, approval.url);
+
+    // Reset each poll so 10 minutes of requests reuse the same memory.
+    var poll_arena = std.heap.ArenaAllocator.init(allocator);
+    defer poll_arena.deinit();
+    var attempts: usize = 0;
+    while (attempts < approval_poll_attempts) : (attempts += 1) {
+        std.Thread.sleep(approval_poll_interval_seconds * std.time.ns_per_s);
+        _ = poll_arena.reset(.retain_capacity);
+        const poll_allocator = poll_arena.allocator();
+
+        const res = client.getApproval(.{
+            .allocator = poll_allocator,
+            .api_url = api.api_url,
+            .token = api.token,
+            .id = approval.id,
+        }) catch continue;
+        if (res.status >= 500) continue;
+        if (isMissingApprovalsRoute(poll_allocator, res.status, res.body)) {
+            try stderr.writeAll("\n");
+            exitApprovalsUnsupported(stderr);
+        }
+        if (res.status != 200) {
+            const message = client.parseError(poll_allocator, res.body) orelse "unknown error";
+            try stderr.writeAll("\n");
+            try color.err(stderr, "error");
+            try stderr.print(": failed to check approval ({d}): {s}\n", .{ res.status, message });
+            std.process.exit(1);
+        }
+
+        const approval_status = client.jsonString(poll_allocator, res.body, "status") orelse continue;
+        if (std.mem.eql(u8, approval_status, "pending")) continue;
+        try stderr.writeAll("\n");
+        if (std.mem.eql(u8, approval_status, "approved")) {
+            try color.green(stderr, "✔");
+            try stderr.writeAll(" Approved\n");
+            return true;
+        }
+        try color.err(stderr, "error");
+        if (std.mem.eql(u8, approval_status, "denied")) {
+            try stderr.writeAll(": approval was denied\n");
+        } else if (std.mem.eql(u8, approval_status, "expired")) {
+            try stderr.writeAll(": approval request expired. Run the command again to get a new URL\n");
+        } else if (std.mem.eql(u8, approval_status, "revoked")) {
+            try stderr.writeAll(": approval was revoked\n");
+        } else {
+            try stderr.print(": approval request is {s}\n", .{approval_status});
+        }
+        std.process.exit(1);
+    }
+
+    try stderr.writeAll("\n");
+    try color.err(stderr, "error");
+    try stderr.writeAll(": timed out waiting for approval. Approve it, then run the command again\n");
+    std.process.exit(1);
+}
+
 fn secretsAction(_: Secrets.Args, opts: Secrets.Options, global: Global.Options) !void {
     const stderr = getStderr();
     const stdout = getStdout();
@@ -1861,14 +1996,18 @@ fn secretsGetAction(args: SecretsGet.Args, opts: SecretsGet.Options, global: Glo
         .environment = envOverride(opts.env, opts.config),
     });
 
-    const res = try client.getSecret(.{
+    const get_args: client.GetSecretArgs = .{
         .allocator = allocator,
         .api_url = ctx.api.api_url,
         .token = ctx.api.token,
         .environment_id = ctx.environment_id,
         .project_id = ctx.project_id,
         .name = args.name,
-    });
+    };
+    var res = try client.getSecret(get_args);
+    if (res.status != 200 and try waitForReadApproval(allocator, stderr, ctx.api, res.status, res.body)) {
+        res = try client.getSecret(get_args);
+    }
     if (res.status != 200 or res.value == null) {
         const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
         try color.err(stderr, "error");
@@ -2060,14 +2199,18 @@ fn secretsDownloadAction(_: SecretsDownload.Args, opts: SecretsDownload.Options,
         .environment = envOverride(opts.env, opts.config),
     });
 
-    const res = try client.downloadSecrets(.{
+    const download_args: client.DownloadSecretsArgs = .{
         .allocator = allocator,
         .api_url = ctx.api.api_url,
         .token = ctx.api.token,
         .environment_id = ctx.environment_id,
         .project_id = ctx.project_id,
         .format = format,
-    });
+    };
+    var res = try client.downloadSecrets(download_args);
+    if (res.status != 200 and try waitForReadApproval(allocator, stderr, ctx.api, res.status, res.body)) {
+        res = try client.downloadSecrets(download_args);
+    }
     if (res.status != 200) {
         if (res.status == 404) {
             exitEnvNotFound(allocator, stderr, ctx.api.api_url, ctx.api.token, ctx.environment_id, ctx.project_id);
@@ -2084,6 +2227,96 @@ fn secretsDownloadAction(_: SecretsDownload.Args, opts: SecretsDownload.Options,
     }
 
     try stdout.print("{s}\n", .{std.mem.trimRight(u8, res.body, "\n")});
+}
+
+fn labelTooLong(label: []const u8) bool {
+    const chars = std.unicode.utf8CountCodepoints(label) catch label.len;
+    return chars > approval_label_max_chars;
+}
+
+// One item per env. An empty `secrets` list leaves the field out, which asks for all secrets.
+fn approvalItemsFor(
+    allocator: std.mem.Allocator,
+    contexts: []const EnvironmentContext,
+    secrets: []const []const u8,
+) ![]const client.ApprovalItem {
+    const items = try allocator.alloc(client.ApprovalItem, contexts.len);
+    for (contexts, 0..) |ctx, i| {
+        items[i] = .{
+            .projectId = ctx.project_id,
+            .environment = ctx.environment_id,
+            .secrets = if (secrets.len == 0) null else secrets,
+        };
+    }
+    return items;
+}
+
+fn accessRequestAction(_: AccessRequest.Args, opts: AccessRequest.Options, global: Global.Options) !void {
+    const stderr = getStderr();
+    const stdout = getStdout();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    if (opts.label) |label| {
+        if (labelTooLong(label)) {
+            try color.err(stderr, "error");
+            try stderr.print(": --label is longer than {d} characters\n", .{approval_label_max_chars});
+            std.process.exit(1);
+        }
+    }
+
+    const cwd = try config.getCwd(allocator);
+    const env_slugs = try envOverrideMany(allocator, opts.env, opts.config);
+    const contexts = try resolveTargetEnvironments(allocator, stderr, cwd, opts.project, env_slugs, global);
+    const api_ctx = contexts[0].api;
+
+    const res = client.createApproval(.{
+        .allocator = allocator,
+        .api_url = api_ctx.api_url,
+        .token = api_ctx.token,
+        .label = opts.label,
+        .items = try approvalItemsFor(allocator, contexts, opts.secret),
+    }) catch |err| {
+        try color.err(stderr, "error");
+        try stderr.print(": failed to request approval: {s}\n", .{@errorName(err)});
+        std.process.exit(1);
+    };
+    if (isMissingApprovalsRoute(allocator, res.status, res.body)) exitApprovalsUnsupported(stderr);
+    if (res.status != 200) {
+        const message = client.parseError(allocator, res.body) orelse try allocator.dupe(u8, "unknown error");
+        try color.err(stderr, "error");
+        try stderr.print(": failed to request approval ({d}): {s}\n", .{ res.status, message });
+        std.process.exit(1);
+    }
+
+    const status = client.jsonString(allocator, res.body, "status") orelse "";
+    const url = client.jsonString(allocator, res.body, "url") orelse "";
+    const stdout_is_tty = std.posix.isatty(File.stdout().handle);
+
+    if (std.mem.eql(u8, status, "approved")) {
+        // Keep stdout empty when piped, so `URL=$(sigillo access request ...)` stays clean.
+        const out = if (stdout_is_tty) stdout else stderr;
+        try color.green(out, "✔");
+        try out.writeAll(" No approval needed\n");
+        return;
+    }
+    if (!std.mem.eql(u8, status, "pending") or url.len == 0) {
+        try color.err(stderr, "error");
+        try stderr.print(": invalid approval response: {s}\n", .{res.body});
+        std.process.exit(1);
+    }
+
+    if (!stdout_is_tty) {
+        try stdout.print("{s}\n", .{url});
+        return;
+    }
+    try color.bold(stdout, "Open this URL and approve with your passkey:\n");
+    try stdout.writeAll("  ");
+    try color.cyan(stdout, url);
+    try stdout.writeAll("\n");
 }
 
 fn orgsAction(_: Orgs.Args, _: Orgs.Options, global: Global.Options) !void {
@@ -3855,6 +4088,7 @@ pub fn main() !void {
         SecretsSet.bindWith(Global, secretsSetAction),
         SecretsDelete.bindWith(Global, secretsDeleteAction),
         SecretsDownload.bindWith(Global, secretsDownloadAction),
+        AccessRequest.bindWith(Global, accessRequestAction),
         Orgs.bindWith(Global, orgsAction),
         OrgsCreate.bindWith(Global, orgsCreateAction),
         Projects.bindWith(Global, projectsAction),
@@ -4000,4 +4234,79 @@ test "env responses from servers without description still parse" {
     ;
     const parsed = try std.json.parseFromSliceLeaky(client.api.EnvironmentListResponse, arena.allocator(), body, .{ .ignore_unknown_fields = true });
     try std.testing.expectEqualStrings("", parsed.environments[0].description);
+}
+
+test "approval required 403 is detected, old server 403 is not" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const body =
+        \\{"error":"approval required. Open https://sigillo.dev/approve/01KX and approve with your passkey, then run the command again","code":"approval_required","approvalId":"01KX","approvalUrl":"https://sigillo.dev/approve/01KX"}
+    ;
+    const approval = parseApprovalRequired(allocator, 403, body).?;
+    try std.testing.expectEqualStrings("01KX", approval.id);
+    try std.testing.expectEqualStrings("https://sigillo.dev/approve/01KX", approval.url);
+
+    try std.testing.expect(parseApprovalRequired(allocator, 403, "{\"error\":\"forbidden\"}") == null);
+    try std.testing.expect(parseApprovalRequired(allocator, 403, "Forbidden") == null);
+    try std.testing.expect(parseApprovalRequired(allocator, 500, body) == null);
+}
+
+test "only a non-JSON 404 means the server has no approvals routes" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    try std.testing.expect(isMissingApprovalsRoute(allocator, 404, "Not Found"));
+    try std.testing.expect(isMissingApprovalsRoute(allocator, 404, "<html><body>404</body></html>"));
+    try std.testing.expect(isMissingApprovalsRoute(allocator, 404, "{}"));
+    try std.testing.expect(!isMissingApprovalsRoute(allocator, 404, "{\"error\":\"not found\"}"));
+    try std.testing.expect(!isMissingApprovalsRoute(allocator, 403, "Forbidden"));
+}
+
+test "access request collects repeated config, secret and label" {
+    const State = struct {
+        fn action(_: AccessRequest.Args, opts: AccessRequest.Options, _: Global.Options) !void {
+            const envs = try envOverrideMany(std.testing.allocator, opts.env, opts.config);
+            defer std.testing.allocator.free(envs);
+            try std.testing.expectEqual(@as(usize, 2), envs.len);
+            try std.testing.expectEqualStrings("dev", envs[0]);
+            try std.testing.expectEqualStrings("prod", envs[1]);
+            try std.testing.expectEqual(@as(usize, 2), opts.secret.len);
+            try std.testing.expectEqualStrings("STRIPE_KEY", opts.secret[0]);
+            try std.testing.expectEqualStrings("DATABASE_URL", opts.secret[1]);
+            try std.testing.expectEqualStrings("Deploy website", opts.label.?);
+            try std.testing.expectEqualStrings("proj_1", opts.project.?);
+        }
+    };
+
+    const TestAccessRequest = AccessRequest.bindWith(Global, State.action);
+    var app = zeke.AppWith(.{TestAccessRequest}, Global).init(std.testing.allocator, "sigillo");
+    try app.dispatch(&.{ "access", "request", "-p", "proj_1", "-c", "dev", "-c", "prod", "--secret", "STRIPE_KEY", "--secret", "DATABASE_URL", "--label", "Deploy website" });
+}
+
+test "access request body leaves out label and secrets unless passed" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const api: ApiContext = .{ .api_url = "https://sigillo.dev", .token = "tok" };
+    const contexts = [_]EnvironmentContext{
+        .{ .api = api, .project_id = "proj", .environment_id = "dev" },
+        .{ .api = api, .project_id = "proj", .environment_id = "prod" },
+    };
+
+    const bare = try client.approvalCreateBody(allocator, null, try approvalItemsFor(allocator, &contexts, &.{}));
+    try std.testing.expectEqualStrings(
+        \\{"items":[{"projectId":"proj","environment":"dev"},{"projectId":"proj","environment":"prod"}]}
+    , bare);
+
+    const full = try client.approvalCreateBody(allocator, "Deploy", try approvalItemsFor(allocator, contexts[0..1], &.{"STRIPE_KEY"}));
+    try std.testing.expectEqualStrings(
+        \\{"label":"Deploy","items":[{"projectId":"proj","environment":"dev","secrets":["STRIPE_KEY"]}]}
+    , full);
+
+    try std.testing.expect(!labelTooLong("a" ** 200));
+    try std.testing.expect(labelTooLong("a" ** 201));
 }

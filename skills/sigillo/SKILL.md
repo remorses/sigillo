@@ -183,6 +183,17 @@ sigillo secrets get DATABASE_URL -c dev | sigillo secrets set DATABASE_URL -c pr
 
 The same pattern works for any secret copy, between environments, or when seeding a new environment from an existing one.
 
+### Approval required
+
+Some environments need a passkey **approval** before secrets can be read. Ask for everything you will need first, so the user approves once:
+
+```bash
+sigillo access request -c dev -c prod --label 'Deploy website to prod'
+sigillo access request -c prod --secret STRIPE_KEY   # adds to the same request, same URL
+```
+
+Show the printed URL to the user. After they approve, run your commands. If a command fails with `approval required`, it prints a URL too: show it to the user, wait until they say they approved, then run the same command again. Never try to work around the approval.
+
 ### Never read `.env` files or `~/.sigillo/*`
 
 If a `.env` file exists, do not source it or read its contents. Use `sigillo run` instead:

@@ -1,11 +1,11 @@
 ---
 $schema: https://holocron.so/frontmatter.json
 title: "run"
-description: "Run a command with secrets injected"
+description: "Run a command with secrets injected. Stdout/stderr are redacted by default, including pipes. Never use this output to pass secret values to another tool. Use `sigillo secrets get NAME --raw | tool`, or let the child tool read the injected environment variable."
 icon: lucide:play
 ---
 
-Run a command with secrets injected
+Run a command with secrets injected. Stdout/stderr are redacted by default, including pipes. Never use this output to pass secret values to another tool. Use `sigillo secrets get NAME --raw | tool`, or let the child tool read the injected environment variable.
 
 ## Usage
 

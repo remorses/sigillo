@@ -518,6 +518,56 @@ pub fn deleteSecret(args: DeleteSecretArgs) !JsonResult(api.SecretDeleteResponse
     });
 }
 
+// Approval types are hand-written, not generated: the CLI must not depend on
+// the approvals routes being in openapi.json, since old servers lack them.
+pub const ApprovalItem = struct {
+    projectId: []const u8,
+    environment: []const u8,
+    // null = all secrets of the env
+    secrets: ?[]const []const u8 = null,
+};
+
+pub fn approvalCreateBody(allocator: std.mem.Allocator, label: ?[]const u8, items: []const ApprovalItem) ![]const u8 {
+    return jsonBody(allocator, struct { label: ?[]const u8, items: []const ApprovalItem }{ .label = label, .items = items });
+}
+
+pub const CreateApprovalArgs = struct {
+    allocator: std.mem.Allocator,
+    api_url: []const u8,
+    token: []const u8,
+    label: ?[]const u8 = null,
+    items: []const ApprovalItem,
+};
+
+pub fn createApproval(args: CreateApprovalArgs) !ApiResult {
+    return request(.{
+        .allocator = args.allocator,
+        .method = .POST,
+        .base_url = args.api_url,
+        .path = "/api/v0/approvals",
+        .token = args.token,
+        .json_body = try approvalCreateBody(args.allocator, args.label, args.items),
+    });
+}
+
+pub const GetApprovalArgs = struct {
+    allocator: std.mem.Allocator,
+    api_url: []const u8,
+    token: []const u8,
+    id: []const u8,
+};
+
+pub fn getApproval(args: GetApprovalArgs) !ApiResult {
+    const path = try std.fmt.allocPrint(args.allocator, "/api/v0/approvals/{s}", .{args.id});
+    return request(.{
+        .allocator = args.allocator,
+        .method = .GET,
+        .base_url = args.api_url,
+        .path = path,
+        .token = args.token,
+    });
+}
+
 pub const DownloadSecretsArgs = struct {
     allocator: std.mem.Allocator,
     api_url: []const u8,
