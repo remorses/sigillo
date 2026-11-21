@@ -310,60 +310,66 @@ The two new response types get Zig defaults for every field except `id` and `sta
 
 ## Task 1: Prove WebAuthn and session kind in workerd (spike)
 
-- [ ] `@simplewebauthn/server` verifies a registration and an assertion inside the vitest workerd
+- [x] (`pnpm --dir app test`: 99 pass, `approvals.test.ts` enrolls and asserts with a software
+  authenticator against real D1) `@simplewebauthn/server` verifies a registration and an assertion inside the vitest workerd
   pool, using a software authenticator test helper (real P-256 key, no mocks). Pass when one
   test enrolls and asserts against real D1.
-- [ ] A session created by `/api/auth/device/token` gets `kind = 'cli'`, an email or OAuth session
+- [x] (snapshot `["browser", "cli"]` in `approvals.test.ts`; the migration backfills `zig/%(std.http)`
+  user agents) A session created by `/api/auth/device/token` gets `kind = 'cli'`, an email or OAuth session
   gets `'browser'`. Pass when a test reads both rows. Check if existing device sessions can be
   backfilled by `user_agent` in the migration.
 
 ## Task 2: Schema, passkeys, approval engine (sequential, after Task 1)
 
-- [ ] Migration 0011 and schema for the tables above. Pass when `pnpm --dir app dev` boots on a
+- [x] (`0011_passkey-approvals.sql` applied to local D1, 15 commands) Migration 0011 and schema for the tables above. Pass when `pnpm --dir app dev` boots on a
   fresh local D1 and the Prisma-syntax diff is reported to the user with its own critique URL.
-- [ ] Passkey enroll, list, delete and the one assertion helper. Pass when tests show: a CLI
+- [x] (test "first passkey needs a browser session...") Passkey enroll, list, delete and the one assertion helper. Pass when tests show: a CLI
   session cannot enroll, a second passkey needs an assertion, a replayed assertion and an
   assertion made for another action are rejected.
-- [ ] Policy, grant check and request creation enforced on every read path in **Rules**. Pass when
+- [x] (test "protected environment: blocked reads batch into one request...") Policy, grant check and request creation enforced on every read path in **Rules**. Pass when
   one flow test covers: protect env, 403 with the approval fields, second blocked env joins the
   same request, `POST /approvals` adds an item and replaces the label on it, an approval made
   for the old item set is rejected, approve, reads work, revoke, 403 again. The same test
   checks expiry with no sleep, by moving timestamps into the past: a grant idle for over 1
   hour is rejected, a read refreshes `lastUsedAt`, a browser unlock ends after 1 minute.
-- [ ] Bypass regression test. Pass when all fail without a grant: dashboard secrets loader and
+- [x] (test "the website asks too...") Bypass regression test. Pass when all fail without a grant: dashboard secrets loader and
   event log return no values, `syncMissingSecretsAction` from a protected env, turning
   protection off without an assertion, a grant of session A used by session B or by a token, an
   approver without access to the env.
-- [ ] Per-secret and token cases. Pass when: an open secret reads while a protected one in the
+- [x] (same two tests) Per-secret and token cases. Pass when: an open secret reads while a protected one in the
   same env returns 403, `download` lists only the protected names in the request, a token is
   blocked and then approved until revoked.
 
 ## Task 3: Dashboard (sequential, after Task 2; parallel with Task 4)
 
-- [ ] Settings cards, Approvals tab with its empty state, approve page, unlock on Secrets and
+- [ ] Progress: built and driven end to end in headless Chrome with a CDP virtual authenticator
+  (33 screenshots at 1280px and 390px, light and dark). Still open: one approval with a REAL
+  passkey by the user. Settings cards, Approvals tab with its empty state, approve page, unlock on Secrets and
   Event Log, as in **Dashboard UX**. Pass when playwriter screenshots of each screen at 1280px
   and 390px (light and dark) are in the thread and the user completes one real passkey approval
   on local dev.
-- [ ] Mobile pass on touched pages. Pass when the 390px screenshots show no horizontal overflow
+- [x] (headless run reports no horizontal overflow at 390px on any page) Mobile pass on touched pages. Pass when the 390px screenshots show no horizontal overflow
   on Settings (Danger Zone rows stack) and the active tab is visible in the tab bar.
 
 ## Task 3b: Normal borders site-wide (parallel with every task, touches no feature code)
 
-- [ ] `Frame` and the frame variants of `Table` render a normal border, no muted wrapper and no
+- [x] (screenshots of Secrets, Environments, Tokens, Access, Event Log) `Frame` and the frame variants of `Table` render a normal border, no muted wrapper and no
   shadow. Pass when playwriter screenshots of Secrets, Environments, Tokens, Access and Event
   Log (light and dark, 1280px and 390px) show one plain border and no clipped corners or
   double lines.
 
 ## Task 4: CLI (sequential, after Task 2; parallel with Task 3)
 
-- [ ] Shared `approval_required` handling and `sigillo access request`. Pass when `zig build test`
+- [x] (`zig build test`: 78 pass; installed CLI against local dev printed the same approval URL for
+  `run`, `secrets get` and two `access request` calls. The TTY wait-and-retry path was not run by
+  a human yet) Shared `approval_required` handling and `sigillo access request`. Pass when `zig build test`
   covers: 403 body with and without the approval fields, 404 from an old server prints the
   redeploy message, flag parsing; and `pnpm --dir cli install:local` then a real run against
   local dev prints the URL in an agent shell and waits in a TTY.
 
 ## Task 5: Docs and release prep (sequential, after Tasks 3 and 4)
 
-- [ ] Docs page for approvals, generated CLI docs, `skills/sigillo/SKILL.md` teaches agents to
+- [x] (`/docs/approvals` and `/docs/cli/access-request` return 200 on local dev) Docs page for approvals, generated CLI docs, `skills/sigillo/SKILL.md` teaches agents to
   show the URL and rerun, AGENTS.md section with the rules and gaps, one changeset for
   `sigillo-app` and `sigillo`. Pass when every added URL returns 200.
 

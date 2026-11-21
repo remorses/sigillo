@@ -1,0 +1,95 @@
+---
+$schema: https://holocron.so/frontmatter.json
+title: 'Passkey approvals for secret reads'
+sidebarTitle: 'Approvals'
+description: 'Require a passkey approval before a CLI, agent or API token can read protected secrets. The agent shows one URL, you approve everything it needs with one passkey prompt.'
+icon: lucide:shield-check
+---
+
+Make agents ask before they read your **production secrets**. A protected secret can only be read after you approve the request with a passkey (Touch ID, a phone or a security key).
+
+```bash
+$ sigillo run -c prod -- pnpm deploy
+error: approval required
+https://sigillo.dev/approve/01KX8Q2M0V7T9C4J6N3R5W1Z8B
+Ask the user to open this URL and approve with their passkey, then run the command again.
+```
+
+You open the URL, check what is asked, and approve. The agent runs the command again and it works.
+
+```diagram
+ agent shell                      Sigillo                             you
+ ───────────                      ───────                             ───
+ sigillo run -c prod -- deploy ──▶ prod needs approval
+                               ◀── 403 + approval URL
+ shows the URL ─────────────────────────────────────────────────────▶ open /approve/<id>
+                                   verify the passkey ◀────────────── Approve with passkey
+ sigillo run -c prod -- deploy ──▶ access granted for this CLI
+                               ◀── secrets
+```
+
+## Turn it on
+
+Open **Settings** in a project. The **Approvals** card has one select per environment:
+
+| Setting | What needs approval |
+| --- | --- |
+| **Off** | Nothing. This is the default. |
+| **Selected secrets** | Only the secret names you add as chips. |
+| **All secrets** | Every secret in the environment, also ones added later. |
+
+The first time, Sigillo asks you to **add a passkey**. Only organization admins can change these settings.
+
+Raising protection is one click. Lowering it (All to Selected or Off, or removing a secret) asks for your passkey, so an agent with your session cannot switch it off.
+
+## Approve a request
+
+The **Approvals** tab lists pending requests and active approvals. **Review** opens the same page as the URL the CLI prints.
+
+- All requested secrets are checked. Uncheck what you do not want to share.
+- One passkey prompt approves everything that is checked.
+- The note in quotes is written by the agent. The list of secrets is what you approve.
+
+An approval belongs to the **session or token that asked**. It does not unlock another CLI login, another token or the browser.
+
+## How long an approval lasts
+
+An approval ends **1 hour after its last use**. An agent that keeps working is not interrupted. An idle one must ask again.
+
+- **Revoke** in the Approvals tab ends it at once.
+- **API tokens** can be approved with **Keep until revoked**, for CI that runs less than once an hour.
+
+## Ask for everything in one request
+
+Each blocked command adds what it needs to the **same pending request**, so several commands print the same URL. An agent can also ask up front, with a note that tells you why:
+
+```bash
+sigillo access request -c dev -c prod --label 'Deploy website'
+sigillo access request -c prod --secret STRIPE_KEY   # adds to the same request, same URL
+```
+
+In a terminal, `sigillo run` opens the browser, waits until you approve and then continues. In agent shells and scripts it exits right away, so the agent can show you the URL.
+
+## The dashboard asks too
+
+Protected values are not sent to the browser until you confirm with your passkey. In the Secrets table a protected value shows a **lock** instead of the eye icon.
+
+- Clicking the lock, **Show all secrets**, **Copy as .env** or **Download .env** asks for the passkey once and unlocks that environment for **1 minute**.
+- You can type a new value into a locked secret without revealing the old one.
+- The Event Log hides old values of protected secrets the same way.
+
+This matters because the CLI login is a normal session, and agents can also drive a logged-in browser. Only the passkey proves that a human is there.
+
+## Passkeys
+
+Manage them in **Settings**, in the **Passkeys** card.
+
+- Add your first passkey in the browser, right after you turn approvals on.
+- Adding another passkey or removing one asks for an existing passkey.
+- A passkey belongs to one domain. On a self-hosted instance, always use the same domain to approve.
+
+## What approvals do not cover
+
+- **Writes.** A CLI or agent can still set or delete a protected secret. It cannot read it.
+- **Secret names.** `sigillo secrets` still lists the names of protected secrets.
+- **Older servers.** A self-hosted instance needs to be redeployed to get approvals. Older CLI versions work against a new server: the error they print contains the approval URL.

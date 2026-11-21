@@ -1,5 +1,8 @@
 sigillo is still in pre release. ignore backwards compatibility, instead focus on making code as simple as possible. exception: new CLI versions must keep working against older server deployments (see "New CLI versions MUST work against older server deployments")
 
+Active plan: `plans/passkey-approvals.md`. Read it before starting work on passkey approvals.
+Decisions: `plans/decisions/`. Search them before designing or refactoring.
+
 # Sigillo
 
 Self-hostable secret manager (Doppler/Infisical alternative) running on Cloudflare Workers + D1.
@@ -80,6 +83,18 @@ Rules:
 - The auto-join function uses `onConflictDoNothing` on the `(org_id, user_id)` unique index, so it's idempotent and safe to run on every page load.
 - No domain ownership verification (DNS, Admin SDK). First user to claim a domain gets it. This is acceptable for a self-hosted tool.
 - The blocklist is a UX guard, not a security boundary. It hides the checkbox for gmail.com, outlook.com, etc. to prevent accidental misuse.
+
+## Passkey approvals for secret reads
+
+A session or API token needs a grant, approved by a human with a passkey, before it reads a protected secret (`environment.readApproval`: `off`, `selected`, `all`). Full rules, threat model and code map: `docs/passkey-approvals.md`. Read it before touching any code that decrypts a secret.
+
+Rules:
+- **Every path that returns a decrypted value or copies ciphertext checks the grant**: `getLockedNames()` in loaders and actions, `requestReadApproval()` in REST routes (`app/src/approvals.ts`). The dashboard is gated too: the CLI token is a normal session that can load page loaders, and agents can drive a logged-in browser.
+- **Anything that lowers protection or hands out access calls `requirePasskey()`** with its own intent (`app/src/passkey.ts`). Raising protection, deny and revoke do not need it.
+- The 403 body of a blocked read (`error`, `code`, `approvalId`, `approvalUrl`) is a CLI contract. Old CLIs print only `error`, so it must keep the URL.
+- Do not replace the WebAuthn code with `@better-auth/passkey`: it lets any session enroll a passkey.
+- Typecheck and build do not catch a missing gate. Add new read paths to the bypass assertions in `app/src/approvals.test.ts`.
+- `flatten-migrations.ts` creates duplicate flat files for old migration folders whose flat file was renamed by hand (`0011_thick_sentinels.sql`, ...). Delete them and keep only the new one, named like its folder.
 
 ## Skills to load
 
