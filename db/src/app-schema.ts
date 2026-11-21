@@ -38,6 +38,9 @@ export const session = sqliteCore.sqliteTable('session', {
   expiresAt: epochMs('expires_at').notNull(),
   ipAddress: sqliteCore.text('ip_address'),
   userAgent: sqliteCore.text('user_agent'),
+  // 'cli' = created by the device flow (CLI, agents). A cli session can never
+  // enroll the first passkey: its token sits in a file agents can read.
+  kind: sqliteCore.text('kind', { enum: ['browser', 'cli'] }).notNull().default('browser'),
   createdAt: epochMs('created_at').notNull().$defaultFn(() => Date.now()),
   updatedAt: epochMs('updated_at').notNull().$defaultFn(() => Date.now()),
 }, (table) => [
@@ -151,6 +154,9 @@ export const environment = sqliteCore.sqliteTable('environment', {
   // 'member' = everyone, 'admin' = only admins can read/write secrets.
   // Use this to restrict production environments to admins only.
   accessRole: sqliteCore.text('access_role', { enum: ['admin', 'member'] }).notNull().default('member'),
+  // Which secrets need a passkey approval before they are read.
+  // 'selected' = only the names in secretApproval, 'all' = every secret.
+  readApproval: sqliteCore.text('read_approval', { enum: ['off', 'selected', 'all'] }).notNull().default('off'),
   createdAt: epochMs('created_at').notNull().$defaultFn(() => Date.now()),
   updatedAt: epochMs('updated_at').notNull().$defaultFn(() => Date.now()),
 }, (table) => [
@@ -238,6 +244,80 @@ export const memberAccess = sqliteCore.sqliteTable('member_access', {
   sqliteCore.index('member_access_project_id_idx').on(table.projectId),
 ])
 
+// ── Passkey approvals ───────────────────────────────────────────────
+// A session or API token needs a human approval, confirmed with a passkey,
+// before it reads a protected secret. See docs/passkey-approvals.md.
+
+// WebAuthn credentials of a user. Bound to the host they were created on.
+export const passkey = sqliteCore.sqliteTable('passkey', {
+  id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
+  userId: sqliteCore.text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  name: sqliteCore.text('name').notNull(),
+  // base64url credential id from the authenticator
+  credentialId: sqliteCore.text('credential_id').notNull().unique(),
+  // base64url COSE public key
+  publicKey: sqliteCore.text('public_key').notNull(),
+  counter: sqliteCore.integer('counter', { mode: 'number' }).notNull().default(0),
+  transports: sqliteCore.text('transports', { mode: 'json' }).$type<string[]>(),
+  rpId: sqliteCore.text('rp_id').notNull(),
+  createdAt: epochMs('created_at').notNull().$defaultFn(() => Date.now()),
+  lastUsedAt: epochMs('last_used_at'),
+}, (table) => [
+  sqliteCore.index('passkey_user_id_idx').on(table.userId),
+])
+
+// One protected secret name in an environment with readApproval = 'selected'.
+export const secretApproval = sqliteCore.sqliteTable('secret_approval', {
+  id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
+  environmentId: sqliteCore.text('environment_id').notNull().references(() => environment.id, { onDelete: 'cascade' }),
+  name: sqliteCore.text('name').notNull(),
+  createdBy: sqliteCore.text('created_by').references(() => user.id, { onDelete: 'set null' }),
+  createdAt: epochMs('created_at').notNull().$defaultFn(() => Date.now()),
+}, (table) => [
+  sqliteCore.uniqueIndex('secret_approval_env_name_unique').on(table.environmentId, table.name),
+])
+
+// Pending = a request waiting for a human. Approved = the grant. Rows are kept
+// after they end, as the audit trail. A credential has at most one pending row.
+export const approvalRequest = sqliteCore.sqliteTable('approval_request', {
+  id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
+  // Requester: the session user, or the token creator. Used for display.
+  userId: sqliteCore.text('user_id').references(() => user.id, { onDelete: 'set null' }),
+  // The credential the grant is bound to: exactly one of the two is set.
+  // SET NULL keeps the audit row; both null = credential deleted, grant dead.
+  sessionId: sqliteCore.text('session_id').references(() => session.id, { onDelete: 'set null' }),
+  apiTokenId: sqliteCore.text('api_token_id').references(() => apiToken.id, { onDelete: 'set null' }),
+  // Why the requester asks. Untrusted text written by an agent.
+  label: sqliteCore.text('label').notNull().default(''),
+  status: sqliteCore.text('status', { enum: ['pending', 'approved', 'denied', 'revoked'] }).notNull().default('pending'),
+  // Pending requests expire here (1h after the last edit).
+  expiresAt: epochMs('expires_at').notNull(),
+  approvedBy: sqliteCore.text('approved_by').references(() => user.id, { onDelete: 'set null' }),
+  approvedAt: epochMs('approved_at'),
+  // Set at approval and by protected reads. 'idle' grants end 1h after it.
+  lastUsedAt: epochMs('last_used_at'),
+  // 'never' = until revoked, only offered for API tokens (CI may be idle for days).
+  expiry: sqliteCore.text('expiry', { enum: ['idle', 'never'] }).notNull().default('idle'),
+  // Hard stop. Only website unlocks set it (approvedAt + 1 minute).
+  grantExpiresAt: epochMs('grant_expires_at'),
+  createdAt: epochMs('created_at').notNull().$defaultFn(() => Date.now()),
+}, (table) => [
+  sqliteCore.index('approval_request_session_id_idx').on(table.sessionId, table.status),
+  sqliteCore.index('approval_request_api_token_id_idx').on(table.apiTokenId, table.status),
+  sqliteCore.index('approval_request_user_id_idx').on(table.userId),
+])
+
+export const approvalItem = sqliteCore.sqliteTable('approval_item', {
+  id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
+  requestId: sqliteCore.text('request_id').notNull().references(() => approvalRequest.id, { onDelete: 'cascade' }),
+  environmentId: sqliteCore.text('environment_id').notNull().references(() => environment.id, { onDelete: 'cascade' }),
+  // '' = every secret in the environment
+  secretName: sqliteCore.text('secret_name').notNull().default(''),
+}, (table) => [
+  sqliteCore.uniqueIndex('approval_item_request_env_name_unique').on(table.requestId, table.environmentId, table.secretName),
+  sqliteCore.index('approval_item_environment_id_idx').on(table.environmentId),
+])
+
 // Default environments created for every new project
 export const DEFAULT_ENVIRONMENTS = [
   { name: 'Dev', slug: 'dev' },
@@ -277,7 +357,7 @@ export const deviceCode = sqliteCore.sqliteTable('device_code', {
 // ── Relations (v2 API) ──────────────────────────────────────────────
 
 export const relations = defineRelations(
-  { user, session, account, verification, org, orgMember, orgInvitation, project, environment, secretEvent, apiToken, apiTokenEnvironment, deviceCode, oauthDomain, memberAccess },
+  { user, session, account, verification, org, orgMember, orgInvitation, project, environment, secretEvent, apiToken, apiTokenEnvironment, deviceCode, oauthDomain, memberAccess, passkey, secretApproval, approvalRequest, approvalItem },
   (r) => ({
     user: {
       sessions: r.many.session(),
@@ -286,9 +366,11 @@ export const relations = defineRelations(
         from: r.user.id.through(r.orgMember.userId),
         to: r.org.id.through(r.orgMember.orgId),
       }),
+      passkeys: r.many.passkey(),
     },
     session: {
       user: r.one.user({ from: r.session.userId, to: r.user.id }),
+      approvalRequests: r.many.approvalRequest(),
     },
     account: {
       user: r.one.user({ from: r.account.userId, to: r.user.id }),
@@ -321,6 +403,8 @@ export const relations = defineRelations(
       project: r.one.project({ from: r.environment.projectId, to: r.project.id }),
       secretEvents: r.many.secretEvent(),
       apiTokenEnvironments: r.many.apiTokenEnvironment(),
+      secretApprovals: r.many.secretApproval(),
+      approvalItems: r.many.approvalItem(),
     },
     secretEvent: {
       environment: r.one.environment({ from: r.secretEvent.environmentId, to: r.environment.id }),
@@ -331,6 +415,7 @@ export const relations = defineRelations(
       project: r.one.project({ from: r.apiToken.projectId, to: r.project.id }),
       creator: r.one.user({ from: r.apiToken.createdBy, to: r.user.id }),
       environments: r.many.apiTokenEnvironment(),
+      approvalRequests: r.many.approvalRequest(),
     },
     apiTokenEnvironment: {
       token: r.one.apiToken({ from: r.apiTokenEnvironment.tokenId, to: r.apiToken.id }),
@@ -344,5 +429,22 @@ export const relations = defineRelations(
       project: r.one.project({ from: r.memberAccess.projectId, to: r.project.id }),
     },
     oauthDomain: {},
+    passkey: {
+      user: r.one.user({ from: r.passkey.userId, to: r.user.id }),
+    },
+    secretApproval: {
+      environment: r.one.environment({ from: r.secretApproval.environmentId, to: r.environment.id }),
+    },
+    approvalRequest: {
+      user: r.one.user({ from: r.approvalRequest.userId, to: r.user.id, alias: 'approvalRequester' }),
+      approver: r.one.user({ from: r.approvalRequest.approvedBy, to: r.user.id, alias: 'approvalApprover' }),
+      session: r.one.session({ from: r.approvalRequest.sessionId, to: r.session.id }),
+      apiToken: r.one.apiToken({ from: r.approvalRequest.apiTokenId, to: r.apiToken.id }),
+      items: r.many.approvalItem(),
+    },
+    approvalItem: {
+      request: r.one.approvalRequest({ from: r.approvalItem.requestId, to: r.approvalRequest.id }),
+      environment: r.one.environment({ from: r.approvalItem.environmentId, to: r.environment.id }),
+    },
   }),
 )
