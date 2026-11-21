@@ -19,6 +19,7 @@ import {
 } from "sigillo-app/src/components/ui/select";
 import { router, useLoaderData } from "spiceflow/react";
 import { ProjectTitle } from "sigillo-app/src/components/sidebar";
+import { passkeyErrorMessage, unlockWithPasskey } from "sigillo-app/src/components/passkey";
 
 const cliBannerCookieName = "sigillo-cli-banner-dismissed";
 const cliBannerCodeLines = [
@@ -55,7 +56,7 @@ function CliBanner() {
   if (!open) return null;
 
   return (
-    <FramePanel className="relative overflow-hidden border-border/70 bg-muted/45 p-4 sm:p-8">
+    <FramePanel className="overflow-hidden bg-muted/45 p-4 sm:p-8">
       <button
         type="button"
         onClick={() => {
@@ -79,7 +80,7 @@ function CliBanner() {
           </p>
         </div>
 
-        <pre className="cli-banner-code overflow-x-auto rounded-xl border border-border/70 bg-background/95 p-4 text-[12px]">
+        <pre className="cli-banner-code overflow-x-auto rounded-lg border border-border bg-background p-4 text-[12px]">
           <code className="block mono-sm">
             {cliBannerCodeLines.map((line, i) => (
               <span key={i} className="flex gap-x-4 leading-6">
@@ -121,7 +122,21 @@ export function ProjectPage() {
         <ProjectTitle />
         <div className="flex items-center gap-2">
           {secrets.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => setAllVisible((v) => !v)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={async () => {
+                // Showing everything includes the protected values: passkey first.
+                if (!allVisible && selectedEnvId && secrets.some((s) => s.locked)) {
+                  const unlocked = await unlockWithPasskey(selectedEnvId).catch((e) => {
+                    alert(passkeyErrorMessage(e));
+                    return null;
+                  });
+                  if (!unlocked) return;
+                }
+                setAllVisible((v) => !v);
+              }}
+            >
               {allVisible ? "Hide all secrets" : "Show all secrets"}
             </Button>
           )}

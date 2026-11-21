@@ -26,6 +26,17 @@ import {
   getProjectMemberAccess,
 } from './db.ts'
 import { apiApp } from './api.ts'
+import {
+  describeItems,
+  describeRequester,
+  getApprovableItemIds,
+  getLockedNames,
+  getRequestDetails,
+  getRequestRole,
+  getRequestState,
+  listProjectRequests,
+} from './approvals.ts'
+import { listPasskeys } from './passkey.ts'
 import { rememberCacheOrigin } from './lib/memoize.ts'
 import { cn } from 'sigillo-app/src/lib/utils'
 import { CreateOrgForm } from 'sigillo-app/src/components/create-org-form'
@@ -44,7 +55,7 @@ function isTruthy<T>(value: T | null | undefined): value is T {
 function safeRedirectPath(value: string | null): string {
   if (!value || !value.startsWith('/') || value.startsWith('//')) return '/dash'
   if (['/', '/device'].includes(value)) return value
-  if (value === '/dash' || value.startsWith('/dash/') || value.startsWith('/invite/')) return value
+  if (value === '/dash' || value.startsWith('/dash/') || value.startsWith('/invite/') || value.startsWith('/approve/')) return value
   return '/'
 }
 
@@ -91,6 +102,7 @@ export const app = new Spiceflow({ tracer })
   .layout('/login', async ({ children, request }) => <AppShell request={request}>{children}</AppShell>)
   .layout('/device', async ({ children, request }) => <AppShell request={request}>{children}</AppShell>)
   .layout('/invite/*', async ({ children, request }) => <AppShell request={request}>{children}</AppShell>)
+  .layout('/approve/*', async ({ children, request }) => <AppShell request={request}>{children}</AppShell>)
 
   .loader('/dash/*', async ({ request }) => {
     const db = getDb()
@@ -195,13 +207,14 @@ export const app = new Spiceflow({ tracer })
 
   // ── Layout 2: Authenticated app shell with sidebar ─────────────
   .layout('/dash/*', async ({ children, loaderData }) => {
-    const { Sidebar, MobileDrawer } = await import('sigillo-app/src/components/sidebar')
+    const { Sidebar, MobileDrawer, ActiveTabIndicator } = await import('sigillo-app/src/components/sidebar')
     const projectId = loaderData.projectId
     return (
       <>
         {projectId && (
           <>
             <TabBar
+              activeIndicator={<ActiveTabIndicator />}
               projectId={projectId}
               pathname={loaderData.pathname}
               firstEnvSlug={loaderData.currentProjectFirstEnvSlug}
@@ -354,7 +367,9 @@ export const app = new Spiceflow({ tracer })
     const readableEnvIds = environments.filter((e) => !getEnvironmentAccessError(access, e)).map((e) => e.id)
     const locked = !!selectedEnvId && !readableEnvIds.includes(selectedEnvId)
 
-    let secrets: { id: string; name: string; value: string; createdAt: number; updatedAt: number; createdBy: { id: string; name: string } | null }[] = []
+    // value is null and locked is true for a protected secret this browser
+    // session has not unlocked with a passkey (see approvals.ts).
+    let secrets: { id: string; name: string; value: string | null; locked: boolean; createdAt: number; updatedAt: number; createdBy: { id: string; name: string } | null }[] = []
     // One D1 batch derives the selected env's secrets AND the union of names
     // across all readable envs, instead of a separate names round-trip.
     const { secrets: derived, allNames: allSecretNames } = await deriveEnvironmentSecretsAndNames({
@@ -372,9 +387,15 @@ export const app = new Spiceflow({ tracer })
         })
         for (const u of users) userMap.set(u.id, u)
       }
+      const lockedNames = new Set(matchedEnv ? await getLockedNames({
+        credential: { sessionId: session.sessionId, apiTokenId: null },
+        environment: matchedEnv,
+        names: derived.map((d) => d.name),
+      }) : [])
       secrets = await Promise.all(derived.map(async (d) => ({
         id: d.id, name: d.name,
-        value: await decrypt(d.valueEncrypted, d.iv),
+        value: lockedNames.has(d.name) ? null : await decrypt(d.valueEncrypted, d.iv),
+        locked: lockedNames.has(d.name),
         createdAt: d.createdAt, updatedAt: d.updatedAt,
         createdBy: d.userId ? (userMap.get(d.userId) ?? null) : null,
       })))
@@ -499,13 +520,23 @@ export const app = new Spiceflow({ tracer })
       }))
     }
 
+    // Old values of a protected secret are as secret as the current one. A
+    // rename keeps the value under the old name in this log, so one locked
+    // name hides every value here until the environment is unlocked.
+    const lockedNames = matchedEnv && events.length > 0 ? await getLockedNames({
+      credential: { sessionId: session.sessionId, apiTokenId: null },
+      environment: matchedEnv,
+      names: [...new Set(events.map((evt) => evt.name))],
+    }) : []
+    const needsApproval = lockedNames.length > 0
+
     // Decrypt values for "set" events so the client can show/hide them
     const eventsWithValues = await Promise.all(events.map(async (evt) => {
       let value: string | null = null
-      if (evt.operation === 'set' && evt.valueEncrypted && evt.iv) {
+      if (!needsApproval && evt.operation === 'set' && evt.valueEncrypted && evt.iv) {
         value = await decrypt(evt.valueEncrypted, evt.iv)
       }
-      return { ...evt, value, valueEncrypted: undefined, iv: undefined }
+      return { ...evt, value, locked: needsApproval, valueEncrypted: undefined, iv: undefined }
     }))
 
     return {
@@ -571,18 +602,43 @@ export const app = new Spiceflow({ tracer })
     const session = await requirePageSession(request)
     const orgId = await getOrgIdForProject(params.projectId)
     if (!orgId) throw redirect('/')
-    await requirePageOrgMember(session.userId, orgId)
+    const { role } = await requirePageOrgMember(session.userId, orgId)
 
-    const [orgRow, projects] = await Promise.all([
+    const [orgRow, projects, projectEnvironments, passkeys, access] = await Promise.all([
       db.query.org.findFirst({ where: { id: orgId }, columns: { name: true, autoJoinDomain: true } }),
       db.query.project.findMany({ where: { orgId }, columns: { name: true }, orderBy: { createdAt: 'asc' } }),
+      db.query.environment.findMany({
+        where: { projectId: params.projectId },
+        with: { secretApprovals: true },
+        orderBy: { createdAt: 'asc' },
+      }),
+      listPasskeys({ request, userId: session.userId }),
+      getProjectMemberAccess(session.userId, params.projectId),
     ])
+    // Loaders run in parallel: never show environments (or their secret
+    // names) the user cannot access, e.g. admin-only ones to members.
+    const approvalEnvironments = projectEnvironments.filter((env) => !getEnvironmentAccessError(access, env))
+    // Names offered by "+ Add secret". Names are not secret, values are.
+    const { allNames: secretNames } = await deriveEnvironmentSecretsAndNames({
+      environmentIds: approvalEnvironments.map((env) => env.id),
+      selectedEnvId: null,
+    })
 
     return {
       orgId,
       orgName: orgRow?.name ?? 'Organization',
       autoJoinDomain: orgRow?.autoJoinDomain ?? null,
       projectNames: projects.map((p) => p.name),
+      role,
+      secretNames,
+      approvalEnvironments: approvalEnvironments.map((env) => ({
+        id: env.id,
+        name: env.name,
+        slug: env.slug,
+        readApproval: env.readApproval,
+        protectedNames: env.secretApprovals.map((row) => row.name).sort(),
+      })),
+      passkeys: passkeys.map((p) => ({ id: p.id, name: p.name, createdAt: p.createdAt, lastUsedAt: p.lastUsedAt })),
     }
   })
 
@@ -593,6 +649,87 @@ export const app = new Spiceflow({ tracer })
       <div className="flex flex-col gap-3 w-full">
         <SettingsPage />
       </div>
+    )
+  })
+
+  // ── Approvals page ───────────────────────────────────────────────
+  // Lists pending requests and live grants. What is protected is configured
+  // in Settings (plans/decisions/approvals-ui-placement.md).
+  .loader('/dash/projects/:projectId/approvals', async ({ params, request }) => {
+    const db = getDb()
+    const session = await requirePageSession(request)
+    const [requests, protectedEnvironment] = await Promise.all([
+      listProjectRequests({ projectId: params.projectId, userId: session.userId }),
+      db.query.environment.findFirst({ where: { projectId: params.projectId, readApproval: { ne: 'off' } } }),
+    ])
+    return {
+      hasProtection: !!protectedEnvironment,
+      requests: requests.map((approvalRequest) => ({
+        id: approvalRequest.id,
+        status: approvalRequest.status === 'pending' ? 'pending' as const : 'active' as const,
+        requester: describeRequester(approvalRequest),
+        label: approvalRequest.label,
+        items: describeItems(approvalRequest.items),
+        createdAt: approvalRequest.createdAt,
+        lastUsedAt: approvalRequest.lastUsedAt,
+        expiry: approvalRequest.expiry,
+        approvedBy: approvalRequest.approver?.name ?? null,
+      })),
+    }
+  })
+
+  .page('/dash/projects/:projectId/approvals', async () => {
+    const { ApprovalsPage } = await import('sigillo-app/src/components/approvals-page')
+
+    return (
+      <div className="flex flex-col gap-3 w-full">
+        <ApprovalsPage />
+      </div>
+    )
+  })
+
+  // ── Approve page (standalone, no sidebar) ───────────────────────
+  // The URL a CLI or agent prints. The human reviews what is asked and
+  // approves with a passkey.
+  .page('/approve/:id', async ({ params, request }) => {
+    const session = await getSession(request)
+    if (!session) {
+      const redirectPath = `/approve/${encodeURIComponent(params.id)}`
+      return Response.redirect(new URL(`/login?redirect=${encodeURIComponent(redirectPath)}`, request.url).toString(), 302)
+    }
+    const approvalRequest = await getRequestDetails(params.id)
+    const approvable = approvalRequest ? await getApprovableItemIds(approvalRequest, session.userId) : new Set<string>()
+    // Same answer for a missing request and for one that is not yours.
+    if (!approvalRequest || !getRequestRole(approvalRequest, session, approvable)) {
+      return (
+        <ContentFrame className="flex grow justify-center items-center">
+          <div className="text-center max-w-sm px-4">
+            <h1 className="text-2xl font-bold tracking-tight mb-2">Request not found</h1>
+            <p className="text-muted-foreground">
+              This approval link is invalid, or it was created by another account. Sign in with the account that runs the CLI.
+            </p>
+          </div>
+        </ContentFrame>
+      )
+    }
+    const passkeys = await listPasskeys({ request, userId: session.userId })
+    const { ApproveRequest } = await import('sigillo-app/src/components/approve-request')
+    return (
+      <ContentFrame>
+        <ApproveRequest
+          key={approvalRequest.items.map((item) => item.id).join()}
+          request={{
+            id: approvalRequest.id,
+            state: getRequestState(approvalRequest, Date.now()),
+            requester: describeRequester(approvalRequest),
+            label: approvalRequest.label,
+            createdAt: approvalRequest.createdAt,
+            userAgent: approvalRequest.session?.userAgent ?? null,
+            items: describeItems(approvalRequest.items).map((item) => ({ ...item, allowed: approvable.has(item.id) })),
+          }}
+          hasPasskey={passkeys.length > 0}
+        />
+      </ContentFrame>
     )
   })
 
@@ -721,14 +858,17 @@ function getInitialThemeClass(request: Request) {
 
 function AppShell({ children, mobileMenuSlot, request }: { children: React.ReactNode; mobileMenuSlot?: React.ReactNode; request: Request }) {
   return (
-    <html lang="en" className={cn("h-dvh", getInitialThemeClass(request))} data-default-theme="system" suppressHydrationWarning>
+    // overflow-x-clip on html AND body: the grid dots sit half outside the page
+    // frame and made phones scroll sideways. On body alone it only propagates
+    // to the viewport and the overflow stays scrollable.
+    <html lang="en" className={cn("h-dvh overflow-x-clip", getInitialThemeClass(request))} data-default-theme="system" suppressHydrationWarning>
       <Head>
         <Head.Meta charSet="UTF-8" />
         <Head.Meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <Head.Title>Sigillo — Secret Manager</Head.Title>
         <Head.Link rel="icon" type="image/png" href="/favicon.png" />
       </Head>
-      <body className="relative flex h-dvh flex-col bg-background font-sans antialiased">
+      <body className="relative flex h-dvh flex-col overflow-x-clip bg-background font-sans antialiased">
         <StradaShellBrowser />
         <script dangerouslySetInnerHTML={{ __html: appThemeScript }} />
         <ProgressBar color="var(--primary)" />
@@ -762,10 +902,12 @@ function TabBar({
   projectId,
   pathname,
   firstEnvSlug,
+  activeIndicator,
 }: {
   projectId: string
   pathname: string
   firstEnvSlug: string | null
+  activeIndicator: React.ReactNode
 }) {
   const base = `/dash/projects/${projectId}`
   const envMatch = pathname.match(new RegExp(`^${base}/envs/([^/]+)`))
@@ -781,6 +923,7 @@ function TabBar({
     { label: 'Environments', href: router.href('/dash/projects/:projectId/environments', { projectId }), active: pathname === `${base}/environments` },
     { label: 'Tokens', href: router.href('/dash/projects/:projectId/tokens', { projectId }), active: pathname === `${base}/tokens` },
     { label: 'Access', href: router.href('/dash/projects/:projectId/access', { projectId }), active: pathname === `${base}/access` },
+    { label: 'Approvals', href: router.href('/dash/projects/:projectId/approvals', { projectId }), active: pathname === `${base}/approvals` },
     {
       label: 'Event Log',
       href: eventLogHref,
@@ -808,9 +951,7 @@ function TabBar({
             )}
           >
             {tab.label}
-            {tab.active && (
-              <div className="absolute bottom-0 left-0 w-full h-[2.5px] bg-primary rounded-sm" />
-            )}
+            {tab.active && activeIndicator}
           </Link>
         ))}
       </div>

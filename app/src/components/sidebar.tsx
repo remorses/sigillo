@@ -355,6 +355,17 @@ export function NewProjectDialog({
 // Header of every project tab. Click to edit, Enter or blur saves, Escape cancels.
 // The action re-runs loaders, so the sidebar list updates too.
 
+// Underline of the active project tab. On narrow screens the tab bar scrolls
+// sideways, so it also brings its tab into view.
+export function ActiveTabIndicator() {
+  return (
+    <div
+      ref={(el) => { el?.parentElement?.scrollIntoView({ inline: 'nearest', block: 'nearest' }) }}
+      className="absolute bottom-0 left-0 w-full h-[2.5px] bg-primary rounded-sm"
+    />
+  );
+}
+
 export function ProjectTitle() {
   const { projectId, projectName } = useLoaderData('/dash/projects/:projectId/*');
   const [editing, setEditing] = useState(false);

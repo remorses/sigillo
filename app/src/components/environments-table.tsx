@@ -69,7 +69,7 @@ const envColorPalette = [
   "bg-lime-500",
 ];
 
-function getEnvColor(name: string, slug: string): string {
+export function getEnvColor(name: string, slug: string): string {
   const key = slug.toLowerCase();
   const nameKey = name.toLowerCase();
   if (knownEnvColors[key]) return knownEnvColors[key]!;

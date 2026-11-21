@@ -225,6 +225,21 @@ export async function getAuth(request: Request) {
         enabled: true,
         maxAge: 5 * 60, // 5 minutes — avoids a D1 round-trip on every request
       },
+      additionalFields: {
+        kind: { type: 'string', defaultValue: 'browser', input: false },
+      },
+    },
+    databaseHooks: {
+      session: {
+        create: {
+          // The device flow token exchange is a CLI or agent login. Mark the
+          // session so it can never enroll the first passkey (see passkey.ts).
+          before: async (session, ctx) => {
+            if (ctx?.path !== '/device/token') return
+            return { data: { ...session, kind: 'cli' } }
+          },
+        },
+      },
     },
     plugins: [
       genericOAuth({
@@ -264,7 +279,13 @@ export function getDataCenter(request: Request & { cf?: { colo?: string } }): st
 
 // ── Session helpers ─────────────────────────────────────────────────
 
-type Session = { userId: string; user: { id: string; name: string; email: string; emailVerified: boolean } }
+export type Session = {
+  userId: string
+  // Row id of the session. Approval grants are bound to it.
+  sessionId: string
+  kind: (typeof schema.session.$inferSelect)['kind']
+  user: { id: string; name: string; email: string; emailVerified: boolean }
+}
 
 // Spiceflow passes the SAME request instance to every matched loader/layout in
 // a single navigation (verified against the framework source). Several loaders
@@ -293,7 +314,12 @@ async function resolveSession(request: Request): Promise<Session | null> {
   const auth = await getAuth(request)
   const session = await auth.api.getSession({ headers: request.headers })
   if (!session) return null
-  return { userId: session.user.id, user: { id: session.user.id, name: session.user.name, email: session.user.email, emailVerified: session.user.emailVerified } }
+  return {
+    userId: session.user.id,
+    sessionId: session.session.id,
+    kind: session.session.kind === 'cli' ? 'cli' : 'browser',
+    user: { id: session.user.id, name: session.user.name, email: session.user.email, emailVerified: session.user.emailVerified },
+  }
 }
 
 export async function requireApiSession(request: Request): Promise<Session> {
@@ -314,7 +340,7 @@ export async function requirePageSession(request: Request): Promise<Session> {
 // load. Uses onConflictDoNothing so it's idempotent; no need to pre-check
 // existing memberships (the unique index on org_id+user_id handles it).
 
-export async function autoJoinOrgsByDomain(session: Session): Promise<void> {
+export async function autoJoinOrgsByDomain(session: Pick<Session, 'userId' | 'user'>): Promise<void> {
   if (!session.user.emailVerified) return
   const domain = getEmailDomain(session.user.email)
   if (!domain || COMMON_EMAIL_DOMAINS.has(domain)) return
@@ -462,6 +488,7 @@ type ResolvedEnvironment = {
   slug: string
   description: string
   accessRole: string
+  readApproval: (typeof schema.environment.$inferSelect)['readApproval']
   createdAt: number
   updatedAt: number
   orgId: string | null
@@ -520,7 +547,7 @@ export async function getUserEnvironmentAccess({ userId, environmentRef, project
   const access = await getMemberAccess({ userId, orgId: env.orgId })
   const error = getEnvironmentAccessError(access, env)
   if (error || !access) throw new ForbiddenError(error ?? 'forbidden')
-  return { id: env.id, projectId: env.projectId, orgId: env.orgId, role: access.role }
+  return { id: env.id, projectId: env.projectId, orgId: env.orgId, role: access.role, readApproval: env.readApproval }
 }
 
 export async function getOrgIdForEnvironment(environmentId: string, projectId?: string | null) {
@@ -674,10 +701,18 @@ function forbiddenResponse(msg = 'forbidden'): Response {
   })
 }
 
+// sessionId / apiTokenId also identify the credential an approval grant is
+// bound to. requesterId is the human behind it: the session user or the
+// token creator.
 export type SecretsAuth = (
-  | { userId: string; apiTokenId: null }
-  | { userId: null; apiTokenId: string }
+  | { userId: string; apiTokenId: null; sessionId: string; requesterId: string }
+  | { userId: null; apiTokenId: string; sessionId: null; requesterId: string }
 )
+
+type SecretsEnvironmentAuth = SecretsAuth & {
+  environmentId: string
+  readApproval: ResolvedEnvironment['readApproval']
+}
 
 // Environments of a project the caller may read, with the same rules as
 // requireSecretsApiAuth. Used where one request touches several envs (e.g.
@@ -722,7 +757,7 @@ export async function requireSecretsApiAuth(
     environmentRef: string
     projectId?: string | null
   },
-): Promise<SecretsAuth & { environmentId: string }> {
+): Promise<SecretsEnvironmentAuth> {
   const apiToken = await getRequestApiToken(request)
   if (apiToken) {
     const env = await resolveEnvironment(environmentRef, apiToken.projectId)
@@ -736,7 +771,10 @@ export async function requireSecretsApiAuth(
       const creator = env.orgId ? await getMemberAccess({ userId: apiToken.createdBy, orgId: env.orgId }) : null
       if (creator?.role !== 'admin') throw forbiddenResponse('admin access required for this environment')
     }
-    return { userId: null, apiTokenId: apiToken.tokenId, environmentId: env.id }
+    return {
+      userId: null, apiTokenId: apiToken.tokenId, sessionId: null, requesterId: apiToken.createdBy,
+      environmentId: env.id, readApproval: env.readApproval,
+    }
   }
 
   // Session auth path — works with both cookies and BetterAuth bearer tokens
@@ -746,7 +784,10 @@ export async function requireSecretsApiAuth(
   try {
     const env = await getUserEnvironmentAccess({ userId: session.userId, environmentRef, projectId })
     if (!env) throw new Response(JSON.stringify({ error: 'not found' }), { status: 404, headers: { 'content-type': 'application/json' } })
-    return { userId: session.userId, apiTokenId: null, environmentId: env.id }
+    return {
+      userId: session.userId, apiTokenId: null, sessionId: session.sessionId, requesterId: session.userId,
+      environmentId: env.id, readApproval: env.readApproval,
+    }
   } catch (error) {
     if (error instanceof ForbiddenError) throw forbiddenResponse(error.message)
     throw error

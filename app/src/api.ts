@@ -36,8 +36,17 @@ import {
   getUserEnvironmentAccess,
   getMemberAccess,
   getReadableEnvironmentIds,
+  getRequestOrigin,
   ForbiddenError,
 } from './db.ts'
+import {
+  APPROVAL_LABEL_MAX_LENGTH,
+  addToPendingRequest,
+  approvalRequiredBody,
+  getApprovalUrl,
+  getRequestState,
+  requestReadApproval,
+} from './approvals.ts'
 import { memoize } from './lib/memoize.ts'
 import { ENV_DESCRIPTION_MAX_LENGTH, SECRET_NAME_REGEX, isRenderableSecretName, renderEnvFile } from './lib/utils.ts'
 
@@ -250,6 +259,25 @@ const downloadedSecretsFormats = [
 const downloadedSecretsFormatSchema = z.enum(downloadedSecretsFormats)
 const downloadedSecretsSchema = z.record(z.string(), z.string())
 const errorResponseSchema = z.object({ error: z.string() })
+
+const approvalRequestSchema = z.object({
+  label: z.string().trim().max(APPROVAL_LABEL_MAX_LENGTH).optional(),
+  items: z.array(z.object({
+    projectId: z.string().min(1),
+    // Environment id or slug.
+    environment: z.string().min(1),
+    // Omit to ask for every secret of the environment.
+    secrets: z.array(z.string().min(1)).min(1).optional(),
+  })).min(1).max(50),
+})
+
+// `id` and `url` are '' when nothing needs approval (status 'approved').
+const approvalResponseSchema = z.object({
+  id: z.string(),
+  url: z.string(),
+  status: z.enum(['pending', 'approved', 'denied', 'revoked', 'expired']),
+  expiresAt: z.number(),
+})
 
 // Session access to an environment (org member, project, admin-only role).
 async function requireApiEnvironmentAccess({ userId, environmentRef, projectId }: { userId: string; environmentRef: string; projectId: string }) {
@@ -811,6 +839,11 @@ export const apiApp = new Spiceflow()
       const derived = await deriveSecrets(auth.environmentId)
       const secret = derived.find((d) => d.name === params.name)
       if (!secret) return json({ error: 'not found' }, { status: 404 })
+      const approval = await requestReadApproval({
+        auth, environment: { id: auth.environmentId, readApproval: auth.readApproval },
+        names: [secret.name], scope: 'names', origin: getRequestOrigin(request),
+      })
+      if (approval) throw json(approvalRequiredBody(approval), { status: 403 })
       const value = await decrypt(secret.valueEncrypted, secret.iv)
       return { id: secret.id, name: secret.name, value, environmentId: auth.environmentId, createdAt: secret.createdAt, updatedAt: secret.updatedAt }
     },
@@ -847,6 +880,12 @@ export const apiApp = new Spiceflow()
       const format = query.format || 'json'
 
       const derived = await deriveSecrets(auth.environmentId)
+      // All or nothing: a partial download would start apps with missing variables.
+      const approval = await requestReadApproval({
+        auth, environment: { id: auth.environmentId, readApproval: auth.readApproval },
+        names: derived.map((d) => d.name), scope: 'environment', origin: getRequestOrigin(request),
+      })
+      if (approval) throw json(approvalRequiredBody(approval), { status: 403 })
       const entries: Record<string, string> = {}
       for (const d of derived) {
         entries[d.name] = await decrypt(d.valueEncrypted, d.iv)
@@ -884,6 +923,60 @@ export const apiApp = new Spiceflow()
       )
       if (firstInsert) await db.batch([firstInsert, ...restInserts])
       return { ok: true, environmentId: auth.environmentId, secrets: entries.map(([name]) => name) }
+    },
+  })
+
+  // ── Approvals ───────────────────────────────────────────────────
+  // A blocked read already adds what it needs to the caller's pending request
+  // (see requestReadApproval). This route lets a CLI or agent ask up front for
+  // everything it will need, with a label, so the user approves one URL.
+  // Calling it again edits the same pending request.
+  .route({
+    method: 'POST',
+    path: '/api/v0/approvals',
+    detail: { tags: ['Approvals'], summary: 'Request approval to read protected secrets' },
+    request: approvalRequestSchema,
+    response: approvalResponseSchema,
+    async handler({ request }) {
+      const body = await request.json()
+      const origin = getRequestOrigin(request)
+      let approval: { id: string; url: string; expiresAt: number } | null = null
+      let auth: Awaited<ReturnType<typeof requireSecretsApiAuth>> | null = null
+      for (const item of body.items) {
+        auth = await requireSecretsApiAuth({ request, environmentRef: item.environment, projectId: item.projectId })
+        const names = item.secrets ?? (await deriveSecrets(auth.environmentId)).map((d) => d.name)
+        approval = await requestReadApproval({
+          auth, environment: { id: auth.environmentId, readApproval: auth.readApproval },
+          names, scope: item.secrets ? 'names' : 'environment', origin, label: body.label,
+        }) ?? approval
+      }
+      if (!approval) return { id: '', url: '', status: 'approved' as const, expiresAt: 0 }
+      // A label alone (every item already covered by an earlier call) still updates the request.
+      if (body.label !== undefined && auth) {
+        await addToPendingRequest({ credential: auth, requesterId: auth.requesterId, items: [], label: body.label })
+      }
+      return { id: approval.id, url: approval.url, status: 'pending' as const, expiresAt: approval.expiresAt }
+    },
+  })
+
+  .route({
+    method: 'GET',
+    path: '/api/v0/approvals/:id',
+    detail: { tags: ['Approvals'], summary: 'Get approval request status' },
+    response: { 200: approvalResponseSchema, 404: errorResponseSchema },
+    async handler({ params, request }) {
+      const apiToken = await getRequestApiToken(request)
+      const session = apiToken ? null : await requireApiSession(request)
+      const row = await getDb().query.approvalRequest.findFirst({ where: { id: params.id } })
+      // Only the credential that asked may poll. Anything else is a 404.
+      const owns = row && (apiToken ? row.apiTokenId === apiToken.tokenId : row.sessionId === session!.sessionId)
+      if (!row || !owns) return json({ error: 'not found' }, { status: 404 })
+      return {
+        id: row.id,
+        url: getApprovalUrl(getRequestOrigin(request), row.id),
+        status: getRequestState(row, Date.now()),
+        expiresAt: row.expiresAt,
+      }
     },
   })
 

@@ -7,7 +7,7 @@
 
 "use client";
 
-import { EyeIcon, EyeOffIcon, TrashIcon, UploadIcon, PlusIcon, KeyIcon, CheckIcon, DownloadIcon, CopyIcon, ArrowDownToLineIcon } from "lucide-react";
+import { EyeIcon, EyeOffIcon, LockIcon, TrashIcon, UploadIcon, PlusIcon, KeyIcon, CheckIcon, DownloadIcon, CopyIcon, ArrowDownToLineIcon } from "lucide-react";
 import { EmptyState } from "sigillo-app/src/components/ui/empty-state";
 import { useState, useCallback } from "react";
 import { z } from "zod";
@@ -42,10 +42,53 @@ import {
   syncMissingSecretsAction,
 } from "../actions.ts";
 import { useLoaderData } from "spiceflow/react";
+import { passkeyErrorMessage, unlockWithPasskey } from "sigillo-app/src/components/passkey";
 
 
 // Secret values use the .text-security-disc CSS class from globals.css
 // instead of inline style objects (eliminates duplication with event-log-table).
+
+// A locked secret needs a passkey approval before its value is sent to the
+// browser (value is null). Its cell is an empty input: typing replaces the
+// secret without ever reading it, the lock button reveals it with a passkey.
+function LockedValueCell({
+  editedValue,
+  onValueChange,
+  onUnlock,
+  isDirty,
+}: {
+  editedValue: string | undefined;
+  onValueChange: (value: string) => void;
+  onUnlock: () => void;
+  isDirty: boolean;
+}) {
+  return (
+    <div className="flex w-full min-w-0 items-center gap-1.5">
+      <Input
+        type="text"
+        inputSize="sm"
+        autoComplete="off"
+        data-1p-ignore
+        data-lpignore="true"
+        placeholder="Needs approval. Type to replace"
+        value={editedValue ?? ""}
+        onChange={(e) => onValueChange(e.target.value)}
+        className={cn(
+          "min-w-0 max-w-full flex-1 mono-sm bg-muted/50",
+          !isDirty && "border-transparent",
+          isDirty && "border-amber-400/50 focus:ring-amber-500",
+        )}
+      />
+      <button
+        onClick={onUnlock}
+        className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
+        title="Reveal with passkey"
+      >
+        <LockIcon className="size-4" />
+      </button>
+    </div>
+  );
+}
 
 function SecretValueCell({
   value,
@@ -152,10 +195,23 @@ export function SecretsTable({
   const dirtySecrets = secrets.filter((s) => {
     const e = edits[s.id];
     if (!e) return false;
+    // A locked value is unknown here: only a typed replacement makes it dirty.
+    if (s.value === null) return !!e.value;
     if (e.name !== undefined && e.name !== s.name) return true;
     if (e.value !== undefined && e.value !== s.value) return true;
     return false;
   });
+  const hasLocked = secrets.some((s) => s.locked);
+
+  // Asks for the passkey and returns the protected values of this environment.
+  const unlock = async () => {
+    try {
+      return await unlockWithPasskey(environmentId);
+    } catch (e) {
+      alert(passkeyErrorMessage(e));
+      return null;
+    }
+  };
 
   // Missing keys that have a value typed in
   const dirtyMissingKeys = missingKeys.filter((name) => missingEdits[name]?.trim());
@@ -168,7 +224,7 @@ export function SecretsTable({
       return {
         originalName: secret.name,
         name: edit.name !== undefined ? edit.name : secret.name,
-        value: edit.value !== undefined ? edit.value : secret.value,
+        value: edit.value ?? secret.value ?? "",
       };
     }),
     ...dirtyMissingKeys.map((name) => ({
@@ -183,15 +239,22 @@ export function SecretsTable({
 
   const totalDirtyCount = pendingEdits.length;
 
-  const currentEnvEntries: Array<[string, string]> = [
+  // `unlocked` holds the values of locked secrets, fetched with a passkey.
+  const getEnvFileText = (unlocked: Map<string, string>) => renderEnvFile([
     ...secrets.map((secret): [string, string] => [
       edits[secret.id]?.name ?? secret.name,
-      edits[secret.id]?.value ?? secret.value,
+      edits[secret.id]?.value ?? secret.value ?? unlocked.get(secret.name) ?? "",
     ]),
     ...dirtyMissingKeys.map((name): [string, string] => [name, missingEdits[name]!]),
     ...dirtyNewSecrets.map((secret): [string, string] => [secret.name, secret.value]),
-  ];
-  const envFileText = renderEnvFile(currentEnvEntries);
+  ]);
+
+  // Export needs every value, so a locked environment asks for the passkey first.
+  const getExportText = async () => {
+    if (!hasLocked) return getEnvFileText(new Map());
+    const unlocked = await unlock();
+    return unlocked ? getEnvFileText(unlocked) : null;
+  };
 
   const handleImportText = useCallback(async (text: string) => {
     const parsed = parseEnv(text);
@@ -222,7 +285,9 @@ export function SecretsTable({
     setNewSecrets((prev) => prev.filter((secret) => secret.id !== id));
   }, []);
 
-  const handleDownloadEnv = useCallback(() => {
+  const handleDownloadEnv = async () => {
+    const envFileText = await getExportText();
+    if (envFileText === null) return;
     const blob = new Blob([envFileText], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -230,15 +295,17 @@ export function SecretsTable({
     link.download = `.env.${environments.find((env) => env.id === environmentId)?.slug ?? "env"}`;
     link.click();
     URL.revokeObjectURL(url);
-  }, [envFileText, environmentId, environments]);
+  };
 
-  const handleCopyEnv = useCallback(async () => {
+  const handleCopyEnv = async () => {
+    const envFileText = await getExportText();
+    if (envFileText === null) return;
     try {
       await navigator.clipboard.writeText(envFileText);
     } catch (error: any) {
       alert(error?.message || "Failed to copy .env contents");
     }
-  }, [envFileText]);
+  };
 
   // Empty state (only show when no secrets AND no missing keys from other envs)
   if (secrets.length === 0 && missingKeys.length === 0 && newSecrets.length === 0) {
@@ -271,20 +338,21 @@ export function SecretsTable({
 
   return (
     <>
-      <Frame className="w-full gap-3">
-        <div className="overflow-x-auto">
-        <Table>
+      <Frame className="w-full">
+        {/* Fixed layout: with auto layout the key column collapsed to two
+            letters on phones. "Last Updated" is dropped below sm to make room. */}
+        <Table className="table-fixed">
           <colgroup>
+            <col className="w-[36%]" />
             <col />
-            <col />
-            <col className="w-32" />
-            <col className="w-16" />
+            <col className="hidden w-32 sm:table-column" />
+            <col className="w-10 sm:w-16" />
           </colgroup>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="whitespace-normal">Key</TableHead>
               <TableHead className="whitespace-normal">Value</TableHead>
-              <TableHead>Last Updated</TableHead>
+              <TableHead className="hidden sm:table-cell">Last Updated</TableHead>
               <TableHead />
             </TableRow>
           </TableHeader>
@@ -293,7 +361,7 @@ export function SecretsTable({
               const isDirty = dirtySecrets.includes(secret);
               const edit = edits[secret.id];
               const isNameDirty = edit?.name !== undefined && edit.name !== secret.name;
-              const isValueDirty = edit?.value !== undefined && edit.value !== secret.value;
+              const isValueDirty = secret.value === null ? !!edit?.value : edit?.value !== undefined && edit.value !== secret.value;
               const isVisible = allVisible || (rowVisible[secret.id] ?? false);
               return (
                 <TableRow key={secret.id} className={isDirty ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}>
@@ -303,6 +371,9 @@ export function SecretsTable({
                       inputSize="sm"
                       value={edits[secret.id]?.name ?? secret.name}
                       onChange={(e) => setEdit(secret.id, "name", e.target.value)}
+                      // A rename writes the value under the new name, so it needs the value.
+                      readOnly={secret.locked}
+                      title={secret.locked ? "Reveal the value to rename this secret" : undefined}
                       className={cn(
                         "w-full min-w-0 border-transparent bg-transparent px-1.5 mono-sm font-medium focus:border-input hover:border-input",
                         isNameDirty && "text-amber-700 dark:text-amber-400 border-amber-400/50 focus:ring-amber-500",
@@ -310,16 +381,27 @@ export function SecretsTable({
                     />
                   </TableCell>
                   <TableCell className="min-w-0 overflow-hidden">
-                    <SecretValueCell
-                      value={secret.value}
-                      editedValue={edits[secret.id]?.value}
-                      onValueChange={(v) => setEdit(secret.id, "value", v)}
-                      visible={isVisible}
-                      onToggle={() => setRowVisible((prev) => ({ ...prev, [secret.id]: !isVisible }))}
-                      isDirty={isValueDirty}
-                    />
+                    {secret.value === null ? (
+                      <LockedValueCell
+                        editedValue={edits[secret.id]?.value}
+                        onValueChange={(v) => setEdit(secret.id, "value", v)}
+                        onUnlock={async () => {
+                          if (await unlock()) setRowVisible((prev) => ({ ...prev, [secret.id]: true }));
+                        }}
+                        isDirty={isValueDirty}
+                      />
+                    ) : (
+                      <SecretValueCell
+                        value={secret.value}
+                        editedValue={edits[secret.id]?.value}
+                        onValueChange={(v) => setEdit(secret.id, "value", v)}
+                        visible={isVisible}
+                        onToggle={() => setRowVisible((prev) => ({ ...prev, [secret.id]: !isVisible }))}
+                        isDirty={isValueDirty}
+                      />
+                    )}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap">
+                  <TableCell className="hidden whitespace-nowrap sm:table-cell">
                     <TimeAgo
                       ts={secret.updatedAt}
                       className="text-muted-foreground text-xs tabular-nums"
@@ -363,7 +445,7 @@ export function SecretsTable({
                        )}
                      />
                    </TableCell>
-                  <TableCell className="whitespace-nowrap">
+                  <TableCell className="hidden whitespace-nowrap sm:table-cell">
                     <span className="text-destructive text-xs">missing</span>
                   </TableCell>
                   <TableCell />
@@ -404,7 +486,7 @@ export function SecretsTable({
                       className="w-full min-w-0 border-transparent bg-transparent px-1.5 mono-sm focus:border-input hover:border-input"
                     />
                   </TableCell>
-                  <TableCell className="whitespace-nowrap">
+                  <TableCell className="hidden whitespace-nowrap sm:table-cell">
                     <span className="text-xs text-muted-foreground">new</span>
                   </TableCell>
                   <TableCell className="p-0">
@@ -421,10 +503,9 @@ export function SecretsTable({
             })}
           </TableBody>
         </Table>
-        </div>
 
         {/* Bottom bar: add secret + import */}
-        <div className="flex flex-wrap items-center gap-2 px-1 pb-2">
+        <div className="flex flex-wrap items-center gap-2 border-t border-border p-2">
           <Button onClick={addNewSecret} size="xs">
             <PlusIcon className="size-3" />
             Add Secret
@@ -449,7 +530,7 @@ export function SecretsTable({
             Import .env
           </Button>
           <Button
-            onClick={handleDownloadEnv}
+            onClick={() => void handleDownloadEnv()}
             size="xs"
             variant="ghost"
           >
@@ -772,18 +853,24 @@ function SyncMissingDialog({
             setSyncing(true);
             setError(null);
             try {
-              const result = await syncMissingSecretsAction({
+              const sync = () => syncMissingSecretsAction({
                 sourceEnvironmentId,
                 targetEnvironmentId: currentEnvironmentId,
                 names: missingKeys,
               });
+              let result = await sync();
+              // Copying protected secrets out of the source is a read: ask for the passkey, then retry.
+              if (result.needsUnlock) {
+                await unlockWithPasskey(sourceEnvironmentId);
+                result = await sync();
+              }
               if (result.count === 0) {
                 setError("That environment doesn't have any of the missing secrets.");
               } else {
                 handleOpenChange(false);
               }
             } catch (e: any) {
-              setError(e?.message || "Failed to sync secrets");
+              setError(passkeyErrorMessage(e));
             } finally {
               setSyncing(false);
             }

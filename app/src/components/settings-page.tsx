@@ -1,5 +1,5 @@
 // Settings page for the current project and its org.
-// Contains project rename, auto-join domain toggle, and a "Danger Zone"
+// Contains project rename, approvals, passkeys, auto-join domain toggle, and a "Danger Zone"
 // with project and org deletion. Each confirm dialog lists what will be
 // deleted so the user knows exactly what they are losing.
 
@@ -23,6 +23,7 @@ import {
 } from 'sigillo-app/src/components/ui/dialog'
 import { deleteOrgAction, deleteProjectAction, renameProjectAction, updateAutoJoinDomainAction } from '../actions.ts'
 import { COMMON_EMAIL_DOMAINS, getEmailDomain } from '../lib/utils.ts'
+import { ApprovalsSection, PasskeysSection } from 'sigillo-app/src/components/passkey'
 
 const projectNameSchema = z.object({ name: z.string().trim().min(1, 'Name is required') })
 const projectNameFields = projectNameSchema.keyof().enum
@@ -81,7 +82,7 @@ function DeleteProjectRow() {
   const [open, setOpen] = useState(false)
 
   return (
-    <div className="border-t border-destructive/40 px-5 py-4 bg-destructive/5 flex items-center justify-between gap-4">
+    <div className="border-t border-destructive/40 px-5 py-4 bg-destructive/5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
       <div>
         <p className="text-sm font-medium">Delete project</p>
         <p className="text-xs text-muted-foreground">
@@ -191,7 +192,7 @@ function AutoJoinSection() {
           )}
         </p>
       </div>
-      <div className="border-t border-border px-5 py-4 bg-muted/30 rounded-b-lg flex items-center justify-between">
+      <div className="border-t border-border px-5 py-4 bg-muted/30 rounded-b-lg flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm font-medium">
             {isEnabled ? 'Auto-join is enabled' : 'Auto-join is disabled'}
@@ -241,6 +242,10 @@ export function SettingsPage() {
 
       <ProjectNameSection />
 
+      <ApprovalsSection />
+
+      <PasskeysSection />
+
       <AutoJoinSection />
 
       <div className="rounded-lg border border-destructive/40">
@@ -254,7 +259,7 @@ export function SettingsPage() {
           </p>
         </div>
         <DeleteProjectRow />
-        <div className="border-t border-destructive/40 px-5 py-4 bg-destructive/5 rounded-b-lg flex items-center justify-between gap-4">
+        <div className="border-t border-destructive/40 px-5 py-4 bg-destructive/5 rounded-b-lg flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div>
             <p className="text-sm font-medium">Delete organization</p>
             <p className="text-xs text-muted-foreground">

@@ -4,7 +4,7 @@
 
 "use client";
 
-import { ClockIcon, EyeIcon, EyeOffIcon } from "lucide-react";
+import { ClockIcon, EyeIcon, EyeOffIcon, LockIcon } from "lucide-react";
 import { cn } from "sigillo-app/src/lib/utils";
 import { AdminOnlyEnvironment, EmptyState } from "sigillo-app/src/components/ui/empty-state";
 import { useState } from "react";
@@ -28,6 +28,7 @@ import {
   TableRow,
 } from "sigillo-app/src/components/ui/table";
 import { TimeAgo } from "sigillo-app/src/components/ui/time-ago";
+import { passkeyErrorMessage, unlockWithPasskey } from "sigillo-app/src/components/passkey";
 
 // Secret values use the .text-security-disc CSS class from globals.css.
 
@@ -120,7 +121,27 @@ export function EventLogTable() {
                       )}
                     </TableCell>
                     <TableCell>
-                      {hasValue ? (
+                      {evt.locked && evt.operation === "set" ? (
+                        // Old values of a protected secret need the passkey too.
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm mono-sm truncate min-w-0 flex-1 text-security-disc">••••••••••••</span>
+                          <button
+                            onClick={async () => {
+                              if (!selectedEnvId) return;
+                              try {
+                                await unlockWithPasskey(selectedEnvId);
+                                setVisibleValues((prev) => ({ ...prev, [evt.id]: true }));
+                              } catch (e) {
+                                alert(passkeyErrorMessage(e));
+                              }
+                            }}
+                            className="text-muted-foreground hover:text-foreground cursor-pointer shrink-0"
+                            title="Reveal with passkey"
+                          >
+                            <LockIcon className="size-3.5" />
+                          </button>
+                        </div>
+                      ) : hasValue ? (
                         <div className="flex items-center gap-1.5">
                           <span
                             className={cn(

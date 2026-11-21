@@ -38,6 +38,7 @@ import {
   getUserEnvironmentAccess,
   getEnvironmentAccessError,
 } from './db.ts'
+import { getLockedNames } from './approvals.ts'
 
 const idSchema = z.string().min(1)
 const idListSchema = z.array(idSchema)
@@ -541,7 +542,15 @@ export async function syncMissingSecretsAction(input: z.input<typeof syncMissing
   // Legacy names that fail validation are not copied to new environments.
   const toSync = sourceSecrets.filter((s) => stillMissing.has(s.name) && !getSecretNameError(s.name))
 
-  if (toSync.length === 0) return { count: 0 }
+  if (toSync.length === 0) return { count: 0, needsUnlock: false }
+
+  // Copying a protected secret out of its environment is a read.
+  const locked = await getLockedNames({
+    credential: { sessionId: session.sessionId, apiTokenId: null },
+    environment: source,
+    names: toSync.map((s) => s.name),
+  })
+  if (locked.length > 0) return { count: 0, needsUnlock: true }
 
   const db = getDb()
   const queries: BatchItem<'sqlite'>[] = toSync.map((s) =>
@@ -556,9 +565,9 @@ export async function syncMissingSecretsAction(input: z.input<typeof syncMissing
   )
 
   const [firstQuery, ...restQueries] = queries
-  if (!firstQuery) return { count: 0 }
+  if (!firstQuery) return { count: 0, needsUnlock: false }
   await db.batch([firstQuery, ...restQueries])
-  return { count: toSync.length }
+  return { count: toSync.length, needsUnlock: false }
 }
 
 const createOrgInput = z.object({
