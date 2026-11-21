@@ -57,8 +57,6 @@ export function HeroSection() {
         animSpeed={3}
         gamma={0.8}
         enableMask={false}
-        fluidStrength={0.2}
-        fluidCurl={80}
       />
 
       {/* Soft background scrim behind the title/CTAs so text stays readable over glyphs */}
