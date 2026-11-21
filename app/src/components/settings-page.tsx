@@ -1,14 +1,17 @@
-// Settings page for org-level configuration.
-// Contains auto-join domain toggle and "Danger Zone" org deletion.
-// The confirm dialog shows the list of projects that will be deleted
-// so the user knows exactly what they are losing.
+// Settings page for the current project and its org.
+// Contains project rename, auto-join domain toggle, and a "Danger Zone"
+// with project and org deletion. Each confirm dialog lists what will be
+// deleted so the user knows exactly what they are losing.
 
 'use client'
 
 import { useState, useTransition } from 'react'
-import { AlertTriangleIcon, UsersIcon } from 'lucide-react'
-import { useLoaderData } from 'spiceflow/react'
+import { z } from 'zod'
+import { parseFormData } from 'spiceflow'
+import { AlertTriangleIcon, FolderIcon, UsersIcon } from 'lucide-react'
+import { ErrorBoundary, useLoaderData } from 'spiceflow/react'
 import { Button } from 'sigillo-app/src/components/ui/button'
+import { Input } from 'sigillo-app/src/components/ui/input'
 import {
   Dialog,
   DialogPopup,
@@ -18,8 +21,137 @@ import {
   DialogDescription,
   DialogClose,
 } from 'sigillo-app/src/components/ui/dialog'
-import { deleteOrgAction, updateAutoJoinDomainAction } from '../actions.ts'
+import { deleteOrgAction, deleteProjectAction, renameProjectAction, updateAutoJoinDomainAction } from '../actions.ts'
 import { COMMON_EMAIL_DOMAINS, getEmailDomain } from '../lib/utils.ts'
+
+const projectNameSchema = z.object({ name: z.string().trim().min(1, 'Name is required') })
+const projectNameFields = projectNameSchema.keyof().enum
+
+function ProjectNameSection() {
+  const { projectId, projectName } = useLoaderData('/dash/projects/:projectId/*')
+
+  return (
+    <div className="rounded-lg border border-border">
+      <div className="p-5">
+        <h2 className="text-lg font-semibold flex items-center gap-2">
+          <FolderIcon className="size-5" />
+          Project name
+        </h2>
+        <p className="text-muted-foreground text-sm mt-2">
+          The name shown in the sidebar and dashboard. The CLI uses the project ID, so renaming does not break existing setups.
+        </p>
+      </div>
+      <ErrorBoundary
+        below
+        fallback={
+          <div className="px-5 pb-4 flex items-center gap-3">
+            <ErrorBoundary.ErrorMessage className="text-sm text-destructive" />
+            <ErrorBoundary.ResetButton className="text-sm text-destructive underline cursor-pointer shrink-0">
+              Dismiss
+            </ErrorBoundary.ResetButton>
+          </div>
+        }
+      >
+        <form
+          className="border-t border-border px-5 py-4 bg-muted/30 rounded-b-lg flex items-center gap-3"
+          action={async (formData: FormData) => {
+            const { name } = parseFormData(projectNameSchema, formData)
+            if (name === projectName) return
+            await renameProjectAction({ id: projectId, name })
+          }}
+        >
+          <Input
+            // Remount after a rename so the field shows the saved name
+            key={projectName}
+            aria-label="Project name"
+            name={projectNameFields.name}
+            defaultValue={projectName}
+            required
+            className="flex-1"
+          />
+          <Button type="submit">Save</Button>
+        </form>
+      </ErrorBoundary>
+    </div>
+  )
+}
+
+function DeleteProjectRow() {
+  const { projectId, projectName, environments } = useLoaderData('/dash/projects/:projectId/*')
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className="border-t border-destructive/40 px-5 py-4 bg-destructive/5 flex items-center justify-between gap-4">
+      <div>
+        <p className="text-sm font-medium">Delete project</p>
+        <p className="text-xs text-muted-foreground">
+          Removes <span className="font-medium text-foreground">{projectName}</span>, its environments, secrets, and tokens.
+        </p>
+      </div>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <Button variant="destructive" onClick={() => setOpen(true)}>
+          Delete project
+        </Button>
+        <DialogPopup>
+          <DialogHeader>
+            <DialogTitle>Delete {projectName}?</DialogTitle>
+            <DialogDescription>
+              This will permanently delete the project, all its secrets and event history,
+              and every API token scoped to it. Apps using those tokens stop working immediately.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="px-6 pb-4">
+            {environments.length > 0 ? (
+              <div>
+                <p className="text-sm font-medium mb-2">
+                  The following {environments.length === 1 ? 'environment' : `${environments.length} environments`} will be deleted:
+                </p>
+                <ul className="text-sm text-muted-foreground space-y-1">
+                  {environments.map((env) => (
+                    <li key={env.id} className="flex items-center gap-2">
+                      <span className="size-1.5 rounded-full bg-destructive shrink-0" />
+                      {env.name}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                This project has no environments.
+              </p>
+            )}
+          </div>
+          <ErrorBoundary
+            above
+            fallback={
+              <div className="px-6 pb-4 flex flex-col gap-2">
+                <ErrorBoundary.ErrorMessage className="text-sm text-destructive" />
+                <ErrorBoundary.ResetButton className="text-sm text-destructive underline cursor-pointer self-start">
+                  Dismiss
+                </ErrorBoundary.ResetButton>
+              </div>
+            }
+          >
+            <form
+              action={async () => {
+                await deleteProjectAction({ id: projectId })
+              }}
+            >
+              <DialogFooter>
+                <DialogClose render={<Button variant="outline" />}>
+                  Cancel
+                </DialogClose>
+                <Button type="submit" variant="destructive">
+                  Delete project
+                </Button>
+              </DialogFooter>
+            </form>
+          </ErrorBoundary>
+        </DialogPopup>
+      </Dialog>
+    </div>
+  )
+}
 
 function AutoJoinSection() {
   const { orgId, autoJoinDomain } = useLoaderData('/dash/projects/:projectId/settings')
@@ -103,9 +235,11 @@ export function SettingsPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
         <p className="text-muted-foreground text-sm mt-1">
-          Manage your organization settings.
+          Manage this project and its organization.
         </p>
       </div>
+
+      <ProjectNameSection />
 
       <AutoJoinSection />
 
@@ -116,15 +250,15 @@ export function SettingsPage() {
             Danger Zone
           </h2>
           <p className="text-muted-foreground text-sm mt-2">
-            Deleting this organization is permanent. All projects, environments,
-            secrets, tokens, and member access will be removed immediately.
+            Deletions are permanent and take effect immediately. They cannot be undone.
           </p>
         </div>
-        <div className="border-t border-destructive/40 px-5 py-4 bg-destructive/5 rounded-b-lg flex items-center justify-between">
+        <DeleteProjectRow />
+        <div className="border-t border-destructive/40 px-5 py-4 bg-destructive/5 rounded-b-lg flex items-center justify-between gap-4">
           <div>
             <p className="text-sm font-medium">Delete organization</p>
             <p className="text-xs text-muted-foreground">
-              This action cannot be undone.
+              Removes <span className="font-medium text-foreground">{orgName}</span>, all its projects, and member access.
             </p>
           </div>
           <Dialog open={open} onOpenChange={setOpen}>

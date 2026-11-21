@@ -150,6 +150,31 @@ export async function renameProjectAction(input: z.input<typeof renameProjectInp
   return { id, name }
 }
 
+const deleteProjectInput = z.object({ id: idSchema })
+
+// Same rules as DELETE /api/v0/projects/:id.
+export async function deleteProjectAction(input: z.input<typeof deleteProjectInput>) {
+  const { id } = parseInput(deleteProjectInput, input)
+  const session = await requireSession()
+  const orgId = await getOrgIdForProject(id)
+  if (!orgId) throw new Error('Project not found')
+  const db = getDb()
+  const [access, adminOnlyEnv] = await Promise.all([
+    getMemberAccess({ userId: session.userId, orgId }),
+    db.query.environment.findFirst({ where: { projectId: id, accessRole: 'admin' }, columns: { id: true } }),
+  ])
+  if (!access || (access.accessibleProjectIds !== null && !access.accessibleProjectIds.includes(id))) {
+    throw new Error('You do not have access to this project')
+  }
+  // Deleting a project deletes its environments, so an admin-only one needs an admin.
+  if (adminOnlyEnv && access.role !== 'admin') {
+    throw new Error('Only admins can delete a project with admin-only environments')
+  }
+  // Cascade deletes handle environments, secretEvents, apiTokens, and memberAccess rows.
+  await db.delete(schema.project).where(orm.eq(schema.project.id, id))
+  throw redirect(router.href('/dash/orgs/:orgId', { orgId }))
+}
+
 // All secret mutations append to the secretEvent log. Never update or delete events.
 
 const deleteSecretInput = z.object({ name: z.string().min(1), environmentIds: idListSchema })
