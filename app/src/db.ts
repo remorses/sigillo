@@ -857,10 +857,19 @@ export async function getRequestApiToken(request: Request): Promise<{
 
 // ── Encryption (AES-256-GCM) ────────────────────────────────────────
 
+// A malformed key used to surface as a raw atob() error on the first secret write.
+function decodeEncryptionKey(value: string) {
+  try {
+    return Uint8Array.from(atob(value), (c) => c.charCodeAt(0))
+  } catch (cause) {
+    throw new Error('ENCRYPTION_KEY is not valid base64. Set it to 32 random bytes, base64-encoded: openssl rand -base64 32', { cause })
+  }
+}
+
 async function getEncryptionKey(): Promise<CryptoKey> {
   const configuredKey = process.env.ENCRYPTION_KEY?.trim()
   if (configuredKey) {
-    const raw = Uint8Array.from(atob(configuredKey), (c) => c.charCodeAt(0))
+    const raw = decodeEncryptionKey(configuredKey)
     return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt'])
   }
 
