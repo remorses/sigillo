@@ -1,5 +1,9 @@
 // Approvals tab: pending approval requests and live grants for this project.
 // What is protected is configured in Settings, this page only links there.
+//
+// A pending row approves everything it shows with one passkey prompt. The
+// "Review details" link opens /approve/:id for the finer choices: uncheck
+// single secrets, deny, or keep an API token approved until revoked.
 
 'use client'
 
@@ -11,12 +15,11 @@ import { Badge } from 'sigillo-app/src/components/ui/badge'
 import { Button } from 'sigillo-app/src/components/ui/button'
 import { EmptyState } from 'sigillo-app/src/components/ui/empty-state'
 import { TimeAgo } from 'sigillo-app/src/components/ui/time-ago'
-import { revokeRequestAction } from '../approval-actions.ts'
-
-type RequestItem = { environmentId: string; environmentName: string; projectName: string; secretName: string }
+import { confirmWithPasskey, enrollPasskey, passkeyErrorMessage } from 'sigillo-app/src/components/passkey'
+import { approveRequestAction, revokeRequestAction } from '../approval-actions.ts'
 
 // "Prod: all secrets", "Preview: NPM_TOKEN, STRIPE_KEY". One line per environment.
-export function groupRequestItems<T extends RequestItem>(items: T[]) {
+export function groupRequestItems<T extends { environmentId: string; environmentName: string; projectName: string }>(items: T[]) {
   const groups = new Map<string, { environmentName: string; projectName: string; items: T[] }>()
   for (const item of items) {
     const group = groups.get(item.environmentId) ?? { environmentName: item.environmentName, projectName: item.projectName, items: [] }
@@ -39,7 +42,7 @@ function useApprovals() {
 
 export function ApprovalsPage() {
   const { projectId } = useLoaderData('/dash/projects/:projectId/*')
-  const { requests, hasProtection } = useApprovals()
+  const { requests, hasProtection, hasPasskey } = useApprovals()
   const settingsHref = router.href('/dash/projects/:projectId/settings', { projectId })
 
   return (
@@ -68,17 +71,38 @@ export function ApprovalsPage() {
         </EmptyState>
       ) : (
         <div className="rounded-lg border border-border bg-background overflow-hidden">
-          {requests.map((request) => <RequestRow key={request.id} request={request} />)}
+          {requests.map((request) => (
+            <RequestRow key={request.id} request={request} projectId={projectId} hasPasskey={hasPasskey} />
+          ))}
         </div>
       )}
     </>
   )
 }
 
-function RequestRow({ request }: { request: ReturnType<typeof useApprovals>['requests'][number] }) {
+function RequestRow({ request, projectId, hasPasskey }: {
+  request: ReturnType<typeof useApprovals>['requests'][number]
+  projectId: string
+  hasPasskey: boolean
+}) {
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const isPendingRequest = request.status === 'pending'
+  const reviewHref = router.href('/approve/:id', { id: request.id })
+  const itemIds = request.items.map((item) => item.id)
+  // Items the user cannot approve are only handled on the review page.
+  const canApproveAll = request.items.every((item) => item.allowed)
+
+  function run(action: () => Promise<unknown>) {
+    setError(null)
+    startTransition(async () => {
+      try {
+        await action()
+      } catch (e) {
+        setError(passkeyErrorMessage(e))
+      }
+    })
+  }
 
   return (
     <div className="flex flex-col gap-3 border-b border-border px-4 py-3.5 last:border-b-0 sm:flex-row sm:items-center sm:gap-4">
@@ -100,6 +124,8 @@ function RequestRow({ request }: { request: ReturnType<typeof useApprovals>['req
         <div className="mt-1.5 text-sm text-muted-foreground">
           {groupRequestItems(request.items).map((group) => (
             <p key={group.environmentId} className="break-words">
+              {/* One request can span projects: name the ones that are not this page's. */}
+              {group.items[0]?.projectId !== projectId && `${group.projectName} / `}
               {group.environmentName}:{' '}
               {group.items.some((item) => item.secretName === '')
                 ? 'all secrets'
@@ -116,30 +142,35 @@ function RequestRow({ request }: { request: ReturnType<typeof useApprovals>['req
             ? <>Until revoked{request.approvedBy && <> · approved by {request.approvedBy}</>}</>
             : <>Last used <TimeAgo ts={request.lastUsedAt ?? request.createdAt} /></>}
       </p>
-      {isPendingRequest ? (
-        <Button
-          className="w-full sm:w-auto"
-          render={<Link href={router.href('/approve/:id', { id: request.id })} />}
-        >
-          Review
-        </Button>
-      ) : (
+      {!isPendingRequest ? (
         <Button
           variant="outline"
           className="w-full sm:w-auto"
           loading={isPending}
-          onClick={() => {
-            setError(null)
-            startTransition(async () => {
-              try {
-                await revokeRequestAction({ requestId: request.id })
-              } catch (e) {
-                setError(e instanceof Error ? e.message : 'Failed to revoke')
-              }
-            })
-          }}
+          onClick={() => run(() => revokeRequestAction({ requestId: request.id }))}
         >
           Revoke
+        </Button>
+      ) : canApproveAll ? (
+        <div className="flex flex-col gap-2 sm:flex-row-reverse sm:items-center sm:gap-3">
+          <Button
+            className="w-full sm:w-auto"
+            loading={isPending}
+            onClick={() => run(async () => {
+              if (!hasPasskey) await enrollPasskey({ hasPasskey: false })
+              const assertion = await confirmWithPasskey({ kind: 'approve', requestId: request.id, itemIds, keep: false })
+              await approveRequestAction({ requestId: request.id, itemIds, seenItemIds: itemIds, keep: false, assertion })
+            })}
+          >
+            {hasPasskey ? 'Approve' : 'Add passkey and approve'}
+          </Button>
+          <Link href={reviewHref} className="text-center text-xs text-muted-foreground hover:text-foreground">
+            Review details
+          </Link>
+        </div>
+      ) : (
+        <Button className="w-full sm:w-auto" render={<Link href={reviewHref} />}>
+          Review
         </Button>
       )}
     </div>

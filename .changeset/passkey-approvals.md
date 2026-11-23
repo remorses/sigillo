@@ -11,10 +11,12 @@
 $ sigillo run -c prod -- pnpm deploy
 error: approval required
 https://sigillo.dev/approve/01KX8Q2M0V7T9C4J6N3R5W1Z8B
-Ask the user to open this URL and approve with their passkey, then run the command again.
+Tell the user to open this URL and approve with their passkey. Then wait for them in the background with:
+  sigillo access wait 01KX8Q2M0V7T9C4J6N3R5W1Z8B
+It exits 0 when they approve. Then run your command again.
 ```
 
-- New **Approvals** tab lists pending requests and active approvals, with **Review** and **Revoke**.
+- New **Approvals** tab lists pending requests and active approvals. **Approve** grants a request in place with one passkey prompt, **Review details** opens the full page, and **Revoke** ends an approval.
 - An approval belongs to the session or token that asked and ends 1 hour after its last use. API tokens can be approved until revoked.
 - The dashboard asks too: protected values show a lock, and revealing, copying or downloading them asks for your passkey and unlocks that environment for 1 minute.
 - New REST routes `POST /api/v0/approvals` and `GET /api/v0/approvals/:id`.

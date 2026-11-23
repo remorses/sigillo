@@ -658,18 +658,26 @@ export const app = new Spiceflow({ tracer })
   .loader('/dash/projects/:projectId/approvals', async ({ params, request }) => {
     const db = getDb()
     const session = await requirePageSession(request)
-    const [requests, protectedEnvironment] = await Promise.all([
+    const [requests, protectedEnvironment, passkeys] = await Promise.all([
       listProjectRequests({ projectId: params.projectId, userId: session.userId }),
       db.query.environment.findFirst({ where: { projectId: params.projectId, readApproval: { ne: 'off' } } }),
+      listPasskeys({ request, userId: session.userId }),
     ])
+    // Only requests this user can act on, same rule as /approve/:id. The row
+    // approves inline when every item is allowed.
+    const visible = (await Promise.all(requests.map(async (approvalRequest) => {
+      const approvable = await getApprovableItemIds(approvalRequest, session.userId)
+      return getRequestRole(approvalRequest, session, approvable) ? { approvalRequest, approvable } : null
+    }))).filter((entry) => entry !== null)
     return {
       hasProtection: !!protectedEnvironment,
-      requests: requests.map((approvalRequest) => ({
+      hasPasskey: passkeys.length > 0,
+      requests: visible.map(({ approvalRequest, approvable }) => ({
         id: approvalRequest.id,
         status: approvalRequest.status === 'pending' ? 'pending' as const : 'active' as const,
         requester: describeRequester(approvalRequest),
         label: approvalRequest.label,
-        items: describeItems(approvalRequest.items),
+        items: describeItems(approvalRequest.items).map((item) => ({ ...item, allowed: approvable.has(item.id) })),
         createdAt: approvalRequest.createdAt,
         lastUsedAt: approvalRequest.lastUsedAt,
         expiry: approvalRequest.expiry,

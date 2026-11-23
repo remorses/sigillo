@@ -340,9 +340,10 @@ describe('read approvals', () => {
     const approvalsTab = async (token: string) => {
       const res = await api(token)('/dash/projects/:projectId/approvals', { params: { projectId } })
       if (res instanceof Error) throw res
-      return res.loaderData.requests.map((r: { status: string; label: string }) => `${r.status}:${r.label}`)
+      return res.loaderData.requests.map((r: { status: string; label: string; items: { allowed: boolean }[] }) =>
+        `${r.status}:${r.label}:${r.items.every((item) => item.allowed) ? 'approvable' : 'needs review'}`)
     }
-    expect(await approvalsTab(user.token)).toEqual(['pending:Deploy website'])
+    expect(await approvalsTab(user.token)).toEqual(['pending:Deploy website:approvable'])
 
     // Another admin of the same org cannot see or approve someone else's session request.
     const other = await createUser()
