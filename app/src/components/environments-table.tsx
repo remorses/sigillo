@@ -363,7 +363,7 @@ export function EnvironmentsTable() {
         <TableBody>
           {table.getRowModel().rows.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={columns.length} className="text-center text-muted-foreground py-8">
+              <TableCell colSpan={columns.length} className="text-center text-balance text-muted-foreground py-8">
                 No environments yet. Add one below.
               </TableCell>
             </TableRow>

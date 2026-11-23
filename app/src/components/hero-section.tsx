@@ -70,7 +70,7 @@ export function HeroSection() {
       />
 
       <div
-        className='relative z-[2] flex flex-col items-center justify-center text-center max-w-[820px] w-full px-5 pt-16 sm:pt-24 pb-20 lg:pb-[160px] gap-6'
+        className='relative z-[2] flex flex-col items-center justify-center text-center text-balance max-w-[820px] w-full px-5 pt-16 sm:pt-24 pb-20 lg:pb-[160px] gap-6'
         style={{
           opacity: fontsReady ? 1 : 0,
           transition: 'opacity 0.3s cubic-bezier(0.23, 1, 0.32, 1)',

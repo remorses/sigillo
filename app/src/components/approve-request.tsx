@@ -52,7 +52,7 @@ export function ApproveRequest({ request, hasPasskey }: { request: RequestView; 
     const closed = CLOSED_TEXT[request.state]
     return (
       <div className="flex min-h-[60vh] items-center justify-center px-4">
-        <div className="max-w-sm text-center">
+        <div className="max-w-sm text-center text-balance">
           <h1 className="mb-2 text-2xl font-bold">{closed.title}</h1>
           <p className="text-muted-foreground">{closed.text}</p>
         </div>

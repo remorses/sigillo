@@ -47,7 +47,7 @@ export function DeviceFlow({ initialCode = '' }: { initialCode?: string }) {
   if (step.kind === 'done') {
     return (
       <div className="flex justify-center items-center min-h-[60vh]">
-        <div className="text-center max-w-sm">
+        <div className="text-center text-balance max-w-sm">
           <h1 className="text-2xl font-bold mb-2">
             {step.approved ? 'Device Approved' : 'Device Denied'}
           </h1>
@@ -64,7 +64,7 @@ export function DeviceFlow({ initialCode = '' }: { initialCode?: string }) {
   if (step.kind === 'confirm') {
     return (
       <div className="flex justify-center items-center min-h-[60vh]">
-        <div className="text-center max-w-sm flex flex-col gap-4">
+        <div className="text-center text-balance max-w-sm flex flex-col gap-4">
           <h1 className="text-2xl font-bold">Approve this login?</h1>
           <p className="text-3xl mono-sm tracking-[0.25em]">{step.userCode.replace(/^(.{4})(.{4})$/, '$1-$2')}</p>
           <p className="text-sm text-muted-foreground">
@@ -87,7 +87,7 @@ export function DeviceFlow({ initialCode = '' }: { initialCode?: string }) {
 
   return (
     <div className="flex justify-center items-center min-h-[60vh]">
-      <div className="text-center max-w-sm">
+      <div className="text-center text-balance max-w-sm">
         <h1 className="text-2xl font-bold mb-2">Device Login</h1>
         <p className="text-muted-foreground mb-6">Enter the code shown on your CLI or agent:</p>
         {decisionError && <p className="text-red-500 text-sm mb-4">{decisionError}</p>}

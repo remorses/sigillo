@@ -711,7 +711,7 @@ export const app = new Spiceflow({ tracer })
     if (!approvalRequest || !getRequestRole(approvalRequest, session, approvable)) {
       return (
         <ContentFrame className="flex grow justify-center items-center">
-          <div className="text-center max-w-sm px-4">
+          <div className="text-center text-balance max-w-sm px-4">
             <h1 className="text-2xl font-bold tracking-tight mb-2">Request not found</h1>
             <p className="text-muted-foreground">
               This approval link is invalid, or it was created by another account. Sign in with the account that runs the CLI.
@@ -793,7 +793,7 @@ export const app = new Spiceflow({ tracer })
     const { LoginButton } = await import('sigillo-app/src/components/login-button')
     return (
       <ContentFrame className="flex grow justify-center items-center">
-        <div className="text-center max-w-sm">
+        <div className="text-center text-balance max-w-sm">
           <SigilloLogo className="h-[40px] w-auto mx-auto mb-2" />
           <p className="text-muted-foreground mb-6">Sign in to manage your secrets</p>
           <LoginButton callbackURL={redirectTo} />
@@ -812,7 +812,7 @@ export const app = new Spiceflow({ tracer })
     if (!invite || invite.expiresAt < Date.now()) {
       return (
         <ContentFrame className="flex grow justify-center items-center">
-          <div className="text-center max-w-sm">
+          <div className="text-center text-balance max-w-sm">
             <h1 className="text-2xl font-bold tracking-tight mb-2">Invalid Invitation</h1>
             <p className="text-muted-foreground">This invitation link is invalid or has expired.</p>
           </div>
@@ -832,7 +832,7 @@ export const app = new Spiceflow({ tracer })
     const { AcceptInviteButton } = await import('sigillo-app/src/components/accept-invite-button')
     return (
       <ContentFrame className="flex grow justify-center items-center">
-        <div className="text-center max-w-sm space-y-4">
+        <div className="text-center text-balance max-w-sm space-y-4">
           <h1 className="text-2xl font-bold tracking-tight">Join {invite.org!.name}</h1>
           <p className="text-muted-foreground text-sm">
             <span className="font-medium text-foreground">{invite.creator!.name}</span> invited you to join this organization.
