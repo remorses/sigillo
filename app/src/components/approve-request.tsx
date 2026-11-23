@@ -153,10 +153,6 @@ export function ApproveRequest({ request, hasPasskey }: { request: RequestView; 
         <p className="text-xs text-muted-foreground">Access ends 1 hour after the last use. You can revoke it in the Approvals tab.</p>
       )}
 
-      <p className="text-sm text-muted-foreground">
-        Approve only if <strong className="text-foreground">you</strong> or your agent started this. If someone sent you this link, deny it.
-      </p>
-
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
