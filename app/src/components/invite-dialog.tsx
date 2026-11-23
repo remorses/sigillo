@@ -8,6 +8,7 @@
 import { useState } from "react"
 import { router, useLoaderData } from "spiceflow/react"
 import { createInviteAction } from "../actions.ts"
+import { passkeyErrorMessage, withAccessPasskey } from "sigillo-app/src/components/passkey"
 import { Button } from "sigillo-app/src/components/ui/button"
 import {
   Dialog, DialogPopup, DialogHeader, DialogTitle,
@@ -52,10 +53,15 @@ function InviteDialog({ open, onOpenChange, orgId }: {
       const projectIds = scopeProjects
         ? orgProjects.filter((p) => selectedProjects[p.id]).map((p) => p.id)
         : undefined
-      const result = await createInviteAction({ orgId, projectIds })
+      const result = await withAccessPasskey({
+        orgId,
+        action: 'create-invite',
+        payload: JSON.stringify({ projectIds: projectIds ?? null }),
+        run: (assertion) => createInviteAction({ orgId, projectIds, assertion }),
+      })
       setInviteUrl(`${window.location.origin}${router.href('/invite/:id', { id: result.id })}`)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to generate invite link')
+      setError(passkeyErrorMessage(e))
     } finally {
       setLoading(false)
     }

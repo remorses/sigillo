@@ -12,11 +12,20 @@ import { runAction } from 'spiceflow/testing'
 import * as orm from 'drizzle-orm'
 import { schema } from 'db'
 import { app } from './app.js'
-import { getAuth, getDb, generateApiToken } from './db.js'
-import { syncMissingSecretsAction } from './actions.js'
+import { getAuth, getDb, getSession, generateApiToken } from './db.js'
+import {
+  createInviteAction,
+  removeOrgMemberAction,
+  syncMissingSecretsAction,
+  updateEnvironmentAccessRoleAction,
+  updateMemberAccessAction,
+  updateOrgMemberRoleAction,
+  updateAutoJoinDomainAction,
+} from './actions.js'
 import {
   addSecretApprovalAction,
   approveRequestAction,
+  bootstrapOrgPasskeyAction,
   finishPasskeyRegistrationAction,
   removePasskeyAction,
   removeSecretApprovalAction,
@@ -24,9 +33,10 @@ import {
   setReadApprovalAction,
   startPasskeyAssertionAction,
   startPasskeyRegistrationAction,
+  trustOrgPasskeyAction,
   unlockEnvironmentAction,
 } from './approval-actions.js'
-import type { PasskeyIntent } from './passkey.js'
+import { listOrgPasskeys, type PasskeyIntent } from './passkey.js'
 
 const ORIGIN = 'http://e.ly'
 const RP_ID = 'e.ly'
@@ -191,11 +201,41 @@ async function confirm(token: string, authenticator: Authenticator, intent: Pass
   return authenticator.assert(options)
 }
 
-async function enroll(token: string) {
+type Key = { authenticator: Authenticator; passkeyId: string }
+
+async function enroll(token: string, name = 'Test key'): Promise<Key> {
   const authenticator = await createAuthenticator()
   const { options } = await act(token, () => startPasskeyRegistrationAction({}))
-  const passkey = await act(token, async () => finishPasskeyRegistrationAction({ response: await authenticator.register(options), name: 'Test key' }))
+  const passkey = await act(token, async () => finishPasskeyRegistrationAction({ response: await authenticator.register(options), name }))
   return { authenticator, passkeyId: passkey.id }
+}
+
+// The explicit first-trust setup: the candidate signs for itself.
+async function bootstrap(token: string, key: Key, orgId: string) {
+  const assertion = await confirm(token, key.authenticator, { kind: 'bootstrap-passkey', orgId, passkeyId: key.passkeyId })
+  return act(token, () => bootstrapOrgPasskeyAction({ orgId, passkeyId: key.passkeyId, assertion }))
+}
+
+async function trust(token: string, signer: Key, orgId: string, passkeyId: string) {
+  const assertion = await confirm(token, signer.authenticator, { kind: 'trust-passkey', orgId, passkeyId })
+  return act(token, () => trustOrgPasskeyAction({ orgId, passkeyId, assertion }))
+}
+
+async function orgPasskeys(token: string, orgId: string) {
+  const request = actionRequest(token)
+  const session = await getSession(request)
+  const result = await listOrgPasskeys({ request, session: session!, orgId })
+  return {
+    initialized: result.initialized,
+    canBootstrap: result.canBootstrap,
+    passkeys: result.passkeys.map((p) => `${p.name}:${p.trusted ? 'trusted' : 'untrusted'}`),
+  }
+}
+
+async function addMember(orgId: string, role: 'admin' | 'member' = 'member') {
+  const member = await createUser()
+  const [row] = await getDb().insert(schema.orgMember).values({ orgId, userId: member.userId, role }).returning()
+  return { ...member, memberId: row!.id }
 }
 
 function api(token: string) {
@@ -224,7 +264,7 @@ async function createProject(token: string, secrets: Record<string, Record<strin
     })
     if (res instanceof Error) throw res
   }
-  return { projectId: project.id, envId }
+  return { orgId: org.id, projectId: project.id, envId }
 }
 
 async function pendingRequest(requestId: string) {
@@ -235,7 +275,7 @@ async function pendingRequest(requestId: string) {
 // ── Tests ───────────────────────────────────────────────────────────
 
 describe('passkeys', () => {
-  test('first passkey needs a browser session, later ones and removals need a passkey, assertions are single use and bound to one action', async () => {
+  test('registration needs a browser session but no assertion, removal needs one, assertions are single use and bound to one action', async () => {
     const user = await createUser()
     const cliToken = await createCliSession(user.token)
     const db = getDb()
@@ -248,28 +288,23 @@ describe('passkeys', () => {
     `)
 
     // The CLI token sits in a file agents can read: it must not enroll.
-    expect(await act(cliToken, () => startPasskeyRegistrationAction({})).catch(message)).toMatchInlineSnapshot(`"Add your first passkey from the dashboard in a browser, not from a CLI session."`)
+    expect(await act(cliToken, () => startPasskeyRegistrationAction({})).catch(message)).toMatchInlineSnapshot(`"Add passkeys from the dashboard in a browser, not from a CLI session."`)
 
+    // A new passkey has no authority anywhere, so no assertion is needed to add one.
     const { authenticator, passkeyId } = await enroll(user.token)
-
-    // A second passkey without an assertion from the first is refused.
-    expect(await act(user.token, () => startPasskeyRegistrationAction({})).catch(message)).toMatchInlineSnapshot(`"Passkey confirmation required"`)
-    const second = await createAuthenticator()
-    const addAssertion = await confirm(user.token, authenticator, { kind: 'add-passkey' })
-    const { options } = await act(user.token, () => startPasskeyRegistrationAction({ assertion: addAssertion }))
-    await act(user.token, async () => finishPasskeyRegistrationAction({ response: await second.register(options), name: 'Second' }))
+    const second = await enroll(user.token, 'Second')
     expect(await db.query.passkey.findMany({ where: { userId: user.userId } })).toHaveLength(2)
-
-    // Replay of a used assertion.
-    expect(await act(user.token, () => startPasskeyRegistrationAction({ assertion: addAssertion })).catch(message)).toMatchInlineSnapshot(`"Passkey prompt expired. Try again."`)
 
     // An assertion made for one action does not authorize another.
     const wrongIntent = await confirm(user.token, authenticator, { kind: 'add-passkey' })
     expect(await act(user.token, () => removePasskeyAction({ passkeyId, assertion: wrongIntent })).catch(message)).toMatchInlineSnapshot(`"This passkey confirmation was made for a different action."`)
 
-    const removeAssertion = await confirm(user.token, second, { kind: 'remove-passkey', passkeyId })
+    const removeAssertion = await confirm(user.token, second.authenticator, { kind: 'remove-passkey', passkeyId })
     await act(user.token, () => removePasskeyAction({ passkeyId, assertion: removeAssertion }))
     expect(await db.query.passkey.findMany({ where: { userId: user.userId } })).toHaveLength(1)
+
+    // Replay of a used assertion.
+    expect(await act(user.token, () => removePasskeyAction({ passkeyId: second.passkeyId, assertion: removeAssertion })).catch(message)).toMatchInlineSnapshot(`"Passkey prompt expired. Try again."`)
   })
 })
 
@@ -277,11 +312,13 @@ describe('read approvals', () => {
   test('protected environment: blocked reads batch into one request, approval unlocks only that credential, idle and revoked grants end', async () => {
     const user = await createUser()
     const cliToken = await createCliSession(user.token)
-    const { projectId, envId } = await createProject(user.token, {
+    const { orgId, projectId, envId } = await createProject(user.token, {
       prod: { DATABASE_URL: 'postgres://prod', STRIPE_KEY: 'sk_live' },
       preview: { STRIPE_KEY: 'sk_test', PUBLIC_URL: 'https://preview' },
     })
-    const { authenticator } = await enroll(user.token)
+    const userKey = await enroll(user.token)
+    const { authenticator } = userKey
+    await bootstrap(user.token, userKey, orgId)
     const download = (token: string, env: string) => read(token, `/api/v0/projects/${projectId}/environments/${env}/secrets/download`)
     const getSecret = (token: string, env: string, name: string) => read(token, `/api/v0/projects/${projectId}/environments/${env}/secrets/${name}`)
 
@@ -345,11 +382,10 @@ describe('read approvals', () => {
     }
     expect(await approvalsTab(user.token)).toEqual(['pending:Deploy website:approvable'])
 
-    // Another admin of the same org cannot see or approve someone else's session request.
-    const other = await createUser()
-    const projectRow = await getDb().query.project.findFirst({ where: { id: projectId } })
-    await getDb().insert(schema.orgMember).values({ orgId: projectRow!.orgId, userId: other.userId, role: 'admin' })
+    // Another admin of the same org, with a trusted passkey, cannot see or approve someone else's session request.
+    const other = await addMember(orgId, 'admin')
     const otherKey = await enroll(other.token)
+    await trust(user.token, userKey, orgId, otherKey.passkeyId)
     expect(await approvalsTab(other.token)).toEqual([])
     expect(await act(other.token, async () => approveRequestAction({
       requestId, itemIds, seenItemIds: itemIds, keep: false,
@@ -403,11 +439,13 @@ describe('read approvals', () => {
 
   test('the website asks too: loaders hide protected values, unlock lasts one minute, protection cannot be lowered or bypassed without a passkey', async () => {
     const user = await createUser()
-    const { projectId, envId } = await createProject(user.token, {
+    const { orgId, projectId, envId } = await createProject(user.token, {
       prod: { STRIPE_KEY: 'sk_live', PUBLIC_URL: 'https://prod' },
       dev: {},
     })
-    const { authenticator } = await enroll(user.token)
+    const userKey = await enroll(user.token)
+    const { authenticator } = userKey
+    await bootstrap(user.token, userKey, orgId)
     await act(user.token, () => setReadApprovalAction({ environmentId: envId('prod'), readApproval: 'selected' }))
     await act(user.token, () => addSecretApprovalAction({ environmentId: envId('prod'), name: 'STRIPE_KEY' }))
 
@@ -488,5 +526,348 @@ describe('read approvals', () => {
       .set({ grantExpiresAt: Date.now() - 1 })
       .where(orm.isNotNull(schema.approvalRequest.grantExpiresAt))
     expect((await secretsPage()).find((s: { name: string }) => s.name === 'STRIPE_KEY')).toEqual({ name: 'STRIPE_KEY', value: null, locked: true })
+  })
+})
+
+describe('org passkey trust', () => {
+  test('registration grants nothing: setup is explicit and once, rogue keys cannot approve, lower protection or trust, a trusted admin trusts exact candidates', async () => {
+    const admin = await createUser()
+    const adminCli = await createCliSession(admin.token)
+    const { orgId, projectId, envId } = await createProject(admin.token, { prod: { STRIPE_KEY: 'sk_live' } })
+    const db = getDb()
+    const download = (token: string) => read(token, `/api/v0/projects/${projectId}/environments/prod/secrets/download`)
+    const prompt = (token: string, intent: PasskeyIntent) => act(token, () => startPasskeyAssertionAction({ intent })).then(() => 'ok', message)
+
+    // Before setup, invites need no passkey and domain auto-join may be on.
+    await act(admin.token, () => createInviteAction({ orgId }))
+    await db.update(schema.org).set({ autoJoinDomain: 'acme.com' }).where(orm.eq(schema.org.id, orgId))
+
+    const human = await enroll(admin.token, 'Human')
+    // An agent driving the logged-in browser registers its own software key.
+    const rogue = await enroll(admin.token, 'Rogue')
+    const member = await addMember(orgId)
+    const memberKey = await enroll(member.token, 'Member')
+
+    // Registered keys are not enough to protect anything.
+    expect(await act(admin.token, () => setReadApprovalAction({ environmentId: envId('prod'), readApproval: 'all' })).catch(message)).toMatchInlineSnapshot(`"Set up a trusted passkey for this organization in Settings first."`)
+    expect(await orgPasskeys(admin.token, orgId)).toMatchInlineSnapshot(`
+      {
+        "canBootstrap": true,
+        "initialized": false,
+        "passkeys": [
+          "Human:untrusted",
+          "Rogue:untrusted",
+          "Member:untrusted",
+        ],
+      }
+    `)
+
+    // Setup: from a browser, by an admin, signed by the candidate itself.
+    expect(await prompt(adminCli, { kind: 'bootstrap-passkey', orgId, passkeyId: human.passkeyId })).toMatchInlineSnapshot(`"Set up the first trusted passkey from the dashboard in a browser, not from a CLI session."`)
+    expect(await prompt(member.token, { kind: 'bootstrap-passkey', orgId, passkeyId: memberKey.passkeyId })).toMatchInlineSnapshot(`"Only admins can set up trusted passkeys."`)
+    const signedByRogue = await confirm(admin.token, rogue.authenticator, { kind: 'bootstrap-passkey', orgId, passkeyId: human.passkeyId })
+    expect(await act(admin.token, () => bootstrapOrgPasskeyAction({ orgId, passkeyId: human.passkeyId, assertion: signedByRogue })).catch(message)).toMatchInlineSnapshot(`"Confirm with the passkey you are trusting."`)
+
+    await bootstrap(admin.token, human, orgId)
+    const org = await db.query.org.findFirst({ where: { id: orgId }, with: { invitations: true } })
+    expect({ initialized: !!org!.trustInitializedAt, autoJoinDomain: org!.autoJoinDomain, invitations: org!.invitations.length }).toMatchInlineSnapshot(`
+      {
+        "autoJoinDomain": null,
+        "initialized": true,
+        "invitations": 0,
+      }
+    `)
+    // Setup happens once.
+    expect(await bootstrap(admin.token, rogue, orgId).catch(message)).toMatchInlineSnapshot(`"Passkey setup for this organization is done. An admin with a trusted passkey must trust yours."`)
+
+    await act(admin.token, () => setReadApprovalAction({ environmentId: envId('prod'), readApproval: 'all' }))
+
+    // The rogue key signs the prompts meant for the human key: every org action refuses it.
+    const blocked = await download(adminCli)
+    const requestId = blocked.body.approvalId as string
+    const itemIds = (await pendingRequest(requestId)).items.map((item) => item.id)
+    const approveIntent: PasskeyIntent = { kind: 'approve', requestId, itemIds, keep: false }
+    expect(await act(admin.token, async () => approveRequestAction({
+      requestId, itemIds, seenItemIds: itemIds, keep: false, assertion: await confirm(admin.token, rogue.authenticator, approveIntent),
+    })).catch(message)).toMatchInlineSnapshot(`"This passkey is not trusted in this organization. Ask an admin to trust it in Settings."`)
+    const lowerIntent: PasskeyIntent = { kind: 'set-read-approval', environmentId: envId('prod'), readApproval: 'off' }
+    expect(await act(admin.token, async () => setReadApprovalAction({
+      environmentId: envId('prod'), readApproval: 'off', assertion: await confirm(admin.token, rogue.authenticator, lowerIntent),
+    })).catch(message)).toMatchInlineSnapshot(`"This passkey is not trusted in this organization. Ask an admin to trust it in Settings."`)
+    expect(await act(admin.token, async () => unlockEnvironmentAction({
+      environmentId: envId('prod'), assertion: await confirm(admin.token, rogue.authenticator, { kind: 'unlock', environmentId: envId('prod') }),
+    })).catch(message)).toMatchInlineSnapshot(`"This passkey is not trusted in this organization. Ask an admin to trust it in Settings."`)
+    expect(await trust(admin.token, rogue, orgId, rogue.passkeyId).catch(message)).toMatchInlineSnapshot(`"This passkey is not trusted in this organization. Ask an admin to trust it in Settings."`)
+    expect((await download(adminCli)).status).toBe(403)
+
+    // The human approves with the trusted key.
+    await act(admin.token, async () => approveRequestAction({
+      requestId, itemIds, seenItemIds: itemIds, keep: false, assertion: await confirm(admin.token, human.authenticator, approveIntent),
+    }))
+    expect((await download(adminCli)).status).toBe(200)
+
+    // An untrusted member key cannot even open the prompt for its own request.
+    const memberCli = await createCliSession(member.token)
+    const memberBlocked = await download(memberCli)
+    const memberRequestId = memberBlocked.body.approvalId as string
+    const memberItems = (await pendingRequest(memberRequestId)).items.map((item) => item.id)
+    const memberIntent: PasskeyIntent = { kind: 'approve', requestId: memberRequestId, itemIds: memberItems, keep: false }
+    expect(await prompt(member.token, memberIntent)).toMatchInlineSnapshot(`"None of your passkeys is trusted in this organization. Ask an admin to trust one in Settings."`)
+
+    // Trust names one exact candidate: an assertion for the member key cannot trust the rogue key.
+    const forMember = await confirm(admin.token, human.authenticator, { kind: 'trust-passkey', orgId, passkeyId: memberKey.passkeyId })
+    expect(await act(admin.token, () => trustOrgPasskeyAction({ orgId, passkeyId: rogue.passkeyId, assertion: forMember })).catch(message)).toMatchInlineSnapshot(`"This passkey confirmation was made for a different action."`)
+    await trust(admin.token, human, orgId, memberKey.passkeyId)
+
+    // A trusted member approves their own agent, but cannot trust keys.
+    await act(member.token, async () => approveRequestAction({
+      requestId: memberRequestId, itemIds: memberItems, seenItemIds: memberItems, keep: false,
+      assertion: await confirm(member.token, memberKey.authenticator, memberIntent),
+    }))
+    expect((await download(memberCli)).status).toBe(200)
+    expect(await trust(member.token, memberKey, orgId, memberKey.passkeyId).catch(message)).toMatchInlineSnapshot(`"Only admins can trust passkeys."`)
+
+    // Admins see every member's keys, members only their own.
+    expect(await orgPasskeys(admin.token, orgId)).toMatchInlineSnapshot(`
+      {
+        "canBootstrap": false,
+        "initialized": true,
+        "passkeys": [
+          "Human:trusted",
+          "Rogue:untrusted",
+          "Member:trusted",
+        ],
+      }
+    `)
+    expect(await orgPasskeys(member.token, orgId)).toMatchInlineSnapshot(`
+      {
+        "canBootstrap": false,
+        "initialized": true,
+        "passkeys": [
+          "Member:trusted",
+        ],
+      }
+    `)
+
+    // The last trusted admin key cannot be removed. With a second one, the rogue key still cannot remove it.
+    const removeHuman = (signer: Key) => act(admin.token, async () => removePasskeyAction({
+      passkeyId: human.passkeyId,
+      assertion: await confirm(admin.token, signer.authenticator, { kind: 'remove-passkey', passkeyId: human.passkeyId }),
+    }))
+    expect(await removeHuman(human).catch(message)).toMatchInlineSnapshot(`"This is the last trusted admin passkey of an organization. Trust another admin passkey there first."`)
+    const backup = await enroll(admin.token, 'Backup')
+    await trust(admin.token, human, orgId, backup.passkeyId)
+    expect(await removeHuman(rogue).catch(message)).toMatchInlineSnapshot(`"This passkey is not trusted in this organization. Ask an admin to trust it in Settings."`)
+    await removeHuman(backup)
+    expect(await orgPasskeys(admin.token, orgId)).toMatchInlineSnapshot(`
+      {
+        "canBootstrap": false,
+        "initialized": true,
+        "passkeys": [
+          "Rogue:untrusted",
+          "Member:trusted",
+          "Backup:trusted",
+        ],
+      }
+    `)
+    await act(admin.token, () => removeOrgMemberAction({ memberId: member.memberId }))
+    await db.insert(schema.orgMember).values({ orgId, userId: member.userId, role: 'member' })
+    expect(await db.query.orgPasskey.findFirst({ where: { orgId, passkeyId: memberKey.passkeyId } })).toBeUndefined()
+    expect(await prompt(member.token, { kind: 'unlock', environmentId: envId('prod') })).toMatchInlineSnapshot(`"None of your passkeys is trusted in this organization. Ask an admin to trust one in Settings."`)
+    expect((await db.query.org.findFirst({ where: { id: orgId } }))!.trustInitializedAt).not.toBeNull()
+  })
+
+  test('an approval needs a key trusted by every org it touches, checked again when the approval is saved', async () => {
+    const user = await createUser()
+    const cli = await createCliSession(user.token)
+    const a = await createProject(user.token, { prod: { A: '1' } })
+    const b = await createProject(user.token, { prod: { B: '2' } })
+    const keyA = await enroll(user.token, 'Key A')
+    const keyB = await enroll(user.token, 'Key B')
+    await bootstrap(user.token, keyA, a.orgId)
+    await bootstrap(user.token, keyB, b.orgId)
+    await act(user.token, () => setReadApprovalAction({ environmentId: a.envId('prod'), readApproval: 'all' }))
+    await act(user.token, () => setReadApprovalAction({ environmentId: b.envId('prod'), readApproval: 'all' }))
+
+    const requestId = (await read(cli, `/api/v0/projects/${a.projectId}/environments/prod/secrets/download`)).body.approvalId as string
+    expect((await read(cli, `/api/v0/projects/${b.projectId}/environments/prod/secrets/download`)).body.approvalId).toBe(requestId)
+    const itemIds = (await pendingRequest(requestId)).items.map((item) => item.id)
+    const intent: PasskeyIntent = { kind: 'approve', requestId, itemIds, keep: false }
+
+    // No key is trusted by both orgs.
+    expect(await act(user.token, () => startPasskeyAssertionAction({ intent })).catch(message)).toMatchInlineSnapshot(`"None of your passkeys is trusted in this organization. Ask an admin to trust one in Settings."`)
+
+    // Key A becomes trusted in B, opens the prompt, then loses that trust before the approval is saved.
+    await trust(user.token, keyB, b.orgId, keyA.passkeyId)
+    const assertion = await confirm(user.token, keyA.authenticator, intent)
+    await getDb().delete(schema.orgPasskey).where(orm.and(orm.eq(schema.orgPasskey.orgId, b.orgId), orm.eq(schema.orgPasskey.passkeyId, keyA.passkeyId)))
+    expect(await act(user.token, () => approveRequestAction({ requestId, itemIds, seenItemIds: itemIds, keep: false, assertion })).catch(message)).toMatchInlineSnapshot(`"This passkey is not trusted in this organization. Ask an admin to trust it in Settings."`)
+    expect((await pendingRequest(requestId)).status).toBe('pending')
+  })
+
+  test('after setup every access change needs a trusted passkey signed for its exact payload', async () => {
+    const admin = await createUser()
+    const { orgId, projectId, envId } = await createProject(admin.token, { prod: {} })
+    const db = getDb()
+    const member = await addMember(orgId)
+    const human = await enroll(admin.token, 'Human')
+    const rogue = await enroll(admin.token, 'Rogue')
+
+    // Before setup nothing is gated.
+    expect(await act(admin.token, () => createInviteAction({ orgId }))).toMatchObject({ id: expect.any(String) })
+    await bootstrap(admin.token, human, orgId)
+
+    await db.update(schema.user).set({ emailVerified: true }).where(orm.eq(schema.user.id, admin.userId)).limit(1)
+    await db.update(schema.orgMember).set({ projectAccess: 'selected' }).where(orm.eq(schema.orgMember.id, member.memberId))
+    await db.update(schema.environment).set({ accessRole: 'admin' }).where(orm.eq(schema.environment.id, envId('prod')))
+    const change = (action: string, payload: unknown): PasskeyIntent => ({ kind: 'change-access', orgId, action, payload: JSON.stringify(payload) })
+    // Order matters: promotion last, member access refuses admins.
+    const changes: Array<[string, PasskeyIntent, (assertion?: Awaited<ReturnType<Authenticator['assert']>>) => Promise<unknown>]> = [
+      ['invite', change('create-invite', { projectIds: null }), (assertion) => createInviteAction({ orgId, assertion })],
+      ['auto-join', change('enable-auto-join', { autoJoinDomain: 'example.com' }),
+        (assertion) => updateAutoJoinDomainAction({ orgId, enabled: true, assertion })],
+      ['member access', change('update-member-access', { memberId: member.memberId, projectIds: [projectId] }),
+        (assertion) => updateMemberAccessAction({ memberId: member.memberId, projectIds: [projectId], assertion })],
+      ['environment role', change('set-environment-access-role', { environmentId: envId('prod'), accessRole: 'member' }),
+        (assertion) => updateEnvironmentAccessRoleAction({ environmentId: envId('prod'), accessRole: 'member', assertion })],
+      ['promote', change('promote-admin', { memberId: member.memberId }),
+        (assertion) => updateOrgMemberRoleAction({ memberId: member.memberId, role: 'admin', assertion })],
+    ]
+    const results: Record<string, string[]> = {}
+    for (const [name, intent, run] of changes) {
+      const attempts = [
+        () => act(admin.token, () => run()),
+        async () => act(admin.token, async () => run(await confirm(admin.token, rogue.authenticator, intent))),
+        async () => act(admin.token, async () => run(await confirm(admin.token, human.authenticator, { ...intent, payload: '{}' } as PasskeyIntent))),
+        async () => act(admin.token, async () => run(await confirm(admin.token, human.authenticator, intent))),
+      ]
+      results[name] = []
+      for (const attempt of attempts) results[name]!.push(await attempt().then(() => 'ok', message))
+    }
+    expect(results).toMatchInlineSnapshot(`
+      {
+        "auto-join": [
+          "Passkey confirmation required",
+          "This passkey is not trusted in this organization. Ask an admin to trust it in Settings.",
+          "This passkey confirmation was made for a different action.",
+          "ok",
+        ],
+        "environment role": [
+          "Passkey confirmation required",
+          "This passkey is not trusted in this organization. Ask an admin to trust it in Settings.",
+          "This passkey confirmation was made for a different action.",
+          "ok",
+        ],
+        "invite": [
+          "Passkey confirmation required",
+          "This passkey is not trusted in this organization. Ask an admin to trust it in Settings.",
+          "This passkey confirmation was made for a different action.",
+          "ok",
+        ],
+        "member access": [
+          "Passkey confirmation required",
+          "This passkey is not trusted in this organization. Ask an admin to trust it in Settings.",
+          "This passkey confirmation was made for a different action.",
+          "ok",
+        ],
+        "promote": [
+          "Passkey confirmation required",
+          "This passkey is not trusted in this organization. Ask an admin to trust it in Settings.",
+          "This passkey confirmation was made for a different action.",
+          "ok",
+        ],
+      }
+    `)
+  })
+
+  test('the last trusted admin cannot be removed or demoted, a refused removal keeps its trust, concurrent changes keep one', async () => {
+    const admin = await createUser()
+    const { orgId } = await createProject(admin.token, { prod: {} })
+    const db = getDb()
+    const human = await enroll(admin.token, 'Human')
+    await bootstrap(admin.token, human, orgId)
+    const adminMemberId = (await db.query.orgMember.findFirst({ where: { orgId, userId: admin.userId } }))!.id
+    const second = await addMember(orgId, 'admin')
+    const secondKey = await enroll(second.token, 'Second')
+    const untrusted = await addMember(orgId, 'admin')
+    const names = new Map([[human.passkeyId, 'Human'], [secondKey.passkeyId, 'Second']])
+    const trustRows = async () => (await db.query.orgPasskey.findMany({ where: { orgId } })).map((row) => names.get(row.passkeyId) ?? row.passkeyId).sort()
+    const run = <T,>(token: string, fn: () => Promise<T>) => act(token, fn).then(() => 'ok', message)
+    const remove = (token: string, memberId: string) => run(token, () => removeOrgMemberAction({ memberId }))
+    const demote = (token: string, memberId: string) => run(token, () => updateOrgMemberRoleAction({ memberId, role: 'member' }))
+
+    // Other admins exist, but only this one holds a trusted passkey.
+    expect([
+      await remove(admin.token, adminMemberId),
+      await remove(second.token, adminMemberId),
+      await demote(second.token, adminMemberId),
+    ]).toMatchInlineSnapshot(`
+      [
+        "This admin holds the last trusted admin passkey of this organization. Trust another admin passkey first.",
+        "This admin holds the last trusted admin passkey of this organization. Trust another admin passkey first.",
+        "This admin holds the last trusted admin passkey of this organization. Trust another admin passkey first.",
+      ]
+    `)
+    expect(await trustRows()).toEqual(['Human'])
+    expect((await db.query.orgMember.findFirst({ where: { id: adminMemberId } }))?.role).toBe('admin')
+
+    // An admin without a trusted passkey can still go.
+    expect(await remove(second.token, untrusted.memberId)).toBe('ok')
+
+    // With a spare trusted admin both work. Demotion keeps the trust row, removal deletes it.
+    await trust(admin.token, human, orgId, secondKey.passkeyId)
+    expect(await demote(second.token, adminMemberId)).toBe('ok')
+    expect(await trustRows()).toEqual(['Human', 'Second'])
+    expect(await remove(second.token, adminMemberId)).toBe('ok')
+    expect(await trustRows()).toEqual(['Second'])
+
+    // Two trusted admins. Each change alone leaves the other one, both pass the
+    // pre-checks, so only the check in the write can refuse the second.
+    const third = await addMember(orgId, 'admin')
+    const thirdKey = await enroll(third.token, 'Third')
+    await trust(second.token, secondKey, orgId, thirdKey.passkeyId)
+    const actor = await addMember(orgId, 'admin')
+    const results = await Promise.all([demote(actor.token, second.memberId), remove(actor.token, third.memberId)])
+    expect(results.sort()).toMatchInlineSnapshot(`
+      [
+        "This admin holds the last trusted admin passkey of this organization. Trust another admin passkey first.",
+        "ok",
+      ]
+    `)
+    const rows = await db.query.orgPasskey.findMany({ where: { orgId }, with: { passkey: true } })
+    const admins = new Set((await db.query.orgMember.findMany({ where: { orgId, role: 'admin' } })).map((row) => row.userId))
+    expect(rows.filter((row) => admins.has(row.passkey!.userId))).toHaveLength(1)
+  })
+
+  test('an upgraded org that already protects an environment stays locked: no setup, no approval, no access change', async () => {
+    const admin = await createUser()
+    const cli = await createCliSession(admin.token)
+    const { orgId, projectId, envId } = await createProject(admin.token, { prod: { STRIPE_KEY: 'sk_live' } })
+    const key = await enroll(admin.token)
+    // What migration 0012 leaves behind for such an org.
+    const db = getDb()
+    await db.update(schema.environment).set({ readApproval: 'all' }).where(orm.eq(schema.environment.id, envId('prod')))
+    await db.update(schema.org).set({ trustInitializedAt: Date.now() }).where(orm.eq(schema.org.id, orgId))
+
+    expect(await orgPasskeys(admin.token, orgId)).toMatchInlineSnapshot(`
+      {
+        "canBootstrap": false,
+        "initialized": true,
+        "passkeys": [
+          "Test key:untrusted",
+        ],
+      }
+    `)
+    expect(await bootstrap(admin.token, key, orgId).catch(message)).toMatchInlineSnapshot(`"Passkey setup for this organization is done. An admin with a trusted passkey must trust yours."`)
+    const blocked = await read(cli, `/api/v0/projects/${projectId}/environments/prod/secrets/download`)
+    const itemIds = (await pendingRequest(blocked.body.approvalId)).items.map((item) => item.id)
+    expect(await act(admin.token, () => startPasskeyAssertionAction({
+      intent: { kind: 'approve', requestId: blocked.body.approvalId, itemIds, keep: false },
+    })).catch(message)).toMatchInlineSnapshot(`"None of your passkeys is trusted in this organization. Ask an admin to trust one in Settings."`)
+    expect(await act(admin.token, () => createInviteAction({ orgId })).catch(message)).toMatchInlineSnapshot(`"Passkey confirmation required"`)
+
+    // Protected but never initialized (not reachable through the app) is refused too.
+    await db.update(schema.org).set({ trustInitializedAt: null }).where(orm.eq(schema.org.id, orgId))
+    expect(await bootstrap(admin.token, key, orgId).catch(message)).toMatchInlineSnapshot(`"This organization protects environments but trusts no passkey. An operator must trust the first passkey."`)
   })
 })

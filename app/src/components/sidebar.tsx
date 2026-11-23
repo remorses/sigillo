@@ -448,8 +448,7 @@ export function MobileMenuButton() {
 }
 
 // ── Footer colo badge ──────────────────────────────────────────
-// Client-side fetch so it doesn't add a DO round-trip to SSR.
-// The colo is cached permanently in the DO — DOs never move.
+// Reserve the badge's space while its location loads, including on mobile.
 
 export function FooterColo() {
   const [colo, setColo] = useState<string | null>(null);
@@ -472,10 +471,8 @@ export function FooterColo() {
       });
   }, []);
 
-  if (!colo) return null;
-
   return (
-    <span className="text-xs text-muted-foreground">
+    <span className={cn("inline-block w-[15ch] whitespace-nowrap text-xs text-muted-foreground", !colo && "invisible")}>
       database in {colo}
     </span>
   );

@@ -17,7 +17,7 @@ import * as orm from 'drizzle-orm'
 import { runAction } from 'spiceflow/testing'
 import { app } from './app.js'
 import { acceptInviteAction } from './actions.js'
-import { getAuth, encrypt, decrypt, deriveSecrets, deriveEnvironmentSecretsAndNames, generateApiToken, getDb, autoJoinOrgsByDomain, getMemberProjectAccess, getAccessibleProjectIds } from './db.js'
+import { getAuth, encrypt, decrypt, deriveSecrets, deriveEnvironmentSecretsAndNames, generateApiToken, getDb, autoJoinOrgsByDomain, getMemberProjectAccess, getAccessibleProjectIds, getReadableEnvironmentIds } from './db.js'
 import { schema } from 'db'
 import { formatAbsoluteDate, formatTime } from './lib/utils.js'
 
@@ -45,6 +45,11 @@ async function insertApiToken({
 }) {
   const { key, hashedKey, prefix } = await generateApiToken()
   const db = getDb()
+  const project = await db.query.project.findFirst({ where: { id: projectId } })
+  if (!project) throw new Error('Token fixture needs a project')
+  await db.insert(schema.orgMember).values({
+    orgId: project.orgId, userId: createdBy, role: 'member',
+  }).onConflictDoNothing({ target: [schema.orgMember.orgId, schema.orgMember.userId] })
   const [token] = await db.insert(schema.apiToken).values({
     name,
     projectId,
@@ -651,6 +656,37 @@ describe('api tokens', () => {
       params: { pid: projectId, eid: devEnvId, name: 'TOKEN_TEST' },
     }))
     expect(result.value).toBe('secret-value')
+  })
+
+  test.each(['removed membership', 'restricted project'] as const)('tokens lose access after %s', async (change) => {
+    const user = await createTestUser()
+    const { key, tokenId } = await insertApiToken({ name: 'revoked-access', projectId, createdBy: user.user.id })
+    const tf = authedFetch(key)
+    const params = { pid: projectId, eid: devEnvId, name: 'TOKEN_TEST' }
+    expect(assertOk(await tf('/api/v0/projects/:pid/environments/:eid/secrets/:name', { params })).value).toBe('secret-value')
+    const auth = { userId: null, apiTokenId: tokenId, sessionId: null, requesterId: user.user.id } as const
+    expect(await getReadableEnvironmentIds(auth, projectId)).toContain(devEnvId)
+    const db = getDb()
+    const project = await db.query.project.findFirst({ where: { id: projectId } })
+    const member = await db.query.orgMember.findFirst({ where: { userId: user.user.id, orgId: project!.orgId } })
+    if (change === 'removed membership') {
+      await db.delete(schema.orgMember).where(orm.eq(schema.orgMember.id, member!.id)).limit(1)
+    } else {
+      await db.update(schema.orgMember).set({ projectAccess: 'selected' }).where(orm.eq(schema.orgMember.id, member!.id)).limit(1)
+    }
+    expect.soft(await getReadableEnvironmentIds(auth, projectId)).toEqual([])
+    assertErrorStatus(await tf('/api/v0/projects/:pid/environments/:eid/secrets/:name', { params }), 401)
+    assertErrorStatus(await tf('/api/v0/projects/:pid/environments/:eid/secrets', {
+      method: 'POST', params, body: { name: 'FORBIDDEN_WRITE', value: 'no' },
+    }), 401)
+    assertErrorStatus(await tf('/api/v0/projects/:id', { params: { id: projectId } }), 401)
+    assertErrorStatus(await tf('/api/v0/projects'), 401)
+    assertErrorStatus(await tf('/api/v0/orgs'), 401)
+    assertErrorStatus(await tf('/api/v0/me'), 401)
+    assertErrorStatus(await tf('/api/v0/projects/:pid/environments', { params }), 401)
+    assertErrorStatus(await tf('/api/v0/approvals', {
+      method: 'POST', body: { items: [{ projectId, environment: devEnvId }] },
+    }), 401)
   })
 
   // Regression: secret_event.api_token_id was ON DELETE CASCADE, so deleting

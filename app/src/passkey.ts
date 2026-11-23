@@ -9,11 +9,26 @@
 // 5 minutes, so an assertion made for "approve request A" cannot be replayed
 // for "turn protection off".
 //
+// Registering a passkey grants nothing. An agent driving the browser can
+// register a software key, so authority lives in org_passkey: each org trusts
+// exact credentials.
+//
+//   register ──▶ passkey row (no authority)
+//                   │ bootstrap: candidate signs, admin, browser, org never
+//                   │ initialized and nothing protected (once per org)
+//                   │ trust: a trusted admin passkey signs for this exact id
+//                   ▼
+//              org_passkey row ──▶ may sign org actions (approve, unlock, ...)
+//
+// org.trustInitializedAt is never cleared. Losing every trusted passkey locks
+// the org until an operator trusts one by hand: no silent re-bootstrap.
+//
 // This deliberately does not use @better-auth/passkey: that plugin lets any
-// session add a passkey (an agent could enroll its own and approve itself),
-// has no assertion bound to a custom payload, and adds passkey sign-in.
+// session add a passkey that counts as proof, has no assertion bound to a
+// custom payload, and adds passkey sign-in.
 
 import * as orm from 'drizzle-orm'
+import { ulid } from 'ulid'
 import { z } from 'zod'
 import {
   generateAuthenticationOptions,
@@ -26,7 +41,7 @@ import {
 } from '@simplewebauthn/server'
 import { isoBase64URL } from '@simplewebauthn/server/helpers'
 import { schema } from 'db'
-import { getDb, getRequestOrigin, type Session } from './db.ts'
+import { ForbiddenError, getAuth, getDb, getOrgIdForEnvironment, getRequestOrigin, type Session } from './db.ts'
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000
 const PASSKEY_NAME_MAX_LENGTH = 60
@@ -40,8 +55,13 @@ export const passkeyIntentSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('unlock'), environmentId: idSchema }),
   z.object({ kind: z.literal('set-read-approval'), environmentId: idSchema, readApproval: z.enum(['off', 'selected', 'all']) }),
   z.object({ kind: z.literal('remove-secret-approval'), environmentId: idSchema, name: z.string().min(1) }),
+  // Old clients still ask for it. Registration no longer needs an assertion.
   z.object({ kind: z.literal('add-passkey') }),
   z.object({ kind: z.literal('remove-passkey'), passkeyId: idSchema }),
+  z.object({ kind: z.literal('bootstrap-passkey'), orgId: idSchema, passkeyId: idSchema }),
+  z.object({ kind: z.literal('trust-passkey'), orgId: idSchema, passkeyId: idSchema }),
+  // Member and invite changes. `payload` is the caller's serialized, parsed input.
+  z.object({ kind: z.literal('change-access'), orgId: idSchema, action: z.string().min(1), payload: z.string() }),
 ])
 export type PasskeyIntent = z.infer<typeof passkeyIntentSchema>
 
@@ -116,28 +136,108 @@ export async function listPasskeys({ request, userId }: { request: Request; user
   return getDb().query.passkey.findMany({ where: { userId, rpId }, orderBy: { createdAt: 'asc' } })
 }
 
-// Enrolling the FIRST passkey is trust on first use, so it is the weak spot:
-// it must be a browser session, never the CLI token agents can read from disk.
-// Every later passkey needs an assertion from an existing one.
-export async function startPasskeyRegistration({ request, session, assertion }: {
-  request: Request
-  session: Session
-  assertion?: WebAuthnResponse
-}) {
-  const { rpId } = getRelyingParty(request)
-  // "First" means first on ANY host. One instance can answer on several hosts
-  // (custom domain plus *.workers.dev) and they share grants, so a user with a
-  // passkey on one host must not get a free enrollment on another.
-  const all = await getDb().query.passkey.findMany({ where: { userId: session.userId } })
-  const existing = all.filter((p) => p.rpId === rpId)
-  if (existing.length > 0) {
-    await requirePasskey({ request, session, intent: { kind: 'add-passkey' }, assertion })
-  } else if (all.length > 0) {
-    throw new Error(`Your passkeys belong to ${all[0]!.rpId}. Open Sigillo on that domain to approve or to manage passkeys.`)
-  } else if (session.kind !== 'browser') {
-    throw new Error('Add your first passkey from the dashboard in a browser, not from a CLI session.')
-  }
+// ── Org trust ───────────────────────────────────────────────────────
 
+async function getOrgTrustState(orgId: string) {
+  const db = getDb()
+  const [org, protectedEnvironment] = await db.batch([
+    db.query.org.findFirst({ where: { id: orgId } }),
+    db.query.environment.findFirst({ where: { readApproval: { ne: 'off' }, project: { orgId } } }),
+  ] as const)
+  if (!org) throw new Error('Organization not found')
+  return { initialized: org.trustInitializedAt != null, protected: !!protectedEnvironment }
+}
+
+// Ids of this user's passkeys on this host that every org in `orgIds` trusts.
+// A trust row only counts while its owner is still a member of that org.
+export async function getTrustedPasskeyIds({ userId, rpId, orgIds }: { userId: string; rpId: string; orgIds: string[] }): Promise<Set<string>> {
+  const wanted = [...new Set(orgIds)]
+  const rows = await getDb().query.orgPasskey.findMany({
+    where: { orgId: { in: wanted }, passkey: { userId, rpId }, org: { members: { userId } } },
+  })
+  const orgsByPasskey = new Map<string, Set<string>>()
+  for (const row of rows) orgsByPasskey.set(row.passkeyId, (orgsByPasskey.get(row.passkeyId) ?? new Set()).add(row.orgId))
+  return new Set([...orgsByPasskey].filter(([, orgs]) => orgs.size === wanted.length).map(([id]) => id))
+}
+
+// Orgs where this user's passkey `passkeyId` is trusted and the user is still a member.
+async function getPasskeyTrustOrgIds({ userId, passkeyId }: { userId: string; passkeyId: string }) {
+  const rows = await getDb().query.orgPasskey.findMany({
+    where: { passkeyId, passkey: { userId }, org: { members: { userId } } },
+  })
+  return rows.map((row) => row.orgId)
+}
+
+// Orgs whose trusted passkey must sign this intent. [] = any own passkey:
+// only for actions on the user's own passkeys, never for org actions.
+async function getIntentOrgIds({ userId, intent }: { userId: string; intent: PasskeyIntent }): Promise<string[]> {
+  switch (intent.kind) {
+    case 'approve': {
+      if (intent.itemIds.length === 0) throw new Error('Select at least one item to approve.')
+      const items = await getDb().query.approvalItem.findMany({
+        where: { requestId: intent.requestId, id: { in: intent.itemIds } },
+        with: { environment: { with: { project: true } } },
+      })
+      const orgIds = items.map((item) => item.environment?.project?.orgId).filter((id): id is string => !!id)
+      if (items.length !== new Set(intent.itemIds).size || orgIds.length !== items.length) {
+        throw new Error('This request changed. Review it again.')
+      }
+      return [...new Set(orgIds)]
+    }
+    case 'unlock':
+    case 'set-read-approval':
+    case 'remove-secret-approval': {
+      const orgId = await getOrgIdForEnvironment(intent.environmentId)
+      if (!orgId) throw new Error('Environment not found')
+      return [orgId]
+    }
+    case 'bootstrap-passkey':
+    case 'trust-passkey':
+    case 'change-access':
+      return [intent.orgId]
+    case 'remove-passkey':
+      return getPasskeyTrustOrgIds({ userId, passkeyId: intent.passkeyId })
+    case 'add-passkey':
+      return []
+  }
+}
+
+async function requireOrgAdmin({ userId, orgId, message }: { userId: string; orgId: string; message: string }) {
+  const member = await getDb().query.orgMember.findFirst({ where: { orgId, userId } })
+  if (!member) throw new ForbiddenError()
+  if (member.role !== 'admin') throw new Error(message)
+}
+
+// Reads the session kind from D1. getSession() may answer from better-auth's
+// signed 5 minute session_data cookie, which is not checked against the bearer
+// token: a device login could replay one signed before 0012 marked it 'cli'.
+async function requireBrowserSession({ request, session, message }: { request: Request; session: Session; message: string }) {
+  const auth = await getAuth(request)
+  const stored = await auth.api.getSession({ headers: request.headers, query: { disableCookieCache: true, disableRefresh: true } })
+  if (stored?.session.id !== session.sessionId || stored.session.kind !== 'browser') throw new Error(message)
+}
+
+// Checked before the prompt and again before the write, so nobody touches the
+// sensor for a bootstrap that will be refused.
+async function assertCanBootstrap({ request, session, orgId }: { request: Request; session: Session; orgId: string }) {
+  await requireBrowserSession({ request, session, message: 'Set up the first trusted passkey from the dashboard in a browser, not from a CLI session.' })
+  await requireOrgAdmin({ userId: session.userId, orgId, message: 'Only admins can set up trusted passkeys.' })
+  const state = await getOrgTrustState(orgId)
+  if (state.initialized) throw new Error('Passkey setup for this organization is done. An admin with a trusted passkey must trust yours.')
+  if (state.protected) throw new Error('This organization protects environments but trusts no passkey. An operator must trust the first passkey.')
+}
+
+// ── Registration ────────────────────────────────────────────────────
+
+// A new passkey has no authority in any org, so registration needs no
+// assertion. Browser only, so CLI tokens agents read from disk cannot fill the
+// trust list with look-alike candidates.
+const REGISTER_IN_BROWSER = 'Add passkeys from the dashboard in a browser, not from a CLI session.'
+
+export async function startPasskeyRegistration({ request, session }: { request: Request; session: Session }) {
+  await requireBrowserSession({ request, session, message: REGISTER_IN_BROWSER })
+  const { rpId } = getRelyingParty(request)
+  const existing = await listPasskeys({ request, userId: session.userId })
   const options = await generateRegistrationOptions({
     rpName: 'Sigillo',
     rpID: rpId,
@@ -158,6 +258,8 @@ export async function finishPasskeyRegistration({ request, session, response, na
   response: WebAuthnResponse
   name: string
 }) {
+  // Again here: the challenge belongs to the user, not to the session that started.
+  await requireBrowserSession({ request, session, message: REGISTER_IN_BROWSER })
   const { origin, rpId } = getRelyingParty(request)
   const challenge = await consumeChallenge({ userId: session.userId, response, purpose: 'register' })
   const verification = await verifyRegistrationResponse({
@@ -182,6 +284,10 @@ export async function finishPasskeyRegistration({ request, session, response, na
   return { id: row!.id }
 }
 
+// ── Assertions ──────────────────────────────────────────────────────
+
+// Offers only the passkeys that can sign this intent: the candidate for a
+// bootstrap, keys trusted by every involved org for org actions.
 export async function startPasskeyAssertion({ request, session, intent }: {
   request: Request
   session: Session
@@ -190,23 +296,36 @@ export async function startPasskeyAssertion({ request, session, intent }: {
   const { rpId } = getRelyingParty(request)
   const passkeys = await listPasskeys({ request, userId: session.userId })
   if (passkeys.length === 0) throw new Error('Add a passkey in Settings first.')
+  let allowed = passkeys
+  if (intent.kind === 'bootstrap-passkey') {
+    await assertCanBootstrap({ request, session, orgId: intent.orgId })
+    allowed = passkeys.filter((p) => p.id === intent.passkeyId)
+    if (allowed.length === 0) throw new Error('Passkey not found')
+  } else {
+    const orgIds = await getIntentOrgIds({ userId: session.userId, intent })
+    if (orgIds.length > 0) {
+      const trusted = await getTrustedPasskeyIds({ userId: session.userId, rpId, orgIds })
+      allowed = passkeys.filter((p) => trusted.has(p.id))
+      if (allowed.length === 0) throw new Error('None of your passkeys is trusted in this organization. Ask an admin to trust one in Settings.')
+    }
+  }
   const options = await generateAuthenticationOptions({
     rpID: rpId,
-    allowCredentials: passkeys.map((p) => ({ id: p.credentialId, transports: toTransports(p.transports) })),
+    allowCredentials: allowed.map((p) => ({ id: p.credentialId, transports: toTransports(p.transports) })),
     userVerification: 'required',
   })
   await storeChallenge({ userId: session.userId, challenge: options.challenge, purpose: serializeIntent(intent) })
   return options
 }
 
-// Throws unless `assertion` is a fresh passkey signature by this user for
-// exactly this intent.
-export async function requirePasskey({ request, session, intent, assertion }: {
+// Verifies that `assertion` is a fresh signature by one of this user's
+// passkeys for exactly this intent. Says nothing about org trust.
+async function verifyAssertion({ request, session, intent, assertion }: {
   request: Request
   session: Session
   intent: PasskeyIntent
   assertion: WebAuthnResponse | undefined
-}): Promise<void> {
+}) {
   if (!assertion) throw new Error('Passkey confirmation required')
   const { origin, rpId } = getRelyingParty(request)
   const db = getDb()
@@ -233,18 +352,249 @@ export async function requirePasskey({ request, session, intent, assertion }: {
     .set({ counter: verification.authenticationInfo.newCounter, lastUsedAt: Date.now() })
     .where(orm.eq(schema.passkey.id, passkey.id))
     .limit(1)
+  return passkey
 }
 
+// Throws unless `assertion` is a fresh signature for exactly this intent by a
+// passkey of this user that every org the intent touches trusts. The orgs come
+// from the intent itself (environment, approved items, orgId), so a caller
+// cannot forget the trust check.
+//
+// Trust is checked at decision time. A write that follows (a grant, a setting)
+// stays valid if the trust is removed later; removing trust does not revoke
+// grants or undo settings, same as removing a passkey.
+export async function requirePasskey(args: {
+  request: Request
+  session: Session
+  intent: PasskeyIntent
+  assertion: WebAuthnResponse | undefined
+}): Promise<void> {
+  await requireTrustedAssertion(args)
+}
+
+async function requireTrustedAssertion({ request, session, intent, assertion }: {
+  request: Request
+  session: Session
+  intent: PasskeyIntent
+  assertion: WebAuthnResponse | undefined
+}) {
+  if (!assertion) throw new Error('Passkey confirmation required')
+  const orgIds = await getIntentOrgIds({ userId: session.userId, intent })
+  const passkey = await verifyAssertion({ request, session, intent, assertion })
+  if (orgIds.length > 0) {
+    const trusted = await getTrustedPasskeyIds({ userId: session.userId, rpId: passkey.rpId, orgIds })
+    if (!trusted.has(passkey.id)) throw new Error('This passkey is not trusted in this organization. Ask an admin to trust it in Settings.')
+  }
+  return passkey
+}
+
+// Raising protection or adding a protected secret: the user must hold a passkey
+// the org trusts, so nobody locks an environment that no one can unlock. This
+// also keeps "protected" implying "trust initialized".
+export async function requireOwnTrustedPasskey({ request, session, environmentId }: {
+  request: Request
+  session: Session
+  environmentId: string
+}): Promise<void> {
+  const orgId = await getOrgIdForEnvironment(environmentId)
+  if (!orgId) throw new Error('Environment not found')
+  const { rpId } = getRelyingParty(request)
+  const trusted = await getTrustedPasskeyIds({ userId: session.userId, rpId, orgIds: [orgId] })
+  if (trusted.size === 0) throw new Error('Set up a trusted passkey for this organization in Settings first.')
+}
+
+// Gate for member and invite changes. Open until the org sets up trust or
+// protects something; after that, a trusted passkey must sign `action` with
+// this exact `payload`. Returns true when a passkey was verified, false when
+// the gate was open: the caller must then make its write conditional on the
+// org still being open (trust can be set up meanwhile).
+export async function requireOrgAccessPasskey({ request, session, orgId, action, payload, assertion }: {
+  request: Request
+  session: Session
+  orgId: string
+  action: string
+  payload: string
+  assertion: WebAuthnResponse | undefined
+}): Promise<boolean> {
+  const state = await getOrgTrustState(orgId)
+  if (!state.initialized && !state.protected) return false
+  await requirePasskey({ request, session, intent: { kind: 'change-access', orgId, action, payload }, assertion })
+  return true
+}
+
+// ── Trusting passkeys ───────────────────────────────────────────────
+
+// The first trusted passkey of an org. The candidate signs for itself: the
+// server cannot tell a human from a software key, so this is only allowed once
+// per org, from a browser, by an admin, before anything is protected. Invite
+// links and domain auto-join made before it were not gated, so they go.
+export async function bootstrapOrgPasskey({ request, session, orgId, passkeyId, assertion }: {
+  request: Request
+  session: Session
+  orgId: string
+  passkeyId: string
+  assertion: WebAuthnResponse | undefined
+}): Promise<void> {
+  await assertCanBootstrap({ request, session, orgId })
+  const signer = await verifyAssertion({ request, session, intent: { kind: 'bootstrap-passkey', orgId, passkeyId }, assertion })
+  if (signer.id !== passkeyId) throw new Error('Confirm with the passkey you are trusting.')
+
+  const db = getDb()
+  const now = Date.now()
+  const rowId = ulid()
+  // One batch is one transaction. Every statement after the insert checks the
+  // inserted row, so two racing bootstraps cannot both win.
+  const inserted = orm.exists(db.select({ id: schema.orgPasskey.id }).from(schema.orgPasskey).where(orm.eq(schema.orgPasskey.id, rowId)))
+  const protectedEnvironment = db.select({ id: schema.environment.id })
+    .from(schema.environment)
+    .innerJoin(schema.project, orm.eq(schema.project.id, schema.environment.projectId))
+    .where(orm.and(orm.eq(schema.project.orgId, orgId), orm.ne(schema.environment.readApproval, 'off')))
+  await db.batch([
+    db.insert(schema.orgPasskey).select((qb) => qb
+      .select({
+        id: orm.sql<string>`${rowId}`.as('id'),
+        orgId: schema.org.id,
+        passkeyId: orm.sql<string>`${passkeyId}`.as('passkey_id'),
+        trustedBy: orm.sql<string>`${session.userId}`.as('trusted_by'),
+        createdAt: orm.sql<number>`${now}`.as('created_at'),
+      })
+      .from(schema.org)
+      .where(orm.and(
+        orm.eq(schema.org.id, orgId),
+        orm.isNull(schema.org.trustInitializedAt),
+        orm.notExists(protectedEnvironment),
+        orm.exists(db.select({ id: schema.orgMember.id }).from(schema.orgMember).where(orm.and(
+          orm.eq(schema.orgMember.orgId, orgId),
+          orm.eq(schema.orgMember.userId, session.userId),
+          orm.eq(schema.orgMember.role, 'admin'),
+        ))),
+      ))),
+    db.update(schema.org)
+      .set({ trustInitializedAt: now, autoJoinDomain: null, updatedAt: now })
+      .where(orm.and(orm.eq(schema.org.id, orgId), inserted))
+      .limit(1),
+    db.delete(schema.orgInvitation).where(orm.and(orm.eq(schema.orgInvitation.orgId, orgId), inserted)),
+  ] as const)
+  const row = await db.query.orgPasskey.findFirst({ where: { id: rowId } })
+  if (!row) throw new Error('Passkey setup or your role changed meanwhile. Reload and try again.')
+}
+
+// A trusted admin passkey trusts one exact candidate passkey of a member. The
+// intent names the candidate id, so a key enrolled meanwhile by someone else
+// is never trusted by accident.
+export async function trustOrgPasskey({ request, session, orgId, passkeyId, assertion }: {
+  request: Request
+  session: Session
+  orgId: string
+  passkeyId: string
+  assertion: WebAuthnResponse | undefined
+}): Promise<void> {
+  await requireOrgAdmin({ userId: session.userId, orgId, message: 'Only admins can trust passkeys.' })
+  const db = getDb()
+  const { rpId } = getRelyingParty(request)
+  const candidate = await db.query.passkey.findFirst({
+    where: { id: passkeyId, rpId, user: { orgs: { id: orgId } } },
+  })
+  if (!candidate) throw new Error('Passkey not found')
+  const signer = await requireTrustedAssertion({ request, session, intent: { kind: 'trust-passkey', orgId, passkeyId }, assertion })
+
+  // Re-checked in the insert itself: the signer is still trusted here and
+  // still an admin, and the candidate's owner is still a member.
+  const isMember = (userId: string, role?: 'admin') => orm.exists(db.select({ id: schema.orgMember.id })
+    .from(schema.orgMember)
+    .where(orm.and(
+      orm.eq(schema.orgMember.orgId, orgId),
+      orm.eq(schema.orgMember.userId, userId),
+      role ? orm.eq(schema.orgMember.role, role) : undefined,
+    )))
+  await db.insert(schema.orgPasskey)
+    .select((qb) => qb
+      .select({
+        id: orm.sql<string>`${ulid()}`.as('id'),
+        orgId: schema.orgPasskey.orgId,
+        passkeyId: orm.sql<string>`${passkeyId}`.as('passkey_id'),
+        trustedBy: orm.sql<string>`${session.userId}`.as('trusted_by'),
+        createdAt: orm.sql<number>`${Date.now()}`.as('created_at'),
+      })
+      .from(schema.orgPasskey)
+      .where(orm.and(
+        orm.eq(schema.orgPasskey.orgId, orgId),
+        orm.eq(schema.orgPasskey.passkeyId, signer.id),
+        isMember(session.userId, 'admin'),
+        isMember(candidate.userId),
+      )))
+    .onConflictDoNothing()
+  const row = await db.query.orgPasskey.findFirst({ where: { orgId, passkeyId } })
+  if (!row) throw new Error('Your access changed meanwhile. Reload and try again.')
+}
+
+// Settings view. Admins see the passkeys of every member (trust candidates),
+// members only their own.
+export async function listOrgPasskeys({ request, session, orgId }: { request: Request; session: Session; orgId: string }) {
+  const { rpId } = getRelyingParty(request)
+  const [state, members] = await Promise.all([
+    getOrgTrustState(orgId),
+    getDb().query.orgMember.findMany({
+      where: { orgId },
+      with: { user: { with: { passkeys: { where: { rpId }, with: { orgTrusts: { where: { orgId } } } } } } },
+    }),
+  ])
+  const me = members.find((member) => member.userId === session.userId)
+  if (!me) throw new ForbiddenError()
+  const visible = me.role === 'admin' ? members : [me]
+  const passkeys = visible
+    .flatMap((member) => (member.user?.passkeys ?? []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      userId: member.userId,
+      userName: member.user!.name,
+      credentialId: p.credentialId,
+      trusted: p.orgTrusts.length > 0,
+      createdAt: p.createdAt,
+      lastUsedAt: p.lastUsedAt,
+    })))
+    .sort((a, b) => a.createdAt - b.createdAt)
+  return {
+    initialized: state.initialized,
+    canBootstrap: !state.initialized && !state.protected && me.role === 'admin' && session.kind === 'browser',
+    passkeys,
+  }
+}
+
+// ── Removing ────────────────────────────────────────────────────────
+
+// Needs a passkey trusted wherever the removed one is trusted (it can be the
+// removed one itself). Refused when no other trusted admin passkey would be
+// left in one of those orgs: nobody could trust a new one after that. A lost
+// device or a deleted account can still leave an org with none; then only an
+// operator can restore one.
 export async function removePasskey({ request, session, passkeyId, assertion }: {
   request: Request
   session: Session
   passkeyId: string
   assertion: WebAuthnResponse | undefined
 }) {
+  const db = getDb()
+  const target = await db.query.passkey.findFirst({ where: { id: passkeyId, userId: session.userId } })
+  if (!target) throw new Error('Passkey not found')
   await requirePasskey({ request, session, intent: { kind: 'remove-passkey', passkeyId }, assertion })
-  await getDb().delete(schema.passkey)
-    .where(orm.and(orm.eq(schema.passkey.id, passkeyId), orm.eq(schema.passkey.userId, session.userId)))
+  // In the delete itself, so two removals at once cannot drop the last two keys.
+  const [deleted] = await db.delete(schema.passkey)
+    .where(orm.and(
+      orm.eq(schema.passkey.id, passkeyId),
+      orm.eq(schema.passkey.userId, session.userId),
+      orm.sql`not exists (
+        select 1 from org_passkey t where t.passkey_id = ${passkeyId} and not exists (
+          select 1 from org_passkey o
+          join passkey p on p.id = o.passkey_id
+          join org_member m on m.org_id = o.org_id and m.user_id = p.user_id and m.role = 'admin'
+          where o.org_id = t.org_id and o.passkey_id != t.passkey_id
+        )
+      )`,
+    ))
     .limit(1)
+    .returning({ id: schema.passkey.id })
+  if (!deleted) throw new Error('This is the last trusted admin passkey of an organization. Trust another admin passkey there first.')
 }
 
 const KNOWN_TRANSPORTS: AuthenticatorTransport[] = ['ble', 'hybrid', 'internal', 'nfc', 'usb']

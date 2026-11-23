@@ -29,8 +29,12 @@ The attacker is an AI agent on the user's machine. It can:
   loaders and server actions.
 - drive the user's **logged-in browser** (playwriter, CDP).
 
-It cannot produce a passkey assertion with user verification. So the passkey is the only
-boundary. Never treat a cookie session as more trusted than the CLI token.
+It can generate a software authenticator and set its user-verification flag. Registration
+therefore proves possession of a key, not a human's presence.
+
+The boundary is an **exact credential trusted by the organization** on a device the human
+controls. An attacker cannot sign with that credential. Never treat a cookie session as more
+trusted than a CLI token. Initial setup on an already compromised device is not secure.
 
 ## Rules for new code
 
@@ -39,8 +43,9 @@ boundary. Never treat a cookie session as more trusted than the CLI token.
   `requestReadApproval()` in REST routes (adds to the pending request, caller answers 403).
   Today: `GET secrets/:name`, `GET secrets/download`, the secrets page loader, the event log
   loader, `syncMissingSecretsAction`, `unlockEnvironmentAction`.
-- **Anything that lowers protection or hands out access needs `requirePasskey()`** with its own
-  `PasskeyIntent`. Raising protection, deny and revoke do not.
+- **Anything that lowers protection needs an org-trusted `requirePasskey()` assertion.**
+  Access-expanding changes use `requireOrgAccessPasskey()` once org protection is configured.
+  Raising protection requires an already-trusted key. Deny and revoke do not need an assertion.
 - **A grant never transfers.** It is bound to `sessionId` or `apiTokenId`. The FKs are
   `ON DELETE SET NULL`: a deleted credential leaves a dead audit row, never a wider grant.
 - **`''` as `approval_item.secret_name` means every secret of the environment.** It is only
@@ -58,19 +63,47 @@ payload, and adds passkey sign-in.
 
 - A challenge is stored in the BetterAuth `verification` table with the serialized intent it
   was issued for. It is single use and lives 5 minutes.
-- **First passkey = trust on first use.** It needs `session.kind = 'browser'`. Device-flow
-  sessions are marked `cli` by the `session.create` hook in `db.ts`. "First" counts passkeys on
-  every host, because one instance can answer on several hosts that share grants.
-- Later passkeys and removals need an assertion from an existing passkey.
+- **Registration does not grant authority.** Organization trust is a separate relationship
+  between an org and an exact registered credential.
+- **Initial setup is explicit.** Before any environment is protected, an admin selects their
+  exact key and signs the setup intent. The human must do this on a device they trust.
+  The server cannot detect a real human or distinguish a software key.
+- **Later trust needs a trusted admin key.** The assertion names the exact candidate passkey.
+  New members and new keys cannot approve until an admin trusts that key.
+- **Trust is org-specific.** A cross-org request needs a credential trusted in every org
+  included in the grant. Normal member and environment access checks still apply.
+- **Setup never resets automatically.** Deleting the last trusted key does not allow another
+  first-key setup. Existing protected orgs are not backfilled with trust.
+- **The last trusted admin stays.** Removing or demoting the last admin with an org-trusted
+  passkey fails: trust another admin's credential first. Other access reductions are allowed.
+- Initial setup cancels older invitations and disables domain auto-join. New access-expanding
+  invitations, promotions, project grants, environment roles, and domain auto-join need a
+  trusted admin assertion bound to the exact change.
 - Passkeys are bound to the host (`rpId`). A domain move needs the `passkey` rows of the old
   host deleted by hand.
 
-## Known gaps
+## Recovery
 
-- An agent that drives the browser of a user with **no passkey** can enroll its own. Enroll
-  right after turning approvals on.
-- Member management is not gated: an admin session can invite an account that enrolls its own
-  passkey. Follow-up: require a passkey for invites and admin promotion.
+An organization with protected environments and no trusted key stays locked. This includes
+older deployments upgraded without trusted setup. Do not disable protection or trust every
+existing key as a migration shortcut.
+
+The trust migration revokes grants issued under the previous registration-only model.
+
+It also marks **every existing session as `cli`**. Migration 0011 added `session.kind` with
+default `browser`, so CLI device logins made before it looked like browser sessions. Their kind
+cannot be recovered, so all old sessions lose registration and setup. Browser users sign out
+and sign in again after the upgrade; the new session is `browser`. CLI logins keep working.
+
+An instance operator must verify the admin and the exact replacement credential outside the
+compromised session before a deliberate database repair. There is no session-only reset.
+On hosted Sigillo, contact the operator. Keep a second trusted admin key before you lose one.
+
+## Known limits
+
+- Initial setup depends on the human using a trusted device before protection starts.
+- Trust is checked when an action is authorized. Removing a key does not undo earlier grants
+  or settings. Revoke existing grants separately when a key is compromised.
 - Writes are not gated: an agent can overwrite or delete a protected secret.
 - A grant in constant use has no hard stop (open decision in
   `plans/decisions/approval-expiry.md`).
@@ -79,4 +112,5 @@ payload, and adds passkey sign-in.
 
 `app/src/approvals.test.ts` has a software authenticator (real P-256 key, real WebAuthn
 verification, no mocks). Typecheck and build do not catch a missing gate: add the new path to
-the bypass assertions there.
+the bypass assertions there. `app/src/migrations.test.ts` replays data migration statements on
+legacy rows.

@@ -15,7 +15,7 @@ import { Badge } from 'sigillo-app/src/components/ui/badge'
 import { Button } from 'sigillo-app/src/components/ui/button'
 import { EmptyState } from 'sigillo-app/src/components/ui/empty-state'
 import { TimeAgo } from 'sigillo-app/src/components/ui/time-ago'
-import { confirmWithPasskey, enrollPasskey, passkeyErrorMessage } from 'sigillo-app/src/components/passkey'
+import { confirmWithPasskey, passkeyErrorMessage } from 'sigillo-app/src/components/passkey'
 import { approveRequestAction, revokeRequestAction } from '../approval-actions.ts'
 
 // "Prod: all secrets", "Preview: NPM_TOKEN, STRIPE_KEY". One line per environment.
@@ -157,12 +157,12 @@ function RequestRow({ request, projectId, hasPasskey }: {
             className="w-full sm:w-auto"
             loading={isPending}
             onClick={() => run(async () => {
-              if (!hasPasskey) await enrollPasskey({ hasPasskey: false })
+              if (!hasPasskey) throw new Error('Open Settings and ask an organization admin to trust your exact passkey before approving.')
               const assertion = await confirmWithPasskey({ kind: 'approve', requestId: request.id, itemIds, keep: false })
               await approveRequestAction({ requestId: request.id, itemIds, seenItemIds: itemIds, keep: false, assertion })
             })}
           >
-            {hasPasskey ? 'Approve' : 'Add passkey and approve'}
+            {hasPasskey ? 'Approve' : 'Trusted key required'}
           </Button>
           <Link href={reviewHref} className="text-center text-xs text-muted-foreground hover:text-foreground">
             Review details

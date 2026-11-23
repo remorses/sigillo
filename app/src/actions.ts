@@ -27,7 +27,7 @@ import { router } from 'spiceflow/react'
 import {
   getDb, getSession,
   requireOrgMember,
-  getOrgIdForProject, getOrgIdForEnvironment,
+  getOrgIdForProject,
   encrypt,
   generateApiToken,
   deriveSecrets,
@@ -37,12 +37,15 @@ import {
   getMemberAccess,
   getUserEnvironmentAccess,
   getEnvironmentAccessError,
+  type Session,
 } from './db.ts'
 import { getLockedNames } from './approvals.ts'
+import { requireOrgAccessPasskey, webAuthnResponseSchema, type WebAuthnResponse } from './passkey.ts'
 
 const idSchema = z.string().min(1)
 const idListSchema = z.array(idSchema)
 const roleSchema = z.enum(['admin', 'member'])
+const assertionSchema = webAuthnResponseSchema.optional()
 
 // Input is typed for callers, but the wire can carry anything. Throws the first
 // issue message so UI error states stay readable.
@@ -102,6 +105,58 @@ async function requireTokenScopeAccess({ userId, projectId, environmentIds }: {
 async function requireAdminRole(userId: string, orgId: string) {
   const { role } = await requireOrgMember(userId, orgId)
   if (role !== 'admin') throw new Error('Only admins can manage access')
+}
+
+// Changes that give someone more access need a trusted org passkey once the org
+// has trust set up (org.trustInitializedAt, never cleared). `payload` must be the
+// exact string the browser signed with withAccessPasskey(): JSON.stringify of
+// the same object literal, same key order.
+//
+// Returns a condition the write MUST include. When the helper skipped the
+// passkey, it only saw an org with no trust setup and no protection, and setup
+// can finish before the write lands. So the write applies only if that still
+// holds at write time. Trust setup is sticky, so a verified passkey needs none.
+async function guardAccessChange({ session, orgId, action, payload, assertion }: {
+  session: Session
+  orgId: string
+  action: string
+  payload: string
+  assertion: WebAuthnResponse | undefined
+}): Promise<orm.SQL> {
+  const verified = await requireOrgAccessPasskey({ request: getActionRequest(), session, orgId, action, payload, assertion })
+  if (verified) return orm.sql`1 = 1`
+  // Same skip rule as requireOrgAccessPasskey, evaluated inside the write.
+  return orm.sql`(
+    exists (select 1 from ${schema.org} where ${schema.org.id} = ${orgId} and ${schema.org.trustInitializedAt} is null)
+    and not exists (
+      select 1 from ${schema.environment} join ${schema.project} on ${schema.project.id} = ${schema.environment.projectId}
+      where ${schema.project.orgId} = ${orgId} and ${schema.environment.readApproval} != 'off'
+    )
+  )`
+}
+
+// A guarded write matched nothing: org trust was set up, or the row changed, meanwhile.
+const CHANGED_ERROR = 'Access settings changed while saving. Reload and try again.'
+
+const LAST_TRUSTED_ADMIN_ERROR = 'This admin holds the last trusted admin passkey of this organization. Trust another admin passkey first.'
+
+// False only when `userId` is the last admin with a trusted passkey in the org:
+// without one, nobody could trust a new key. Same rule as removePasskey(). Put
+// it in the write itself, so two concurrent changes cannot drop the last two.
+function keepsTrustedAdmin(orgId: string, userId: string) {
+  return orm.sql`(
+    not exists (
+      select 1 from org_passkey o
+      join passkey p on p.id = o.passkey_id
+      join org_member m on m.org_id = o.org_id and m.user_id = p.user_id and m.role = 'admin'
+      where o.org_id = ${orgId} and p.user_id = ${userId}
+    ) or exists (
+      select 1 from org_passkey o
+      join passkey p on p.id = o.passkey_id
+      join org_member m on m.org_id = o.org_id and m.user_id = p.user_id and m.role = 'admin'
+      where o.org_id = ${orgId} and p.user_id != ${userId}
+    )
+  )`
 }
 
 async function ensureAnotherAdminExists(orgId: string, userId: string) {
@@ -326,19 +381,27 @@ export async function updateEnvAction(input: z.input<typeof updateEnvInput>) {
 
 const INVITE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
+// projectIds undefined = all projects. An empty list is refused instead of
+// silently meaning "all".
 const createInviteInput = z.object({
   orgId: z.string().min(1, 'No org selected'),
-  projectIds: idListSchema.optional(),
+  projectIds: idListSchema.min(1, 'Select at least one project').optional(),
+  assertion: assertionSchema,
 })
 
 export async function createInviteAction(input: z.input<typeof createInviteInput>) {
-  const { orgId, projectIds } = parseInput(createInviteInput, input)
+  const { orgId, projectIds, assertion } = parseInput(createInviteInput, input)
   const session = await requireSession()
   const { role } = await requireOrgMember(session.userId, orgId)
   if (role !== 'admin') throw new Error('Only admins can create invites')
+  const guard = await guardAccessChange({
+    session, orgId, action: 'create-invite',
+    payload: JSON.stringify({ projectIds: projectIds ?? null }),
+    assertion,
+  })
 
   // Validate project IDs belong to this org if provided
-  if (projectIds && projectIds.length > 0) {
+  if (projectIds) {
     const db = getDb()
     const orgProjects = await db.query.project.findMany({
       where: { orgId },
@@ -351,13 +414,20 @@ export async function createInviteAction(input: z.input<typeof createInviteInput
   }
 
   const db = getDb()
-  const [invite] = await db.insert(schema.orgInvitation).values({
-    orgId,
-    createdBy: session.userId,
-    projectIds: projectIds && projectIds.length > 0 ? JSON.stringify(projectIds) : null,
-    expiresAt: Date.now() + INVITE_EXPIRY_MS,
-  }).returning({ id: schema.orgInvitation.id })
-  return { id: invite!.id }
+  const now = Date.now()
+  // Selected from the org row, so the guard is checked in the same statement.
+  const [invite] = await db.insert(schema.orgInvitation).select(db.select({
+    id: orm.sql<string>`${ulid()}`.as('id'),
+    orgId: schema.org.id,
+    role: orm.sql<'member'>`'member'`.as('role'),
+    projectIds: orm.sql<string | null>`${projectIds ? JSON.stringify(projectIds) : null}`.as('project_ids'),
+    createdBy: orm.sql<string>`${session.userId}`.as('created_by'),
+    expiresAt: orm.sql<number>`${now + INVITE_EXPIRY_MS}`.as('expires_at'),
+    createdAt: orm.sql<number>`${now}`.as('created_at'),
+  }).from(schema.org).where(orm.and(orm.eq(schema.org.id, orgId), guard)))
+    .returning({ id: schema.orgInvitation.id })
+  if (!invite) throw new Error(CHANGED_ERROR)
+  return { id: invite.id }
 }
 
 const acceptInviteInput = z.object({ invitationId: z.string().min(1, 'Invitation ID is required') })
@@ -391,25 +461,49 @@ export async function acceptInviteAction(input: z.input<typeof acceptInviteInput
     // Membership and scope in one batch, so a failure never leaves a
     // half-scoped member behind. onConflictDoNothing keeps a double-submitted
     // accept a no-op (unique index on org_id + user_id).
+    // The member row is inserted only if the invite still exists at write time:
+    // trusted access setup deletes old invites, and one read above must not
+    // outlive that delete.
     const memberId = ulid()
+    const now = Date.now()
+    const projectAccess = invitedProjectIds.length > 0 ? 'selected' : 'all'
     await db.batch([
       db.insert(schema.orgMember)
-        .values({
-          id: memberId, orgId: invite.orgId, userId: session.userId, role: invite.role,
-          projectAccess: invitedProjectIds.length > 0 ? 'selected' : 'all',
-        })
+        .select(db.select({
+          id: orm.sql<string>`${memberId}`.as('id'),
+          orgId: schema.orgInvitation.orgId,
+          userId: orm.sql<string>`${session.userId}`.as('user_id'),
+          role: schema.orgInvitation.role,
+          projectAccess: orm.sql<string>`${projectAccess}`.as('project_access'),
+          createdAt: orm.sql<number>`${now}`.as('created_at'),
+        }).from(schema.orgInvitation).where(orm.and(
+          orm.eq(schema.orgInvitation.id, invite.id),
+          orm.gt(schema.orgInvitation.expiresAt, now),
+        )))
         .onConflictDoNothing({ target: [schema.orgMember.orgId, schema.orgMember.userId] }),
-      ...projects.map((p) => db.insert(schema.memberAccess).values({ orgMemberId: memberId, projectId: p.id })),
+      // Selected from the new member row, so nothing is inserted when it was not.
+      ...projects.map((p) => db.insert(schema.memberAccess).select(db.select({
+        id: orm.sql<string>`${ulid()}`.as('id'),
+        orgMemberId: schema.orgMember.id,
+        projectId: orm.sql<string>`${p.id}`.as('project_id'),
+        createdAt: orm.sql<number>`${now}`.as('created_at'),
+        updatedAt: orm.sql<number>`${now}`.as('updated_at'),
+      }).from(schema.orgMember).where(orm.eq(schema.orgMember.id, memberId)))),
     ])
+    const joined = await db.query.orgMember.findFirst({
+      where: { orgId: invite.orgId, userId: session.userId },
+      columns: { id: true },
+    })
+    if (!joined) throw new Error('Invitation not found or expired')
   }
 
   throw redirect(router.href('/dash/orgs/:orgId', { orgId: invite.orgId }))
 }
 
-const updateOrgMemberRoleInput = z.object({ memberId: idSchema, role: roleSchema })
+const updateOrgMemberRoleInput = z.object({ memberId: idSchema, role: roleSchema, assertion: assertionSchema })
 
 export async function updateOrgMemberRoleAction(input: z.input<typeof updateOrgMemberRoleInput>) {
-  const { memberId, role } = parseInput(updateOrgMemberRoleInput, input)
+  const { memberId, role, assertion } = parseInput(updateOrgMemberRoleInput, input)
   const session = await requireSession()
   const db = getDb()
   const member = await db.query.orgMember.findFirst({
@@ -424,14 +518,27 @@ export async function updateOrgMemberRoleAction(input: z.input<typeof updateOrgM
     return { id: member.id, role: member.role }
   }
 
-  if (member.role === 'admin' && role !== 'admin') {
+  const demoting = member.role === 'admin' && role !== 'admin'
+  if (demoting) {
     await ensureAnotherAdminExists(member.orgId, member.userId)
   }
+  const guard = role === 'admin'
+    ? await guardAccessChange({
+      session, orgId: member.orgId, action: 'promote-admin',
+      payload: JSON.stringify({ memberId: member.id }),
+      assertion,
+    })
+    : keepsTrustedAdmin(member.orgId, member.userId)
 
-  await db.update(schema.orgMember)
+  const [updated] = await db.update(schema.orgMember)
     .set({ role })
-    .where(orm.eq(schema.orgMember.id, member.id))
+    .where(orm.and(orm.eq(schema.orgMember.id, member.id), guard))
     .limit(1)
+    .returning({ id: schema.orgMember.id })
+  if (!updated) {
+    const current = await db.query.orgMember.findFirst({ where: { id: member.id }, columns: { role: true } })
+    throw new Error(demoting && current?.role === 'admin' ? LAST_TRUSTED_ADMIN_ERROR : CHANGED_ERROR)
+  }
 
   return { id: member.id, role }
 }
@@ -454,7 +561,30 @@ export async function removeOrgMemberAction(input: z.input<typeof removeOrgMembe
     await ensureAnotherAdminExists(member.orgId, member.userId)
   }
 
-  await db.delete(schema.orgMember).where(orm.eq(schema.orgMember.id, member.id)).limit(1)
+  // Org trust of the member's passkeys goes too, so rejoining never restores it.
+  // Membership first: the trust rows go only if the membership is really gone,
+  // so a refused removal keeps them.
+  const [[deleted]] = await db.batch([
+    db.delete(schema.orgMember)
+      .where(orm.and(orm.eq(schema.orgMember.id, member.id), keepsTrustedAdmin(member.orgId, member.userId)))
+      .limit(1)
+      .returning({ id: schema.orgMember.id }),
+    db.delete(schema.orgPasskey).where(orm.and(
+      orm.eq(schema.orgPasskey.orgId, member.orgId),
+      orm.inArray(
+        schema.orgPasskey.passkeyId,
+        db.select({ id: schema.passkey.id }).from(schema.passkey).where(orm.eq(schema.passkey.userId, member.userId)),
+      ),
+      orm.notExists(db.select({ id: schema.orgMember.id }).from(schema.orgMember).where(orm.and(
+        orm.eq(schema.orgMember.orgId, member.orgId),
+        orm.eq(schema.orgMember.userId, member.userId),
+      ))),
+    )),
+  ] as const)
+  if (!deleted) {
+    const current = await db.query.orgMember.findFirst({ where: { id: member.id }, columns: { id: true } })
+    if (current) throw new Error(LAST_TRUSTED_ADMIN_ERROR)
+  }
   return { id: member.id }
 }
 
@@ -601,41 +731,53 @@ export async function createOrgAction(input: z.input<typeof createOrgInput>) {
 const updateAutoJoinDomainInput = z.object({
   orgId: z.string().min(1, 'Org ID is required'),
   enabled: z.boolean(),
+  assertion: assertionSchema,
 })
 
 export async function updateAutoJoinDomainAction(input: z.input<typeof updateAutoJoinDomainInput>) {
-  const { orgId, enabled } = parseInput(updateAutoJoinDomainInput, input)
+  const { orgId, enabled, assertion } = parseInput(updateAutoJoinDomainInput, input)
   const session = await requireSession()
   await requireAdminRole(session.userId, orgId)
 
   let autoJoinDomain: string | null = null
+  let guard: orm.SQL | undefined
   if (enabled) {
     if (!session.user.emailVerified) throw new Error('Email must be verified to enable auto-join')
     const domain = getEmailDomain(session.user.email)
     if (!domain || COMMON_EMAIL_DOMAINS.has(domain)) {
       throw new Error('Cannot enable auto-join for public email domains')
     }
+    // Everyone with this domain joins, so enabling it hands out access.
+    guard = await guardAccessChange({
+      session, orgId, action: 'enable-auto-join',
+      payload: JSON.stringify({ autoJoinDomain: domain }),
+      assertion,
+    })
     autoJoinDomain = domain
   }
 
-  const db = getDb()
-  await db.update(schema.org)
+  const [updated] = await getDb().update(schema.org)
     .set({ autoJoinDomain, updatedAt: Date.now() })
-    .where(orm.eq(schema.org.id, orgId))
+    .where(orm.and(orm.eq(schema.org.id, orgId), guard))
     .limit(1)
+    .returning({ id: schema.org.id })
+  if (!updated) throw new Error(CHANGED_ERROR)
 
   return { autoJoinDomain }
 }
 
 // ── Member access (granular project permissions) ────────────────────
-// Admin-only. Sets which projects a member can access and which secrets
-// are restricted. Passing an empty projects array reverts to "all access".
+// Admin-only. Sets which projects a member can access.
 
 // projectIds null = all projects; [] = no projects.
-const updateMemberAccessInput = z.object({ memberId: idSchema, projectIds: idListSchema.nullable() })
+const updateMemberAccessInput = z.object({
+  memberId: idSchema,
+  projectIds: idListSchema.nullable(),
+  assertion: assertionSchema,
+})
 
 export async function updateMemberAccessAction(input: z.input<typeof updateMemberAccessInput>) {
-  const { memberId, projectIds } = parseInput(updateMemberAccessInput, input)
+  const { memberId, projectIds, assertion } = parseInput(updateMemberAccessInput, input)
   const session = await requireSession()
   const db = getDb()
   const member = await db.query.orgMember.findFirst({
@@ -660,14 +802,34 @@ export async function updateMemberAccessAction(input: z.input<typeof updateMembe
     }
   }
 
-  // Mode and rules in one batch, so a failure keeps the old access.
-  await db.batch([
+  // Every replacement asks for a passkey, also a narrowing one: the batch
+  // replaces the whole list, so "narrows what I read" can still widen a list
+  // another admin narrowed meanwhile. The human approves the exact final list.
+  const guard = await guardAccessChange({
+    session, orgId: member.orgId, action: 'update-member-access',
+    payload: JSON.stringify({ memberId: member.id, projectIds }),
+    assertion,
+  })
+
+  // Mode and rules in one batch, so a failure keeps the old access. Every
+  // statement carries the guard; the batch never changes org rows, so it
+  // evaluates the same in all of them.
+  const now = Date.now()
+  const [updated] = await db.batch([
     db.update(schema.orgMember)
       .set({ projectAccess: projectIds === null ? 'all' : 'selected' })
-      .where(orm.eq(schema.orgMember.id, member.id)),
-    db.delete(schema.memberAccess).where(orm.eq(schema.memberAccess.orgMemberId, member.id)),
-    ...selected.map((projectId) => db.insert(schema.memberAccess).values({ orgMemberId: member.id, projectId })),
-  ])
+      .where(orm.and(orm.eq(schema.orgMember.id, member.id), guard))
+      .returning({ id: schema.orgMember.id }),
+    db.delete(schema.memberAccess).where(orm.and(orm.eq(schema.memberAccess.orgMemberId, member.id), guard)),
+    ...selected.map((projectId) => db.insert(schema.memberAccess).select(db.select({
+      id: orm.sql<string>`${ulid()}`.as('id'),
+      orgMemberId: schema.orgMember.id,
+      projectId: orm.sql<string>`${projectId}`.as('project_id'),
+      createdAt: orm.sql<number>`${now}`.as('created_at'),
+      updatedAt: orm.sql<number>`${now}`.as('updated_at'),
+    }).from(schema.orgMember).where(orm.and(orm.eq(schema.orgMember.id, member.id), guard)))),
+  ] as const)
+  if (updated.length === 0) throw new Error(CHANGED_ERROR)
 
   return { ok: true }
 }
@@ -676,19 +838,45 @@ export async function updateMemberAccessAction(input: z.input<typeof updateMembe
 // Admins can restrict an environment (e.g. production) so only admins
 // can read/write secrets in it. Members get 403 on all secret operations.
 
-const updateEnvironmentAccessRoleInput = z.object({ environmentId: idSchema, accessRole: roleSchema })
+const updateEnvironmentAccessRoleInput = z.object({
+  environmentId: idSchema,
+  accessRole: roleSchema,
+  assertion: assertionSchema,
+})
 
 export async function updateEnvironmentAccessRoleAction(input: z.input<typeof updateEnvironmentAccessRoleInput>) {
-  const { environmentId, accessRole } = parseInput(updateEnvironmentAccessRoleInput, input)
+  const { environmentId, accessRole, assertion } = parseInput(updateEnvironmentAccessRoleInput, input)
   const session = await requireSession()
-  const orgId = await getOrgIdForEnvironment(environmentId)
-  if (!orgId) throw new Error('Environment not found')
-  await requireAdminRole(session.userId, orgId)
   const db = getDb()
-  await db.update(schema.environment)
+  const environment = await db.query.environment.findFirst({
+    where: { id: environmentId },
+    columns: { accessRole: true },
+    with: { project: { columns: { orgId: true } } },
+  })
+  if (!environment?.project) throw new Error('Environment not found')
+  const orgId = environment.project.orgId
+  await requireAdminRole(session.userId, orgId)
+  if (environment.accessRole === accessRole) return { ok: true, environmentId, accessRole }
+  // Opening an admin-only environment to members gives them access.
+  const guard = accessRole === 'member'
+    ? await guardAccessChange({
+      session, orgId, action: 'set-environment-access-role',
+      payload: JSON.stringify({ environmentId, accessRole }),
+      assertion,
+    })
+    : undefined
+  // Compare-and-set on the role this check saw, so a restrict that lands
+  // meanwhile is never undone without a new check.
+  const [updated] = await db.update(schema.environment)
     .set({ accessRole, updatedAt: Date.now() })
-    .where(orm.eq(schema.environment.id, environmentId))
+    .where(orm.and(
+      orm.eq(schema.environment.id, environmentId),
+      orm.eq(schema.environment.accessRole, environment.accessRole),
+      guard,
+    ))
     .limit(1)
+    .returning({ id: schema.environment.id })
+  if (!updated) throw new Error(CHANGED_ERROR)
   return { ok: true, environmentId, accessRole }
 }
 

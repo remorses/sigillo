@@ -24,7 +24,9 @@ import {
 } from './db.ts'
 import {
   finishPasskeyRegistration,
-  listPasskeys,
+  bootstrapOrgPasskey,
+  trustOrgPasskey,
+  requireOwnTrustedPasskey,
   passkeyIntentSchema,
   removePasskey,
   requirePasskey,
@@ -37,6 +39,7 @@ import {
   closeRequest,
   getLockedNames,
   getRequestDetails,
+  setReadApproval,
   unlockEnvironment,
 } from './approvals.ts'
 
@@ -66,12 +69,12 @@ async function requireEnvironmentAdmin(userId: string, environmentId: string) {
 
 // ── Passkeys ────────────────────────────────────────────────────────
 
-const startRegistrationInput = z.object({ assertion: webAuthnResponseSchema.optional() })
+const startRegistrationInput = z.object({})
 
 export async function startPasskeyRegistrationAction(input: z.input<typeof startRegistrationInput>) {
-  const { assertion } = parseInput(startRegistrationInput, input)
+  parseInput(startRegistrationInput, input)
   const { request, session } = await requireSession()
-  return { options: await startPasskeyRegistration({ request, session, assertion }) }
+  return { options: await startPasskeyRegistration({ request, session }) }
 }
 
 const finishRegistrationInput = z.object({ response: webAuthnResponseSchema, name: z.string() })
@@ -101,11 +104,20 @@ export async function removePasskeyAction(input: z.input<typeof removePasskeyInp
 
 // ── What is protected ───────────────────────────────────────────────
 
-// Raising protection needs a passkey on the account, so nobody locks an
-// environment that no one can unlock.
-async function requireOwnPasskey(request: Request, userId: string) {
-  const passkeys = await listPasskeys({ request, userId })
-  if (passkeys.length === 0) throw new Error('Add a passkey first.')
+const trustPasskeyInput = z.object({ orgId: idSchema, passkeyId: idSchema, assertion: webAuthnResponseSchema })
+
+export async function bootstrapOrgPasskeyAction(input: z.input<typeof trustPasskeyInput>) {
+  const data = parseInput(trustPasskeyInput, input)
+  const { request, session } = await requireSession()
+  await bootstrapOrgPasskey({ request, session, ...data })
+  return { orgId: data.orgId }
+}
+
+export async function trustOrgPasskeyAction(input: z.input<typeof trustPasskeyInput>) {
+  const data = parseInput(trustPasskeyInput, input)
+  const { request, session } = await requireSession()
+  await trustOrgPasskey({ request, session, ...data })
+  return { passkeyId: data.passkeyId }
 }
 
 const setReadApprovalInput = z.object({
@@ -126,12 +138,9 @@ export async function setReadApprovalAction(input: z.input<typeof setReadApprova
   if (PROTECTION_LEVEL[readApproval] < PROTECTION_LEVEL[environment.readApproval]) {
     await requirePasskey({ request, session, intent: { kind: 'set-read-approval', environmentId, readApproval }, assertion })
   } else {
-    await requireOwnPasskey(request, session.userId)
+    await requireOwnTrustedPasskey({ request, session, environmentId })
   }
-  await db.update(schema.environment)
-    .set({ readApproval, updatedAt: Date.now() })
-    .where(orm.eq(schema.environment.id, environmentId))
-    .limit(1)
+  await setReadApproval({ environmentId, from: environment.readApproval, to: readApproval })
   return { environmentId, readApproval }
 }
 
@@ -142,7 +151,7 @@ export async function addSecretApprovalAction(input: z.input<typeof secretApprov
   const { environmentId, name } = parseInput(secretApprovalInput, input)
   const { request, session } = await requireSession()
   await requireEnvironmentAdmin(session.userId, environmentId)
-  await requireOwnPasskey(request, session.userId)
+  await requireOwnTrustedPasskey({ request, session, environmentId })
   await getDb().insert(schema.secretApproval)
     .values({ environmentId, name, createdBy: session.userId })
     .onConflictDoNothing({ target: [schema.secretApproval.environmentId, schema.secretApproval.name] })

@@ -18,19 +18,36 @@ import { cn } from 'sigillo-app/src/lib/utils'
 import { getEnvColor } from 'sigillo-app/src/components/environments-table'
 import {
   addSecretApprovalAction,
+  bootstrapOrgPasskeyAction,
   finishPasskeyRegistrationAction,
   removePasskeyAction,
   removeSecretApprovalAction,
   setReadApprovalAction,
   startPasskeyAssertionAction,
   startPasskeyRegistrationAction,
+  trustOrgPasskeyAction,
   unlockEnvironmentAction,
 } from '../approval-actions.ts'
-import type { PasskeyIntent } from '../passkey.ts'
+import type { PasskeyIntent, WebAuthnResponse } from '../passkey.ts'
 
 export async function confirmWithPasskey(intent: PasskeyIntent) {
   const { options } = await startPasskeyAssertionAction({ intent })
   return startAuthentication({ optionsJSON: options })
+}
+
+export async function withAccessPasskey<T>({ orgId, action, payload, run }: {
+  orgId: string
+  action: string
+  payload: string
+  run: (assertion?: WebAuthnResponse) => Promise<T>
+}): Promise<T> {
+  try {
+    return await run()
+  } catch (error) {
+    if (!(error instanceof Error) || error.message !== 'Passkey confirmation required') throw error
+    const assertion = await confirmWithPasskey({ kind: 'change-access', orgId, action, payload })
+    return run(assertion)
+  }
 }
 
 function defaultPasskeyName() {
@@ -43,11 +60,9 @@ function defaultPasskeyName() {
   return 'Passkey'
 }
 
-// The first passkey needs no confirmation. Every later one is confirmed with
-// an existing passkey, so a stolen session cannot add its own.
-export async function enrollPasskey({ hasPasskey }: { hasPasskey: boolean }) {
-  const assertion = hasPasskey ? await confirmWithPasskey({ kind: 'add-passkey' }) : undefined
-  const { options } = await startPasskeyRegistrationAction({ assertion })
+// Registration does not grant organization authority.
+export async function enrollPasskey() {
+  const { options } = await startPasskeyRegistrationAction({})
   const response = await startRegistration({ optionsJSON: options })
   return finishPasskeyRegistrationAction({ response, name: defaultPasskeyName() })
 }
@@ -75,18 +90,15 @@ function isReadApproval(value: string): value is ReadApproval {
 }
 
 export function ApprovalsSection() {
-  const { approvalEnvironments, secretNames, passkeys, role } = useLoaderData('/dash/projects/:projectId/settings')
+  const { approvalEnvironments, secretNames, role } = useLoaderData('/dash/projects/:projectId/settings')
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const isAdmin = role === 'admin'
-  const hasPasskey = passkeys.length > 0
 
   function run(action: () => Promise<unknown>) {
     setError(null)
     startTransition(async () => {
       try {
-        // Protection can only be raised by someone who can also approve.
-        if (!hasPasskey) await enrollPasskey({ hasPasskey: false })
         await action()
       } catch (e) {
         setError(passkeyErrorMessage(e))
@@ -102,7 +114,8 @@ export function ApprovalsSection() {
           Approvals
         </h2>
         <p className="text-muted-foreground text-sm mt-2">
-          Require a passkey approval before a CLI, agent or token reads secrets.
+          Require an organization-trusted passkey before a CLI, agent or token reads secrets.
+          {' Set up trusted passkeys below before enabling protection.'}
           {!isAdmin && ' Only admins can change this.'}
         </p>
         {error && <p className="text-sm text-destructive mt-2">{error}</p>}
@@ -197,8 +210,9 @@ export function ApprovalsSection() {
 }
 
 export function PasskeysSection() {
-  const { passkeys } = useLoaderData('/dash/projects/:projectId/settings')
+  const { passkeys, orgPasskeys, orgId, role } = useLoaderData('/dash/projects/:projectId/settings')
   const [error, setError] = useState<string | null>(null)
+  const [confirmedSetup, setConfirmedSetup] = useState(false)
   const [isPending, startTransition] = useTransition()
 
   function run(action: () => Promise<unknown>) {
@@ -220,7 +234,8 @@ export function PasskeysSection() {
           Passkeys
         </h2>
         <p className="text-muted-foreground text-sm mt-2">
-          Your passkeys approve requests on this domain. Touch ID, a phone or a security key.
+          Register a key, then ask an organization admin to trust that exact key.
+          Registration alone cannot approve protected secrets.
         </p>
         {error && <p className="text-sm text-destructive mt-2">{error}</p>}
       </div>
@@ -246,16 +261,62 @@ export function PasskeysSection() {
           </Button>
         </div>
       ))}
+      <div className="border-t border-border p-5 flex flex-col gap-3">
+        <h3 className="font-medium text-pretty">Organization trust</h3>
+        {orgPasskeys.canBootstrap ? (
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" checked={confirmedSetup} onChange={(event) => setConfirmedSetup(event.target.checked)} />
+            <span>
+              I am setting this up myself on a device I trust, before enabling protection.
+              Sigillo cannot detect software-generated keys or prove this device is safe.
+              Setup cancels old invitations and disables domain auto-join.
+            </span>
+          </label>
+        ) : !orgPasskeys.initialized ? (
+          <p className="text-sm text-muted-foreground">
+            Ask an admin to complete trusted setup. If secrets are already protected,
+            access stays locked until the instance operator verifies recovery.
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            An already-trusted admin key must confirm each new key. Verify its owner and credential ID
+            with that person first. Losing all trusted admin keys requires operator recovery.
+          </p>
+        )}
+        {orgPasskeys.passkeys.map((key) => (
+          <div key={key.id} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm">{key.userName}: {key.name} {key.trusted ? '(trusted)' : '(not trusted)'}</p>
+              <p className="text-xs font-mono break-all text-muted-foreground">{key.credentialId}</p>
+            </div>
+            {!key.trusted && role === 'admin' && (orgPasskeys.initialized || (orgPasskeys.canBootstrap && passkeys.some((own) => own.id === key.id))) && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isPending || (orgPasskeys.canBootstrap && !confirmedSetup)}
+                onClick={() => run(async () => {
+                  const kind = orgPasskeys.canBootstrap ? 'bootstrap-passkey' : 'trust-passkey'
+                  const assertion = await confirmWithPasskey({ kind, orgId, passkeyId: key.id })
+                  const action = orgPasskeys.canBootstrap ? bootstrapOrgPasskeyAction : trustOrgPasskeyAction
+                  await action({ orgId, passkeyId: key.id, assertion })
+                })}
+              >
+                {orgPasskeys.canBootstrap ? 'Set up trusted key' : 'Trust exact key'}
+              </Button>
+            )}
+          </div>
+        ))}
+      </div>
       <div className="border-t border-border px-5 py-3.5 bg-muted/30 rounded-b-lg flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs text-muted-foreground">
           {passkeys.length > 0
-            ? 'Adding or removing a passkey asks for an existing one.'
-            : 'Add one before you require approval, so you can approve requests.'}
+            ? 'New keys need separate organization trust before they can approve.'
+            : 'Register a key, then complete trusted setup before enabling protection.'}
         </p>
         <Button
           className="w-full sm:w-auto"
           loading={isPending}
-          onClick={() => run(() => enrollPasskey({ hasPasskey: passkeys.length > 0 }))}
+          onClick={() => run(() => enrollPasskey())}
         >
           Add passkey
         </Button>

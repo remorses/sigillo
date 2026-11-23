@@ -42,7 +42,19 @@ Open **Settings** in a project. The **Approvals** card has one select per enviro
 | **Selected secrets** | Only the secret names you add as chips. |
 | **All secrets** | Every secret in the environment, also ones added later. |
 
-The first time, Sigillo asks you to **add a passkey**. Only organization admins can change these settings.
+Before enabling protection, open the **Passkeys** card:
+
+1. Register your passkey on a device you trust.
+2. Confirm that you are doing the setup yourself.
+3. Select **Set up trusted key** and confirm with that exact passkey.
+4. Enable protection in the **Approvals** card.
+
+Only organization admins can complete setup or change protection. Setup cancels old invitations
+and disables domain auto-join. You can enable them again with a trusted admin key.
+
+**Initial setup is a trust decision.** Sigillo cannot tell whether a key is software-generated
+or whether a real human created it. Do setup yourself on a trusted device before you enable
+protection. Registration alone never grants access to protected secrets.
 
 Raising protection is one click. Lowering it (All to Selected or Off, or removing a secret) asks for your passkey, so an agent with your session cannot switch it off.
 
@@ -98,15 +110,32 @@ Protected values are not sent to the browser until you confirm with your passkey
 - You can type a new value into a locked secret without revealing the old one.
 - The Event Log hides old values of protected secrets the same way.
 
-This matters because the CLI login is a normal session, and agents can also drive a logged-in browser. Only the passkey proves that a human is there.
+This matters because the CLI login is a normal session, and agents can also drive a logged-in
+browser. Approval requires a key that your organization already trusts.
 
 ## Passkeys
 
 Manage them in **Settings**, in the **Passkeys** card.
 
-- Add your first passkey in the browser, right after you turn approvals on.
-- Adding another passkey or removing one asks for an existing passkey.
+- Register your first passkey and complete trusted setup before you turn approvals on.
+- An organization admin must trust each later key with an already-trusted key.
+- Check the key owner's identity and exact credential ID before you trust it.
+- A member can approve their own session once their exact key is trusted.
+- Trust in one organization does not grant trust in another.
 - A passkey belongs to one domain. On a self-hosted instance, always use the same domain to approve.
+
+### Lost keys and older deployments
+
+Keep a second trusted admin key. If no trusted admin key remains, the organization stays locked.
+Deleting keys does not reset setup. An older protected organization also stays locked after
+upgrade until its operator verifies a recovery.
+
+Contact the instance operator. Recovery requires identity and credential verification outside
+the affected session. There is no automatic reset based on your login.
+
+After your instance gets organization passkey trust, **sign out and sign in again** before you add a passkey
+or set up trust. Logins from before the upgrade count as CLI logins, and CLI logins cannot add
+passkeys. The CLI keeps working without a new login.
 
 ## What approvals do not cover
 

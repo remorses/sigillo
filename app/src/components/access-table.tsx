@@ -7,6 +7,7 @@ import { useState } from "react"
 import { TrashIcon, PencilIcon } from "lucide-react"
 import { removeOrgMemberAction, updateOrgMemberRoleAction, updateMemberAccessAction } from "sigillo-app/src/actions"
 import { InviteButton } from "sigillo-app/src/components/invite-dialog"
+import { passkeyErrorMessage, withAccessPasskey } from "sigillo-app/src/components/passkey"
 import { Button } from "sigillo-app/src/components/ui/button"
 import { Frame } from "sigillo-app/src/components/ui/frame"
 import { NativeSelect } from "sigillo-app/src/components/ui/native-select"
@@ -48,7 +49,7 @@ export function AccessPage() {
 }
 
 export function AccessTable() {
-  const { role, currentUserId, members, orgProjects } = useLoaderData('/dash/projects/:projectId/access')
+  const { orgId, role, currentUserId, members, orgProjects } = useLoaderData('/dash/projects/:projectId/access')
   const canManage = role === 'admin'
   const [roleOverrides, setRoleOverrides] = useState<Record<string, Member["role"]>>({})
   const [pendingRoleId, setPendingRoleId] = useState<string | null>(null)
@@ -70,10 +71,15 @@ export function AccessTable() {
     setRoleOverrides((current) => ({ ...current, [member.id]: nextRole }))
     setPendingRoleId(member.id)
     try {
-      await updateOrgMemberRoleAction({ memberId: member.id, role: nextRole })
+      await withAccessPasskey({
+        orgId,
+        action: "promote-admin",
+        payload: JSON.stringify({ memberId: member.id }),
+        run: (assertion) => updateOrgMemberRoleAction({ memberId: member.id, role: nextRole, assertion }),
+      })
     } catch (error) {
       setRoleOverrides((current) => ({ ...current, [member.id]: previousRole }))
-      setError(error instanceof Error ? error.message : "Failed to update role")
+      setError(passkeyErrorMessage(error))
     } finally {
       setPendingRoleId((current) => (current === member.id ? null : current))
     }
@@ -215,6 +221,7 @@ export function AccessTable() {
       {editingMember && (
         <ManageAccessDialog
           key={editingMember.id}
+          orgId={orgId}
           member={editingMember}
           orgProjects={orgProjects}
           open
@@ -230,11 +237,13 @@ export function AccessTable() {
 // for a specific member.
 
 function ManageAccessDialog({
+  orgId,
   member,
   orgProjects,
   open,
   onClose,
 }: {
+  orgId: string
   member: Member | null
   orgProjects: { id: string; name: string }[]
   open: boolean
@@ -259,15 +268,17 @@ function ManageAccessDialog({
     setSaving(true)
     setError(null)
     try {
-      if (fullAccess) {
-        await updateMemberAccessAction({ memberId: member.id, projectIds: null })
-      } else {
-        const selectedIds = orgProjects.filter((p) => projectChecked[p.id]).map((p) => p.id)
-        await updateMemberAccessAction({ memberId: member.id, projectIds: selectedIds })
-      }
+      const memberId = member.id
+      const projectIds = fullAccess ? null : orgProjects.filter((p) => projectChecked[p.id]).map((p) => p.id)
+      await withAccessPasskey({
+        orgId,
+        action: 'update-member-access',
+        payload: JSON.stringify({ memberId, projectIds }),
+        run: (assertion) => updateMemberAccessAction({ memberId, projectIds, assertion }),
+      })
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save')
+      setError(passkeyErrorMessage(err))
     } finally {
       setSaving(false)
     }

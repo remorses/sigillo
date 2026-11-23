@@ -1,5 +1,10 @@
 # Passkey approvals for secret reads plan
 
+Security update: the original first-key TOFU and deferred membership gates below are
+superseded by `docs/passkey-approvals.md`. Registration grants no organization authority.
+Explicit trusted setup precedes protection. Later keys and access expansion need trusted
+admin approval. Existing protected orgs and lost-key orgs fail closed, without automatic reset.
+
 Agents and CLIs must get a human approval before they read protected secrets. The agent shows
 one URL, the user approves every requested secret with one passkey prompt. Protection is opt-in
 per environment or per secret. Model: npm staged publishing.

@@ -23,7 +23,7 @@ import {
 } from 'sigillo-app/src/components/ui/dialog'
 import { deleteOrgAction, deleteProjectAction, renameProjectAction, updateAutoJoinDomainAction } from '../actions.ts'
 import { COMMON_EMAIL_DOMAINS, getEmailDomain } from '../lib/utils.ts'
-import { ApprovalsSection, PasskeysSection } from 'sigillo-app/src/components/passkey'
+import { ApprovalsSection, PasskeysSection, passkeyErrorMessage, withAccessPasskey } from 'sigillo-app/src/components/passkey'
 
 const projectNameSchema = z.object({ name: z.string().trim().min(1, 'Name is required') })
 const projectNameFields = projectNameSchema.keyof().enum
@@ -159,6 +159,7 @@ function AutoJoinSection() {
   const { user } = useLoaderData('/dash/*')
   const [isPending, startTransition] = useTransition()
   const [currentDomain, setCurrentDomain] = useState(autoJoinDomain)
+  const [error, setError] = useState<string | null>(null)
 
   const userDomain = getEmailDomain(user.email)
   const isPublicDomain = !userDomain || COMMON_EMAIL_DOMAINS.has(userDomain)
@@ -171,9 +172,19 @@ function AutoJoinSection() {
 
   function handleToggle() {
     const newEnabled = !isEnabled
+    setError(null)
     startTransition(async () => {
-      const result = await updateAutoJoinDomainAction({ orgId, enabled: newEnabled })
-      setCurrentDomain(result.autoJoinDomain)
+      try {
+        const result = await withAccessPasskey({
+          orgId,
+          action: 'enable-auto-join',
+          payload: JSON.stringify({ autoJoinDomain: userDomain }),
+          run: (assertion) => updateAutoJoinDomainAction({ orgId, enabled: newEnabled, assertion }),
+        })
+        setCurrentDomain(result.autoJoinDomain)
+      } catch (error) {
+        setError(passkeyErrorMessage(error))
+      }
     })
   }
 
@@ -208,13 +219,16 @@ function AutoJoinSection() {
             </p>
           )}
         </div>
-        <Button
-          variant={isEnabled ? 'outline' : 'default'}
-          onClick={handleToggle}
-          disabled={isPending || (!isEnabled && isPublicDomain)}
-        >
-          {isPending ? 'Saving...' : isEnabled ? 'Disable' : 'Enable'}
-        </Button>
+        <div className="flex flex-col gap-2">
+          <Button
+            variant={isEnabled ? 'outline' : 'default'}
+            onClick={handleToggle}
+            disabled={isPending || (!isEnabled && isPublicDomain)}
+          >
+            {isPending ? 'Saving...' : isEnabled ? 'Disable' : 'Enable'}
+          </Button>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </div>
       </div>
     </div>
   )

@@ -9,6 +9,7 @@
 
 import { env } from 'cloudflare:workers'
 import * as orm from 'drizzle-orm'
+import { ulid } from 'ulid'
 import { getDb, schema } from 'db'
 import { betterAuth } from 'better-auth/minimal'
 import { genericOAuth, deviceAuthorization, bearer } from 'better-auth/plugins'
@@ -354,15 +355,30 @@ export async function autoJoinOrgsByDomain(session: Pick<Session, 'userId' | 'us
   })
   if (matchingOrgs.length === 0) return
 
-  // Insert memberships with onConflictDoNothing — the unique index on
-  // (org_id, user_id) prevents duplicates, so we skip already-joined orgs
-  // without needing a separate membership read.
-  const [firstQuery, ...restQueries] = matchingOrgs.map((o) =>
-    db.insert(schema.orgMember)
-      .values({ orgId: o.id, userId: session.userId, role: 'member' })
-      .onConflictDoNothing({ target: [schema.orgMember.orgId, schema.orgMember.userId] }),
-  )
-  await db.batch([firstQuery!, ...restQueries])
+  for (const org of matchingOrgs) {
+    await joinOrgByEmailDomain({ orgId: org.id, userId: session.userId, domain })
+  }
+}
+
+// Setup can clear the domain after the lookup. The insert must check it again.
+export async function joinOrgByEmailDomain({ orgId, userId, domain }: {
+  orgId: string
+  userId: string
+  domain: string
+}) {
+  await getDb().insert(schema.orgMember)
+    .select((qb) => qb.select({
+      id: orm.sql<string>`${ulid()}`.as('id'),
+      orgId: schema.org.id,
+      userId: orm.sql<string>`${userId}`.as('user_id'),
+      role: orm.sql<'member'>`'member'`.as('role'),
+      projectAccess: orm.sql<'all'>`'all'`.as('project_access'),
+      createdAt: orm.sql<number>`${Date.now()}`.as('created_at'),
+    }).from(schema.org).where(orm.and(
+      orm.eq(schema.org.id, orgId),
+      orm.eq(schema.org.autoJoinDomain, domain),
+    )))
+    .onConflictDoNothing({ target: [schema.orgMember.orgId, schema.orgMember.userId] })
 }
 
 // ── Granular project access ─────────────────────────────────────────
@@ -739,7 +755,7 @@ export async function getReadableEnvironmentIds(auth: SecretsAuth, projectId: st
   const creator = await getMemberAccess({ userId: token.createdBy, orgId })
   return environments
     .filter((env) => !allowlist || allowlist.has(env.id))
-    .filter((env) => env.accessRole !== 'admin' || creator?.role === 'admin')
+    .filter((env) => !getEnvironmentAccessError(creator, env))
     .map((env) => env.id)
 }
 
@@ -765,8 +781,7 @@ export async function requireSecretsApiAuth(
     if (apiToken.environmentIds && !apiToken.environmentIds.includes(env.id)) {
       throw forbiddenResponse('token is scoped to a different environment')
     }
-    // Admin-only envs: the token acts for its creator, who must still be an
-    // org admin. Covers tokens made by members, and admins later demoted.
+    // verifyApiToken checks current project access; admin-only envs also need the current role.
     if (env.accessRole === 'admin') {
       const creator = env.orgId ? await getMemberAccess({ userId: apiToken.createdBy, orgId: env.orgId }) : null
       if (creator?.role !== 'admin') throw forbiddenResponse('admin access required for this environment')
@@ -797,7 +812,7 @@ export async function requireSecretsApiAuth(
 // ── API token helpers ───────────────────────────────────────────────
 // Tokens use SHA-256 hashing — the full key is never stored, only shown
 // once at creation. generateApiToken() creates the raw key + hash + prefix.
-// verifyApiToken() looks up a key by its hash for API authentication.
+// verifyApiToken() checks the key and its creator's current project access.
 
 export async function hashTokenKey(key: string): Promise<string> {
   const encoded = new TextEncoder().encode(key)
@@ -828,6 +843,8 @@ export async function verifyApiToken(key: string): Promise<{
     with: { environments: { columns: { environmentId: true } } },
   })
   if (!token) return null
+  const access = await getProjectMemberAccess(token.createdBy, token.projectId)
+  if (getEnvironmentAccessError(access, { projectId: token.projectId, accessRole: 'member' })) return null
   return {
     tokenId: token.id,
     projectId: token.projectId,

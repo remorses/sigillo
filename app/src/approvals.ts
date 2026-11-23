@@ -19,7 +19,6 @@
 // the same check, with a short unlock grant bound to the browser session.
 
 import * as orm from 'drizzle-orm'
-import type { BatchItem } from 'drizzle-orm/batch'
 import { ulid } from 'ulid'
 import { schema } from 'db'
 import {
@@ -139,22 +138,70 @@ export async function addToPendingRequest({ credential, requesterId, items, labe
     where: { ...credentialFilter(credential), status: 'pending', expiresAt: { gt: now } },
     orderBy: { createdAt: 'desc' },
   })
-  const id = pending?.id ?? ulid()
-  const queries: BatchItem<'sqlite'>[] = [
-    pending
-      ? db.update(schema.approvalRequest)
-        .set(label === undefined ? { expiresAt } : { expiresAt, label })
-        .where(orm.eq(schema.approvalRequest.id, id))
-        .limit(1)
-      : db.insert(schema.approvalRequest).values({
-        id, expiresAt, label: label ?? '', userId: requesterId,
-        sessionId: credential.sessionId, apiTokenId: credential.apiTokenId,
-      }),
+  // The request can be approved after the read above: then start a new one.
+  if (pending && await appendToPendingRequest({ id: pending.id, items, label, now })) {
+    return { id: pending.id, expiresAt }
+  }
+  const id = ulid()
+  await db.batch([
+    db.insert(schema.approvalRequest).values({
+      id, expiresAt, label: label ?? '', userId: requesterId,
+      sessionId: credential.sessionId, apiTokenId: credential.apiTokenId,
+    }),
     ...items.map((item) => db.insert(schema.approvalItem).values({ requestId: id, ...item }).onConflictDoNothing()),
-  ]
-  const [first, ...rest] = queries
-  await db.batch([first!, ...rest])
+  ])
   return { id, expiresAt }
+}
+
+// Adds items to request `id` and extends it, only while it is still pending.
+// Every statement re-checks that, so an item never lands on a request a human
+// approved, denied or let expire in the meantime. Returns false then.
+export async function appendToPendingRequest({ id, items, label, now }: {
+  id: string
+  items: RequestItem[]
+  label?: string
+  now: number
+}): Promise<boolean> {
+  const db = getDb()
+  const expiresAt = now + PENDING_TTL_MS
+  const isPending = orm.and(
+    orm.eq(schema.approvalRequest.id, id),
+    orm.eq(schema.approvalRequest.status, 'pending'),
+    orm.gt(schema.approvalRequest.expiresAt, now),
+  )
+  const [updated] = await db.batch([
+    db.update(schema.approvalRequest)
+      .set(label === undefined ? { expiresAt } : { expiresAt, label })
+      .where(isPending)
+      .returning({ id: schema.approvalRequest.id }),
+    ...items.map((item) => db.insert(schema.approvalItem)
+      .select((qb) => qb
+        .select({
+          id: orm.sql<string>`${ulid()}`.as('id'),
+          requestId: orm.sql<string>`${id}`.as('request_id'),
+          environmentId: orm.sql<string>`${item.environmentId}`.as('environment_id'),
+          secretName: orm.sql<string>`${item.secretName}`.as('secret_name'),
+        })
+        .from(schema.approvalRequest)
+        .where(isPending))
+      .onConflictDoNothing()),
+  ])
+  return updated.length > 0
+}
+
+// Changes what is protected only if it is still `from`, the value the caller
+// checked its passkey rule against. Otherwise a raise decided on a stale 'off'
+// could overwrite a concurrent 'all' with 'selected', lowering it for free.
+export async function setReadApproval({ environmentId, from, to }: {
+  environmentId: string
+  from: ReadApproval
+  to: ReadApproval
+}): Promise<void> {
+  const [updated] = await getDb().update(schema.environment)
+    .set({ readApproval: to, updatedAt: Date.now() })
+    .where(orm.and(orm.eq(schema.environment.id, environmentId), orm.eq(schema.environment.readApproval, from)))
+    .returning({ id: schema.environment.id })
+  if (!updated) throw new Error('Approval settings changed meanwhile. Reload and try again.')
 }
 
 export function getApprovalUrl(origin: string, requestId: string) {

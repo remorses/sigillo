@@ -29,6 +29,7 @@ import {
 import { TimeAgo } from "sigillo-app/src/components/ui/time-ago";
 import { createEnvAction, deleteEnvAction, updateEnvAction, updateEnvironmentAccessRoleAction } from "../actions.ts";
 import { NativeSelect } from "sigillo-app/src/components/ui/native-select";
+import { passkeyErrorMessage, withAccessPasskey } from "sigillo-app/src/components/passkey";
 import {
   Table,
   TableBody,
@@ -242,7 +243,7 @@ export function EnvironmentsPage() {
 }
 
 export function EnvironmentsTable() {
-  const { environments, projectId } = useLoaderData('/dash/projects/:projectId/environments');
+  const { environments, projectId, orgId } = useLoaderData('/dash/projects/:projectId/environments');
   const [showNewRow, setShowNewRow] = useState(false);
 
   const columns: ColumnDef<Environment>[] = [
@@ -274,10 +275,16 @@ export function EnvironmentsTable() {
           onChange={async (e) => {
             const nextRole: 'admin' | 'member' = e.currentTarget.value === 'admin' ? 'admin' : 'member'
             if (nextRole === row.original.accessRole) return
+            const environmentId = row.original.id
             try {
-              await updateEnvironmentAccessRoleAction({ environmentId: row.original.id, accessRole: nextRole })
-            } catch (err: any) {
-              alert(err?.message || 'Failed to update access role')
+              await withAccessPasskey({
+                orgId,
+                action: 'set-environment-access-role',
+                payload: JSON.stringify({ environmentId, accessRole: nextRole }),
+                run: (assertion) => updateEnvironmentAccessRoleAction({ environmentId, accessRole: nextRole, assertion }),
+              })
+            } catch (err) {
+              alert(passkeyErrorMessage(err))
             }
           }}
         >

@@ -88,6 +88,12 @@ Rules:
 
 A session or API token needs a grant, approved by a human with a passkey, before it reads a protected secret (`environment.readApproval`: `off`, `selected`, `all`). Full rules, threat model and code map: `docs/passkey-approvals.md`. Read it before touching any code that decrypts a secret.
 
+Registered keys and organization authority are separate. Each organization trusts exact
+credentials. Initial setup is explicit, before protection, on a device the human trusts.
+WebAuthn registration cannot prove this is a real human or a safe device. Later trust requires
+an already-trusted admin key. Missing keys never reset setup, and upgraded protected orgs stay
+locked until verified operator recovery. See the recovery rules in `docs/passkey-approvals.md`.
+
 Rules:
 - **Every path that returns a decrypted value or copies ciphertext checks the grant**: `getLockedNames()` in loaders and actions, `requestReadApproval()` in REST routes (`app/src/approvals.ts`). The dashboard is gated too: the CLI token is a normal session that can load page loaders, and agents can drive a logged-in browser.
 - **Anything that lowers protection or hands out access calls `requirePasskey()`** with its own intent (`app/src/passkey.ts`). Raising protection, deny and revoke do not need it.

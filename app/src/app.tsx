@@ -38,7 +38,7 @@ import {
 } from './approvals.ts'
 import { listPasskeys } from './passkey.ts'
 import { rememberCacheOrigin } from './lib/memoize.ts'
-import { cn } from 'sigillo-app/src/lib/utils'
+import { cn, formatTime } from 'sigillo-app/src/lib/utils'
 import { CreateOrgForm } from 'sigillo-app/src/components/create-org-form'
 import { SigilloLogo } from 'sigillo-app/src/components/logo'
 import { app as holocronApp } from '@holocron.so/vite/app'
@@ -618,6 +618,8 @@ export const app = new Spiceflow({ tracer })
     // Loaders run in parallel: never show environments (or their secret
     // names) the user cannot access, e.g. admin-only ones to members.
     const approvalEnvironments = projectEnvironments.filter((env) => !getEnvironmentAccessError(access, env))
+    const { listOrgPasskeys } = await import('./passkey.ts')
+    const orgPasskeys = await listOrgPasskeys({ request, session, orgId })
     // Names offered by "+ Add secret". Names are not secret, values are.
     const { allNames: secretNames } = await deriveEnvironmentSecretsAndNames({
       environmentIds: approvalEnvironments.map((env) => env.id),
@@ -628,6 +630,7 @@ export const app = new Spiceflow({ tracer })
       orgId,
       orgName: orgRow?.name ?? 'Organization',
       autoJoinDomain: orgRow?.autoJoinDomain ?? null,
+      orgPasskeys,
       projectNames: projects.map((p) => p.name),
       role,
       secretNames,
@@ -658,10 +661,15 @@ export const app = new Spiceflow({ tracer })
   .loader('/dash/projects/:projectId/approvals', async ({ params, request }) => {
     const db = getDb()
     const session = await requirePageSession(request)
-    const [requests, protectedEnvironment, passkeys] = await Promise.all([
+    const [requests, protectedEnvironment, trustedKey] = await Promise.all([
       listProjectRequests({ projectId: params.projectId, userId: session.userId }),
       db.query.environment.findFirst({ where: { projectId: params.projectId, readApproval: { ne: 'off' } } }),
-      listPasskeys({ request, userId: session.userId }),
+      db.query.orgPasskey.findFirst({
+        where: {
+          org: { projects: { id: params.projectId }, members: { userId: session.userId } },
+          passkey: { userId: session.userId, rpId: new URL(getRequestOrigin(request)).hostname },
+        },
+      }),
     ])
     // Only requests this user can act on, same rule as /approve/:id. The row
     // approves inline when every item is allowed.
@@ -671,7 +679,7 @@ export const app = new Spiceflow({ tracer })
     }))).filter((entry) => entry !== null)
     return {
       hasProtection: !!protectedEnvironment,
-      hasPasskey: passkeys.length > 0,
+      hasPasskey: !!trustedKey,
       requests: visible.map(({ approvalRequest, approvable }) => ({
         id: approvalRequest.id,
         status: approvalRequest.status === 'pending' ? 'pending' as const : 'active' as const,
@@ -699,16 +707,39 @@ export const app = new Spiceflow({ tracer })
   // ── Approve page (standalone, no sidebar) ───────────────────────
   // The URL a CLI or agent prints. The human reviews what is asked and
   // approves with a passkey.
-  .page('/approve/:id', async ({ params, request }) => {
+  .loader('/approve/:id', async ({ params, request, redirect }) => {
     const session = await getSession(request)
     if (!session) {
       const redirectPath = `/approve/${encodeURIComponent(params.id)}`
-      return Response.redirect(new URL(`/login?redirect=${encodeURIComponent(redirectPath)}`, request.url).toString(), 302)
+      throw redirect(`/login?redirect=${encodeURIComponent(redirectPath)}`)
     }
     const approvalRequest = await getRequestDetails(params.id)
     const approvable = approvalRequest ? await getApprovableItemIds(approvalRequest, session.userId) : new Set<string>()
     // Same answer for a missing request and for one that is not yours.
-    if (!approvalRequest || !getRequestRole(approvalRequest, session, approvable)) {
+    const visible = approvalRequest && getRequestRole(approvalRequest, session, approvable)
+    const trustedKey = visible ? await getDb().query.orgPasskey.findFirst({
+      where: {
+        orgId: { in: approvalRequest.items.flatMap((item) => item.environment?.project?.orgId ?? []) },
+        org: { members: { userId: session.userId } },
+        passkey: { userId: session.userId, rpId: new URL(getRequestOrigin(request)).hostname },
+      },
+    }) : undefined
+    return {
+      request: visible ? {
+        id: approvalRequest.id,
+        state: getRequestState(approvalRequest, Date.now()),
+        requester: describeRequester(approvalRequest),
+        label: approvalRequest.label,
+        createdAt: approvalRequest.createdAt,
+        userAgent: approvalRequest.session?.userAgent ?? null,
+        createdAtLabel: formatTime({ ts: approvalRequest.createdAt, now: Date.now(), timeZone: 'UTC' }),
+        items: describeItems(approvalRequest.items).map((item) => ({ ...item, allowed: approvable.has(item.id) })),
+      } : null,
+      hasPasskey: !!trustedKey,
+    }
+  })
+  .page('/approve/:id', async ({ loaderData }) => {
+    if (!loaderData.request) {
       return (
         <ContentFrame className="flex grow justify-center items-center">
           <div className="text-center text-balance max-w-sm px-4">
@@ -720,22 +751,13 @@ export const app = new Spiceflow({ tracer })
         </ContentFrame>
       )
     }
-    const passkeys = await listPasskeys({ request, userId: session.userId })
     const { ApproveRequest } = await import('sigillo-app/src/components/approve-request')
     return (
       <ContentFrame>
         <ApproveRequest
-          key={approvalRequest.items.map((item) => item.id).join()}
-          request={{
-            id: approvalRequest.id,
-            state: getRequestState(approvalRequest, Date.now()),
-            requester: describeRequester(approvalRequest),
-            label: approvalRequest.label,
-            createdAt: approvalRequest.createdAt,
-            userAgent: approvalRequest.session?.userAgent ?? null,
-            items: describeItems(approvalRequest.items).map((item) => ({ ...item, allowed: approvable.has(item.id) })),
-          }}
-          hasPasskey={passkeys.length > 0}
+          key={loaderData.request.items.map((item) => item.id).join()}
+          request={loaderData.request}
+          hasPasskey={loaderData.hasPasskey}
         />
       </ContentFrame>
     )

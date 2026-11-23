@@ -20,6 +20,15 @@ It exits 0 when they approve. Then run your command again.
 - An approval belongs to the session or token that asked and ends 1 hour after its last use. API tokens can be approved until revoked.
 - The dashboard asks too: protected values show a lock, and revealing, copying or downloading them asks for your passkey and unlocks that environment for 1 minute.
 - New REST routes `POST /api/v0/approvals` and `GET /api/v0/approvals/:id`.
+- Passkey registration no longer grants organization authority. Complete explicit trusted-key setup before enabling protection. Later keys need approval from an already-trusted admin key, bound to that exact credential.
+- Protected organizations require a trusted admin confirmation for invitations, promotions, project access, environment roles, and domain auto-join. Setup cancels older invitations and disables domain auto-join.
+- Older protected organizations and organizations that lose all trusted admin keys stay locked. An operator must verify recovery. No existing keys are trusted automatically. The upgrade revokes grants issued before organization trust.
+- You cannot remove or demote the last admin who holds a trusted passkey. Trust another admin's passkey first. Other access reductions still work.
+- After the upgrade, sign out and sign in again before you add a passkey or set up trust. Older logins count as CLI logins, which cannot add passkeys. The CLI keeps working without a new login.
+- Concurrent request edits cannot append secrets to an approved grant. Stale policy changes cannot overwrite stronger protection.
+- Domain auto-join checks the current domain when it adds a member, so a stale request cannot bypass trusted setup disabling auto-join.
+- API tokens immediately lose access when their creator leaves the organization or loses project access.
+- The approval page loads its data before rendering and keeps its timestamp and footer stable to prevent layout shifts.
 
 Also in this release:
 

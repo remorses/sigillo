@@ -83,6 +83,9 @@ export const org = sqliteCore.sqliteTable('org', {
   // When set, any user with a verified email ending in this domain
   // is automatically added as a member on their next dashboard visit.
   autoJoinDomain: sqliteCore.text('auto_join_domain'),
+  // Set once, when the first passkey is trusted for this org. Never cleared:
+  // after it, only a trusted passkey can trust another, even if all are gone.
+  trustInitializedAt: epochMs('trust_initialized_at'),
   createdAt: epochMs('created_at').notNull().$defaultFn(() => Date.now()),
   updatedAt: epochMs('updated_at').notNull().$defaultFn(() => Date.now()),
 }, (table) => [
@@ -266,6 +269,21 @@ export const passkey = sqliteCore.sqliteTable('passkey', {
   sqliteCore.index('passkey_user_id_idx').on(table.userId),
 ])
 
+// A passkey that may confirm actions in one org. Registering a passkey never
+// creates a row: the first one is an explicit bootstrap, every later one is
+// trusted by an assertion of an already trusted admin passkey.
+export const orgPasskey = sqliteCore.sqliteTable('org_passkey', {
+  id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
+  orgId: sqliteCore.text('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  passkeyId: sqliteCore.text('passkey_id').notNull().references(() => passkey.id, { onDelete: 'cascade' }),
+  // The user whose trusted passkey approved this one. Bootstrap: the owner.
+  trustedBy: sqliteCore.text('trusted_by').references(() => user.id, { onDelete: 'set null' }),
+  createdAt: epochMs('created_at').notNull().$defaultFn(() => Date.now()),
+}, (table) => [
+  sqliteCore.uniqueIndex('org_passkey_org_id_passkey_id_unique').on(table.orgId, table.passkeyId),
+  sqliteCore.index('org_passkey_passkey_id_idx').on(table.passkeyId),
+])
+
 // One protected secret name in an environment with readApproval = 'selected'.
 export const secretApproval = sqliteCore.sqliteTable('secret_approval', {
   id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
@@ -357,7 +375,7 @@ export const deviceCode = sqliteCore.sqliteTable('device_code', {
 // ── Relations (v2 API) ──────────────────────────────────────────────
 
 export const relations = defineRelations(
-  { user, session, account, verification, org, orgMember, orgInvitation, project, environment, secretEvent, apiToken, apiTokenEnvironment, deviceCode, oauthDomain, memberAccess, passkey, secretApproval, approvalRequest, approvalItem },
+  { user, session, account, verification, org, orgMember, orgInvitation, project, environment, secretEvent, apiToken, apiTokenEnvironment, deviceCode, oauthDomain, memberAccess, passkey, orgPasskey, secretApproval, approvalRequest, approvalItem },
   (r) => ({
     user: {
       sessions: r.many.session(),
@@ -380,6 +398,7 @@ export const relations = defineRelations(
       members: r.many.orgMember(),
       invitations: r.many.orgInvitation(),
       projects: r.many.project(),
+      trustedPasskeys: r.many.orgPasskey(),
       users: r.many.user({
         from: r.org.id.through(r.orgMember.orgId),
         to: r.user.id.through(r.orgMember.userId),
@@ -431,6 +450,12 @@ export const relations = defineRelations(
     oauthDomain: {},
     passkey: {
       user: r.one.user({ from: r.passkey.userId, to: r.user.id }),
+      orgTrusts: r.many.orgPasskey(),
+    },
+    orgPasskey: {
+      org: r.one.org({ from: r.orgPasskey.orgId, to: r.org.id }),
+      passkey: r.one.passkey({ from: r.orgPasskey.passkeyId, to: r.passkey.id }),
+      truster: r.one.user({ from: r.orgPasskey.trustedBy, to: r.user.id, alias: 'orgPasskeyTruster' }),
     },
     secretApproval: {
       environment: r.one.environment({ from: r.secretApproval.environmentId, to: r.environment.id }),

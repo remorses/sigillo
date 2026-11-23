@@ -10,10 +10,9 @@
 import { useState, useTransition } from 'react'
 import { CheckIcon } from 'lucide-react'
 import { Button } from 'sigillo-app/src/components/ui/button'
-import { TimeAgo } from 'sigillo-app/src/components/ui/time-ago'
 import { cn } from 'sigillo-app/src/lib/utils'
 import { groupRequestItems, requesterTitle } from 'sigillo-app/src/components/approvals-page'
-import { confirmWithPasskey, enrollPasskey, passkeyErrorMessage } from 'sigillo-app/src/components/passkey'
+import { confirmWithPasskey, passkeyErrorMessage } from 'sigillo-app/src/components/passkey'
 import { approveRequestAction, denyRequestAction } from '../approval-actions.ts'
 
 type Item = {
@@ -31,6 +30,7 @@ type RequestView = {
   requester: { kind: 'token' | 'cli' | 'browser' | 'gone'; name: string }
   label: string
   createdAt: number
+  createdAtLabel: string
   userAgent: string | null
   items: Item[]
 }
@@ -79,7 +79,8 @@ export function ApproveRequest({ request, hasPasskey }: { request: RequestView; 
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Approve secret access?</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          {requesterTitle(request.requester)} asks to read secrets. Asked <TimeAgo ts={request.createdAt} />.
+          {requesterTitle(request.requester)} asks to read secrets. Asked{' '}
+          <time dateTime={new Date(request.createdAt).toISOString()}>{request.createdAtLabel}</time>.
         </p>
         {request.userAgent && <p className="mt-1 text-xs text-muted-foreground break-words">{request.userAgent}</p>}
         {request.label && (
@@ -169,14 +170,14 @@ export function ApproveRequest({ request, hasPasskey }: { request: RequestView; 
           loading={isPending}
           disabled={itemIds.length === 0}
           onClick={() => run(async () => {
-            if (!hasPasskey) await enrollPasskey({ hasPasskey: false })
+            if (!hasPasskey) throw new Error('Open project Settings and ask an organization admin to trust your exact passkey before approving.')
             const assertion = await confirmWithPasskey({ kind: 'approve', requestId: request.id, itemIds, keep })
             await approveRequestAction({
               requestId: request.id, itemIds, seenItemIds: request.items.map((item) => item.id), keep, assertion,
             })
           })}
         >
-          {hasPasskey ? 'Approve with passkey' : 'Add a passkey and approve'}
+          {hasPasskey ? 'Approve with passkey' : 'Trusted passkey required'}
         </Button>
       </div>
     </div>
