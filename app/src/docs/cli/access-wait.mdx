@@ -1,0 +1,29 @@
+---
+$schema: https://holocron.so/frontmatter.json
+title: "access wait"
+description: "Block until an approval request is approved or denied. Exits 0 when approved. Agents: show the URL to the user, then run this in the background"
+icon: lucide:terminal
+---
+
+Block until an approval request is approved or denied. Exits 0 when approved. Agents: show the URL to the user, then run this in the background
+
+## Usage
+
+```sh
+sigillo access wait <request>
+```
+
+## Options
+
+| Option | Description |
+|--------|-------------|
+| `--timeout [seconds]` | Stop waiting after this many seconds (default: 600) |
+
+## Global Options
+
+| Option | Description |
+|--------|-------------|
+| `-h, --help` | Display this message |
+| `-v, --version` | Display version number |
+| `--token [token]` | Auth token override |
+| `--api-url [url]` | API URL override (default: https://sigillo.dev) |

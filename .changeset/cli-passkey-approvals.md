@@ -12,4 +12,15 @@ sigillo access request -c dev -c prod --label 'Deploy website'
 sigillo access request -c prod --secret STRIPE_KEY
 ```
 
-Against a server without approvals, `access request` says the server must be redeployed. Other commands work as before.
+- New `sigillo access wait` blocks until the request is approved or denied, so an agent does not poll. It exits 0 when approved. A blocked command prints the exact line to run:
+
+```bash
+$ sigillo run -c prod -- pnpm deploy
+error: approval required
+https://sigillo.dev/approve/01KX8Q2M0V7T9C4J6N3R5W1Z8B
+Tell the user to open this URL and approve with their passkey. Then wait for them in the background with:
+  sigillo access wait 01KX8Q2M0V7T9C4J6N3R5W1Z8B
+It exits 0 when they approve. Then run your command again.
+```
+
+Against a server without approvals, `access request` and `access wait` say the server must be redeployed. Other commands work as before.

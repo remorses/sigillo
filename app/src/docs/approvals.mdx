@@ -12,10 +12,12 @@ Make agents ask before they read your **production secrets**. A protected secret
 $ sigillo run -c prod -- pnpm deploy
 error: approval required
 https://sigillo.dev/approve/01KX8Q2M0V7T9C4J6N3R5W1Z8B
-Ask the user to open this URL and approve with their passkey, then run the command again.
+Tell the user to open this URL and approve with their passkey. Then wait for them in the background with:
+  sigillo access wait 01KX8Q2M0V7T9C4J6N3R5W1Z8B
+It exits 0 when they approve. Then run your command again.
 ```
 
-You open the URL, check what is asked, and approve. The agent runs the command again and it works.
+The agent shows you the URL and waits. You open it, check what is asked, and approve. The agent runs the command again and it works.
 
 ```diagram
  agent shell                      Sigillo                             you
@@ -23,7 +25,9 @@ You open the URL, check what is asked, and approve. The agent runs the command a
  sigillo run -c prod -- deploy ──▶ prod needs approval
                                ◀── 403 + approval URL
  shows the URL ─────────────────────────────────────────────────────▶ open /approve/<id>
+ sigillo access wait <id> ───────▶ still pending...
                                    verify the passkey ◀────────────── Approve with passkey
+ wait exits 0 ◀─────────────────── approved
  sigillo run -c prod -- deploy ──▶ access granted for this CLI
                                ◀── secrets
 ```
@@ -68,7 +72,21 @@ sigillo access request -c dev -c prod --label 'Deploy website'
 sigillo access request -c prod --secret STRIPE_KEY   # adds to the same request, same URL
 ```
 
-In a terminal, `sigillo run` opens the browser, waits until you approve and then continues. In agent shells and scripts it exits right away, so the agent can show you the URL.
+## Wait for the approval
+
+In a terminal, `sigillo run` opens the browser, waits until you approve and then continues.
+
+In agent shells and scripts it exits right away, so the agent can show you the URL. The agent then runs `sigillo access wait` in the background. It blocks until you decide:
+
+```bash
+sigillo access wait https://sigillo.dev/approve/01KX8Q2M0V7T9C4J6N3R5W1Z8B
+sigillo access wait 01KX8Q2M0V7T9C4J6N3R5W1Z8B --timeout 1800
+```
+
+| Result | Exit code |
+| --- | --- |
+| You approved | `0` |
+| You denied, the request expired, or the timeout passed (default 10 minutes) | `1` |
 
 ## The dashboard asks too
 

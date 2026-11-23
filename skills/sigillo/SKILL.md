@@ -185,14 +185,38 @@ The same pattern works for any secret copy, between environments, or when seedin
 
 ### Approval required
 
-Some environments need a passkey **approval** before secrets can be read. Ask for everything you will need first, so the user approves once:
+Some environments need a passkey **approval** before secrets can be read. A blocked command exits at once and prints the approval URL:
+
+```bash
+$ sigillo run -c prod -- pnpm deploy
+error: approval required
+https://sigillo.dev/approve/01KX8Q2M0V7T9C4J6N3R5W1Z8B
+Tell the user to open this URL and approve with their passkey. Then wait for them in the background with:
+  sigillo access wait 01KX8Q2M0V7T9C4J6N3R5W1Z8B
+It exits 0 when they approve. Then run your command again.
+```
+
+Do these three steps, in this order:
+
+1. **Tell the user** to open the URL and approve with their passkey. Write this message before you wait: the user cannot approve a URL they did not see.
+2. **Wait in the background** with `sigillo access wait <url or id>`. It blocks until the user decides and exits 0 when approved. Run it as a background command, so you are notified when it ends. Do not poll, and do not run the blocked command in a loop.
+3. **Run the blocked command again.**
+
+```bash
+sigillo access wait 01KX8Q2M0V7T9C4J6N3R5W1Z8B                  # waits up to 10 minutes
+sigillo access wait 01KX8Q2M0V7T9C4J6N3R5W1Z8B --timeout 1800   # waits up to 30 minutes
+```
+
+`access wait` exits 1 when the user denies, when the request expires, or at the timeout. After a timeout, run it again to keep waiting.
+
+Ask for everything you will need first, so the user approves once. Every call adds to the same request and prints the same URL:
 
 ```bash
 sigillo access request -c dev -c prod --label 'Deploy website to prod'
-sigillo access request -c prod --secret STRIPE_KEY   # adds to the same request, same URL
+sigillo access request -c prod --secret STRIPE_KEY
 ```
 
-Show the printed URL to the user. After they approve, run your commands. If a command fails with `approval required`, it prints a URL too: show it to the user, wait until they say they approved, then run the same command again. Never try to work around the approval.
+Never try to work around the approval.
 
 ### Never read `.env` files or `~/.sigillo/*`
 

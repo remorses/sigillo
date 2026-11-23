@@ -66,7 +66,7 @@
           {
             "group": "Secrets",
             "icon": "lucide:lock",
-            "pages": ["docs/cli/run", "docs/cli/secrets", "docs/cli/secrets-get", "docs/cli/secrets-set", "docs/cli/secrets-delete", "docs/cli/secrets-download", "docs/cli/access-request"]
+            "pages": ["docs/cli/run", "docs/cli/secrets", "docs/cli/secrets-get", "docs/cli/secrets-set", "docs/cli/secrets-delete", "docs/cli/secrets-download", "docs/cli/access-request", "docs/cli/access-wait"]
           },
           {
             "group": "Organizations",

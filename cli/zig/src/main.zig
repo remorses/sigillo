@@ -316,6 +316,11 @@ const AccessRequest = zeke.cmd("access request", "Ask for passkey approval to re
     .example("sigillo access request -c dev -c prod --label 'Deploy website'")
     .example("sigillo access request -c prod --secret STRIPE_KEY");
 
+const AccessWait = zeke.cmd("access wait <request>", "Block until an approval request is approved or denied. Exits 0 when approved. Agents: show the URL to the user, then run this in the background")
+    .option("--timeout [seconds]", "Stop waiting after this many seconds (default: 600)")
+    .example("sigillo access wait https://sigillo.dev/approve/01KX8Q2M0V7T9C4J6N3R5W1Z8B")
+    .example("sigillo access wait 01KX8Q2M0V7T9C4J6N3R5W1Z8B --timeout 1800");
+
 const Orgs = zeke.cmd("orgs", "List organizations");
 
 const OrgsCreate = zeke.cmd("orgs create", "Create an organization")
@@ -1777,7 +1782,7 @@ fn presentEnv(env_map: *const std.process.EnvMap, key: []const u8) ?[]const u8 {
 }
 
 const approval_poll_interval_seconds = 2;
-const approval_poll_attempts = 300; // 10 minutes
+const approval_wait_default_seconds = 600;
 const approval_label_max_chars = 200;
 
 const ApprovalRequired = struct {
@@ -1808,11 +1813,98 @@ fn exitApprovalsUnsupported(stderr: Writer) noreturn {
     std.process.exit(1);
 }
 
+// Agent shells only show output when a command ends, so the agent must tell
+// the user first and wait in a second, background command.
+fn printApprovalSteps(stderr: Writer, url: []const u8) void {
+    stderr.writeAll("Tell the user to open this URL and approve with their passkey. Then wait for them in the background with:\n") catch {};
+    stderr.print("  sigillo access wait {s}\n", .{approvalIdFromRef(url)}) catch {};
+    stderr.writeAll("It exits 0 when they approve. Then run your command again.\n") catch {};
+}
+
 fn exitApprovalRequired(stderr: Writer, url: []const u8) noreturn {
     color.err(stderr, "error") catch {};
     stderr.print(": approval required\n{s}\n", .{url}) catch {};
-    stderr.writeAll("Ask the user to open this URL and approve with their passkey, then run the command again.\n") catch {};
+    printApprovalSteps(stderr, url);
     std.process.exit(1);
+}
+
+/// `access wait` takes the approval URL or the bare request id.
+fn approvalIdFromRef(ref: []const u8) []const u8 {
+    var id = std.mem.trim(u8, ref, " \t\r\n");
+    if (std.mem.indexOfAny(u8, id, "?#")) |end| id = id[0..end];
+    id = std.mem.trimRight(u8, id, "/");
+    if (std.mem.lastIndexOfScalar(u8, id, '/')) |slash| id = id[slash + 1 ..];
+    return id;
+}
+
+/// Blocks until the request leaves `pending`. Returns when it is approved,
+/// exits 1 when it is denied, expired, revoked or still pending at the timeout.
+// TODO: the server has no push channel (Workers + D1, no Durable Object), so
+// this asks every 2 seconds. Replace with one long request if that changes.
+fn awaitApproval(allocator: std.mem.Allocator, stderr: Writer, api: ApiContext, id: []const u8, timeout_seconds: u32) !void {
+    try color.dim(stderr, "Waiting for approval...");
+
+    // Reset each poll so a long wait reuses the same memory.
+    var poll_arena = std.heap.ArenaAllocator.init(allocator);
+    defer poll_arena.deinit();
+    var waited: u32 = 0;
+    while (true) {
+        _ = poll_arena.reset(.retain_capacity);
+        const poll_allocator = poll_arena.allocator();
+
+        const status = try readApprovalStatus(poll_allocator, stderr, api, id);
+        if (!std.mem.eql(u8, status, "pending")) {
+            try stderr.writeAll("\n");
+            if (std.mem.eql(u8, status, "approved")) {
+                try color.green(stderr, "✔");
+                try stderr.writeAll(" Approved\n");
+                return;
+            }
+            try color.err(stderr, "error");
+            if (std.mem.eql(u8, status, "denied")) {
+                try stderr.writeAll(": approval was denied\n");
+            } else if (std.mem.eql(u8, status, "expired")) {
+                try stderr.writeAll(": approval request expired. Run the command again to get a new URL\n");
+            } else if (std.mem.eql(u8, status, "revoked")) {
+                try stderr.writeAll(": approval was revoked\n");
+            } else {
+                try stderr.print(": approval request is {s}\n", .{status});
+            }
+            std.process.exit(1);
+        }
+
+        if (waited >= timeout_seconds) break;
+        std.Thread.sleep(approval_poll_interval_seconds * std.time.ns_per_s);
+        waited += approval_poll_interval_seconds;
+    }
+
+    try stderr.writeAll("\n");
+    try color.err(stderr, "error");
+    try stderr.print(": still not approved after {d} seconds. Run `sigillo access wait {s}` to keep waiting\n", .{ timeout_seconds, id });
+    std.process.exit(1);
+}
+
+/// One status read. Network errors and 5xx count as `pending`, so a wait survives a blip.
+fn readApprovalStatus(allocator: std.mem.Allocator, stderr: Writer, api: ApiContext, id: []const u8) ![]const u8 {
+    const res = client.getApproval(.{
+        .allocator = allocator,
+        .api_url = api.api_url,
+        .token = api.token,
+        .id = id,
+    }) catch return "pending";
+    if (res.status >= 500) return "pending";
+    if (isMissingApprovalsRoute(allocator, res.status, res.body)) {
+        try stderr.writeAll("\n");
+        exitApprovalsUnsupported(stderr);
+    }
+    if (res.status != 200) {
+        const message = client.parseError(allocator, res.body) orelse "unknown error";
+        try stderr.writeAll("\n");
+        try color.err(stderr, "error");
+        try stderr.print(": failed to check approval ({d}): {s}\n", .{ res.status, message });
+        std.process.exit(1);
+    }
+    return client.jsonString(allocator, res.body, "status") orelse "pending";
 }
 
 /// Called by every secret read that got a non-200. Returns false when it is not
@@ -1833,62 +1925,9 @@ fn waitForReadApproval(allocator: std.mem.Allocator, stderr: Writer, api: ApiCon
     try stderr.writeAll("  ");
     try color.cyan(stderr, approval.url);
     try stderr.writeAll("\n\n");
-    try color.dim(stderr, "Waiting for approval...");
     openBrowser(allocator, approval.url);
-
-    // Reset each poll so 10 minutes of requests reuse the same memory.
-    var poll_arena = std.heap.ArenaAllocator.init(allocator);
-    defer poll_arena.deinit();
-    var attempts: usize = 0;
-    while (attempts < approval_poll_attempts) : (attempts += 1) {
-        std.Thread.sleep(approval_poll_interval_seconds * std.time.ns_per_s);
-        _ = poll_arena.reset(.retain_capacity);
-        const poll_allocator = poll_arena.allocator();
-
-        const res = client.getApproval(.{
-            .allocator = poll_allocator,
-            .api_url = api.api_url,
-            .token = api.token,
-            .id = approval.id,
-        }) catch continue;
-        if (res.status >= 500) continue;
-        if (isMissingApprovalsRoute(poll_allocator, res.status, res.body)) {
-            try stderr.writeAll("\n");
-            exitApprovalsUnsupported(stderr);
-        }
-        if (res.status != 200) {
-            const message = client.parseError(poll_allocator, res.body) orelse "unknown error";
-            try stderr.writeAll("\n");
-            try color.err(stderr, "error");
-            try stderr.print(": failed to check approval ({d}): {s}\n", .{ res.status, message });
-            std.process.exit(1);
-        }
-
-        const approval_status = client.jsonString(poll_allocator, res.body, "status") orelse continue;
-        if (std.mem.eql(u8, approval_status, "pending")) continue;
-        try stderr.writeAll("\n");
-        if (std.mem.eql(u8, approval_status, "approved")) {
-            try color.green(stderr, "✔");
-            try stderr.writeAll(" Approved\n");
-            return true;
-        }
-        try color.err(stderr, "error");
-        if (std.mem.eql(u8, approval_status, "denied")) {
-            try stderr.writeAll(": approval was denied\n");
-        } else if (std.mem.eql(u8, approval_status, "expired")) {
-            try stderr.writeAll(": approval request expired. Run the command again to get a new URL\n");
-        } else if (std.mem.eql(u8, approval_status, "revoked")) {
-            try stderr.writeAll(": approval was revoked\n");
-        } else {
-            try stderr.print(": approval request is {s}\n", .{approval_status});
-        }
-        std.process.exit(1);
-    }
-
-    try stderr.writeAll("\n");
-    try color.err(stderr, "error");
-    try stderr.writeAll(": timed out waiting for approval. Approve it, then run the command again\n");
-    std.process.exit(1);
+    try awaitApproval(allocator, stderr, api, approval.id, approval_wait_default_seconds);
+    return true;
 }
 
 fn secretsAction(_: Secrets.Args, opts: Secrets.Options, global: Global.Options) !void {
@@ -2310,13 +2349,39 @@ fn accessRequestAction(_: AccessRequest.Args, opts: AccessRequest.Options, globa
     }
 
     if (!stdout_is_tty) {
+        // Only the URL on stdout. The next steps go to stderr.
         try stdout.print("{s}\n", .{url});
+        printApprovalSteps(stderr, url);
         return;
     }
     try color.bold(stdout, "Open this URL and approve with your passkey:\n");
     try stdout.writeAll("  ");
     try color.cyan(stdout, url);
     try stdout.writeAll("\n");
+    try color.dim(stdout, "Wait for it with: sigillo access wait ");
+    try color.dim(stdout, approvalIdFromRef(url));
+    try stdout.writeAll("\n");
+}
+
+fn accessWaitAction(args: AccessWait.Args, opts: AccessWait.Options, global: Global.Options) !void {
+    const stderr = getStderr();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const id = approvalIdFromRef(args.request);
+    const timeout_seconds = if (opts.timeout) |text| std.fmt.parseInt(u32, text, 10) catch 0 else approval_wait_default_seconds;
+    if (id.len == 0 or timeout_seconds == 0) {
+        try color.err(stderr, "error");
+        try stderr.writeAll(if (id.len == 0) ": pass the approval URL or request id\n" else ": --timeout must be a number of seconds above 0\n");
+        std.process.exit(1);
+    }
+
+    const cwd = try config.getCwd(allocator);
+    const api = try requireApiContext(allocator, stderr, cwd, .{ .token = global.token, .api_url = global.api_url });
+    try awaitApproval(allocator, stderr, api, id, timeout_seconds);
 }
 
 fn orgsAction(_: Orgs.Args, _: Orgs.Options, global: Global.Options) !void {
@@ -4089,6 +4154,7 @@ pub fn main() !void {
         SecretsDelete.bindWith(Global, secretsDeleteAction),
         SecretsDownload.bindWith(Global, secretsDownloadAction),
         AccessRequest.bindWith(Global, accessRequestAction),
+        AccessWait.bindWith(Global, accessWaitAction),
         Orgs.bindWith(Global, orgsAction),
         OrgsCreate.bindWith(Global, orgsCreateAction),
         Projects.bindWith(Global, projectsAction),
@@ -4263,6 +4329,13 @@ test "only a non-JSON 404 means the server has no approvals routes" {
     try std.testing.expect(isMissingApprovalsRoute(allocator, 404, "{}"));
     try std.testing.expect(!isMissingApprovalsRoute(allocator, 404, "{\"error\":\"not found\"}"));
     try std.testing.expect(!isMissingApprovalsRoute(allocator, 403, "Forbidden"));
+}
+
+test "access wait accepts the approval URL or the bare id" {
+    try std.testing.expectEqualStrings("01KX", approvalIdFromRef("https://sigillo.dev/approve/01KX"));
+    try std.testing.expectEqualStrings("01KX", approvalIdFromRef(" https://sigillo.dev/approve/01KX/?from=cli#top\n"));
+    try std.testing.expectEqualStrings("01KX", approvalIdFromRef("01KX"));
+    try std.testing.expectEqualStrings("", approvalIdFromRef("  "));
 }
 
 test "access request collects repeated config, secret and label" {
