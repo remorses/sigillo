@@ -6,24 +6,5 @@
     "typecheck": "pnpm -r typecheck",
     "build": "pnpm --filter sigillo-app build",
     "deploy": "wrangler d1 migrations apply DB --remote --config app/wrangler.jsonc && wrangler deploy --config app/wrangler.jsonc"
-  },
-  "pnpm": {
-    "packageExtensions": {
-      "safe-mdx": {
-        "peerDependencies": {
-          "react-dom": "*"
-        }
-      }
-    },
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "sharp",
-      "workerd"
-    ],
-    "ignoredBuiltDependencies": [
-      "esbuild",
-      "sharp",
-      "workerd"
-    ]
   }
 }

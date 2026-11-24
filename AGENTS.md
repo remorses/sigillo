@@ -263,18 +263,6 @@ There are two distinct login paths and **both need a real browser round trip to 
 
 `/select-account` had never run in production before this change (`shouldRedirect` returns false and no client sent the prompt), so treat it as the fragile path when touching this code.
 
-## packageExtensions for safe-mdx
-
-`safe-mdx` imports `react-dom` (`prefetchDNS`, `preconnect`) but only declares `react` as a peer dependency, so pnpm builds a react-only variant and Vite fails to load the config with `Cannot find package 'react-dom'`. The root `package.json` corrects the metadata locally:
-
-```json
-"packageExtensions": {
-  "safe-mdx": { "peerDependencies": { "react-dom": "*" } }
-}
-```
-
-The real fix belongs upstream in https://github.com/holocron-hq/safe-mdx — remove this once the peer is declared there.
-
 ## spiceflow must be a single instance
 
 `@holocron.so/vite` pins an **exact** spiceflow version. `app/package.json` and `provider/package.json` must pin the **same** exact version or the vite plugin throws `assertSingleSpiceflowInstance`. When bumping holocron, check its pinned spiceflow version and match it:
