@@ -289,6 +289,10 @@ describe('passkeys', () => {
 
     // The CLI token sits in a file agents can read: it must not enroll.
     expect(await act(cliToken, () => startPasskeyRegistrationAction({})).catch(message)).toMatchInlineSnapshot(`"Add passkeys from the dashboard in a browser, not from a CLI session."`)
+    // better-auth's list-sessions returns every session token of the user: the
+    // CLI token could read the browser one and use it, with its grants.
+    const listed = await app.handle(new Request(`${ORIGIN}/api/auth/list-sessions`, { headers: { authorization: `Bearer ${cliToken}` } }))
+    expect(listed.status).toBe(404)
 
     // A new passkey has no authority anywhere, so no assertion is needed to add one.
     const { authenticator, passkeyId } = await enroll(user.token)

@@ -216,6 +216,9 @@ export async function getAuth(request: Request) {
     secret: env.BETTER_AUTH_SECRET,
     database: drizzleAdapter(db, { provider: 'sqlite' }),
     trustedOrigins: Array.from(new Set(trustedOrigins)),
+    // list-sessions returns the token of every session of the user. One
+    // session could then act as any other and use its approval grants.
+    disabledPaths: ['/list-sessions'],
     // Enable email/password signup in tests so tests can create users via
     // auth.api.signUpEmail() and get bearer tokens without needing the
     // OAuth provider. No-op in production since the UI only shows genericOAuth.
