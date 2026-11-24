@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.3.0
+
+1. **Passkey approvals for secret reads.** A CLI, agent or API token can be required to get a human approval, confirmed with a passkey, before it reads protected secrets.
+
+   - **Settings** has an **Approvals** card to choose per environment between **Off**, **Selected secrets** and **All secrets**, and a **Passkeys** card to manage your passkeys. Nothing is protected until an admin turns it on.
+   - A blocked read returns `403` with an approval URL. Each session or token keeps adding to one pending request, so one passkey prompt approves everything.
+   - The **Approvals** tab lists pending requests and active approvals. **Approve** grants in place, **Review details** opens the full page, **Revoke** ends an approval.
+   - An approval belongs to the session or token that asked and ends 1 hour after its last use. API tokens can be approved until revoked.
+   - The dashboard asks too: protected values show a lock, and revealing, copying or downloading them asks for your passkey and unlocks that environment for 1 minute.
+   - Organizations trust exact passkeys. Set up trusted keys explicitly before enabling protection; later keys need approval from an already-trusted admin key. Protected organizations need a trusted admin confirmation for invitations, promotions, project access, environment roles and domain auto-join.
+   - Renaming or deleting a protected environment, and renaming its project, asks for your passkey and only works in the dashboard.
+   - One login can no longer read the session tokens of your other logins (`/api/auth/list-sessions` is off).
+   - New REST routes `POST /api/v0/approvals` and `GET /api/v0/approvals/:id`.
+   - After the upgrade, sign out and sign in again before you add a passkey or set up trust. The CLI keeps working without a new login.
+
+2. **Rename and delete projects from project Settings.** A **Project name** card renames it. **Danger Zone** has a **Delete project** row whose confirm dialog lists the environments that will be deleted with their secrets, history and API tokens.
+
+3. **Environment descriptions.** Click the **Description** cell on the project Environments page to view and edit it. The REST API accepts an optional `description` on `POST` and `PATCH /api/v0/projects/:projectId/environments`; send `""` to clear it.
+
+4. **Better Auth 1.7.28.** The session cookie cache works again, so fewer requests hit the database. No app database migration is needed.
+
+5. **Security fixes.** The auth provider no longer auto-accepts consent for custom-scheme redirect URIs such as `myapp://sigillo.dev/cb`. The installer extracts into a private temp directory.
+
+6. **UI fixes.** Tables use one plain border. On mobile, pages no longer scroll sideways, the Secrets table keeps its key column readable, the active project tab scrolls into view, and Settings rows stack.
+
 ## 0.2.0
 
 1. **Rename projects from the dashboard.** Click the project name at the top of any project tab, type the new name, then press Enter. Escape cancels.
