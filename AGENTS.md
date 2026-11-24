@@ -528,7 +528,7 @@ CI builds standalone executables per platform (macOS arm64/x64, Linux
 arm64/x64 musl, Windows arm64/x64) from a single Linux runner using Zig
 cross-compilation. On version bump the publish job:
 
-1. Publishes the npm package (with binaries for all platforms in `dist/`)
+1. Stages the npm package (with binaries for all platforms in `dist/`). npm requires 2FA, so the release goes live only after Tommy approves it at https://www.npmjs.com/settings/xmorse/staged-packages
 2. Creates the GitHub release at tag `sigillo@x.y.z`
 3. Uploads platform tarballs/zips to the release
 
