@@ -38,8 +38,8 @@ import {
   getUserEnvironmentAccess,
   getEnvironmentAccessError,
 } from './db.ts'
-import { getLockedNames } from './approvals.ts'
-import { guardAccessChange, keepsTrustedAdmin, webAuthnResponseSchema } from './passkey.ts'
+import { getLockedNames, hasProtectedEnvironment } from './approvals.ts'
+import { guardAccessChange, keepsTrustedAdmin, requirePasskey, webAuthnResponseSchema } from './passkey.ts'
 
 const idSchema = z.string().min(1)
 const idListSchema = z.array(idSchema)
@@ -147,15 +147,23 @@ export async function createProjectAction(input: z.input<typeof createProjectInp
   throw redirect(router.href('/dash/projects/:projectId', { projectId: proj!.id }))
 }
 
+// The approve page shows project and environment names. While something is
+// protected, changing them (or deleting a protected environment, which drops
+// its protection) needs a passkey: see PROTECTED_ENVIRONMENT_ERROR.
+
 const renameProjectInput = z.object({
   id: idSchema,
   name: z.string().trim().min(1, 'Name is required'),
+  assertion: assertionSchema,
 })
 
 export async function renameProjectAction(input: z.input<typeof renameProjectInput>) {
-  const { id, name } = parseInput(renameProjectInput, input)
+  const { id, name, assertion } = parseInput(renameProjectInput, input)
   const session = await requireSession()
   await requireProjectAccess(session.userId, id)
+  if (await hasProtectedEnvironment(id)) {
+    await requirePasskey({ request: getActionRequest(), session, assertion, intent: { kind: 'rename-project', projectId: id, name } })
+  }
   await getDb().update(schema.project)
     .set({ name, updatedAt: Date.now() })
     .where(orm.eq(schema.project.id, id))
@@ -289,12 +297,15 @@ export async function saveSecretsAction(input: z.input<typeof saveSecretsInput>)
   }
 }
 
-const deleteEnvInput = z.object({ id: idSchema })
+const deleteEnvInput = z.object({ id: idSchema, assertion: assertionSchema })
 
 export async function deleteEnvAction(input: z.input<typeof deleteEnvInput>) {
-  const { id } = parseInput(deleteEnvInput, input)
+  const { id, assertion } = parseInput(deleteEnvInput, input)
   const session = await requireSession()
-  await requireEnvironmentAccess(session.userId, id)
+  const env = await requireEnvironmentAccess(session.userId, id)
+  if (env.readApproval !== 'off') {
+    await requirePasskey({ request: getActionRequest(), session, assertion, intent: { kind: 'delete-environment', environmentId: id } })
+  }
   const db = getDb()
   await db.delete(schema.environment).where(orm.eq(schema.environment.id, id))
 }
@@ -319,13 +330,21 @@ const updateEnvInput = z.object({
   name: z.string().optional(),
   slug: z.string().optional(),
   description: z.string().trim().max(ENV_DESCRIPTION_MAX_LENGTH, `Description must be at most ${ENV_DESCRIPTION_MAX_LENGTH} characters`).optional(),
+  assertion: assertionSchema,
 })
 
 export async function updateEnvAction(input: z.input<typeof updateEnvInput>) {
-  const { id, name, slug, description } = parseInput(updateEnvInput, input)
+  const { id, name, slug, description, assertion } = parseInput(updateEnvInput, input)
   if (!name && !slug && description === undefined) throw new Error('At least one of name, slug or description is required')
   const session = await requireSession()
-  await requireEnvironmentAccess(session.userId, id)
+  const env = await requireEnvironmentAccess(session.userId, id)
+  // The description is not shown on the approve page, so it stays free.
+  if ((name || slug) && env.readApproval !== 'off') {
+    await requirePasskey({
+      request: getActionRequest(), session, assertion,
+      intent: { kind: 'rename-environment', environmentId: id, name: name || null, slug: slug || null },
+    })
+  }
   const db = getDb()
   const updates: Partial<{ name: string; slug: string; description: string; updatedAt: number }> = { updatedAt: Date.now() }
   if (name) updates.name = name

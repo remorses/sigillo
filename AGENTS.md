@@ -97,6 +97,8 @@ locked until verified operator recovery. See the recovery rules in `docs/passkey
 Rules:
 - **Every path that returns a decrypted value or copies ciphertext checks the grant**: `getLockedNames()` in loaders and actions, `requestReadApproval()` in REST routes (`app/src/approvals.ts`). The dashboard is gated too: the CLI token is a normal session that can load page loaders, and agents can drive a logged-in browser.
 - **Anything that lowers protection or hands out access calls `requirePasskey()`** with its own intent (`app/src/passkey.ts`). Raising protection, deny and revoke do not need it.
+- **Renaming or deleting a protected environment, and renaming its project, calls `requirePasskey()`** and is refused over REST: the approve page shows these names.
+- **Never expose another session's token.** `getAuth()` disables better-auth's `/list-sessions` for this reason.
 - The 403 body of a blocked read (`error`, `code`, `approvalId`, `approvalUrl`) is a CLI contract. Old CLIs print only `error`, so it must keep the URL.
 - Do not replace the WebAuthn code with `@better-auth/passkey`: it lets any session enroll a passkey.
 - Typecheck and build do not catch a missing gate. Add new read paths to the bypass assertions in `app/src/approvals.test.ts`.

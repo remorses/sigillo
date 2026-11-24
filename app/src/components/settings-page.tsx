@@ -58,7 +58,10 @@ function ProjectNameSection() {
           action={async (formData: FormData) => {
             const { name } = parseFormData(projectNameSchema, formData)
             if (name === projectName) return
-            await renameProjectAction({ id: projectId, name })
+            await withAccessPasskey({
+              intent: { kind: 'rename-project', projectId, name },
+              run: (assertion) => renameProjectAction({ id: projectId, name, assertion }),
+            })
           }}
         >
           <Input

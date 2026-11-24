@@ -204,6 +204,18 @@ export async function setReadApproval({ environmentId, from, to }: {
   if (!updated) throw new Error('Approval settings changed meanwhile. Reload and try again.')
 }
 
+// The approve page shows the project and environment names, and the requester
+// could change them to make production look harmless. Deleting a protected
+// environment and creating it again would also drop its protection. So these
+// changes need a passkey in the dashboard and are refused over REST.
+export const PROTECTED_ENVIRONMENT_ERROR = 'this environment is protected. Rename or delete it in the dashboard, with your passkey'
+export const PROTECTED_PROJECT_ERROR = 'this project has protected environments. Rename it in the dashboard, with your passkey'
+
+export async function hasProtectedEnvironment(projectId: string): Promise<boolean> {
+  const environment = await getDb().query.environment.findFirst({ where: { projectId, readApproval: { ne: 'off' } } })
+  return !!environment
+}
+
 export function getApprovalUrl(origin: string, requestId: string) {
   return `${origin}/approve/${encodeURIComponent(requestId)}`
 }

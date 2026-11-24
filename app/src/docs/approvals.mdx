@@ -114,6 +114,10 @@ Protected values are not sent to the browser until you confirm with your passkey
 This matters because the CLI login is a normal session, and agents can also drive a logged-in
 browser. Approval requires a key that your organization already trusts.
 
+The approval page shows the project and environment names. So while an environment is protected,
+renaming it, changing its slug, deleting it, or renaming its project also asks for your passkey,
+and only works in the dashboard. `sigillo environments rename` and `delete` answer with an error.
+
 ## Passkeys
 
 Manage them in **Settings**, in the **Passkeys** card.

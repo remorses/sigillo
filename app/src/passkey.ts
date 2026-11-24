@@ -41,7 +41,7 @@ import {
 } from '@simplewebauthn/server'
 import { isoBase64URL } from '@simplewebauthn/server/helpers'
 import { schema } from 'db'
-import { ForbiddenError, getAuth, getDb, getOrgIdForEnvironment, getRequestOrigin, type Session } from './db.ts'
+import { ForbiddenError, getAuth, getDb, getOrgIdForEnvironment, getOrgIdForProject, getRequestOrigin, type Session } from './db.ts'
 import { PASSKEY_REQUIRED_MESSAGE } from './lib/utils.ts'
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000
@@ -72,6 +72,11 @@ export const passkeyIntentSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('remove-passkey'), passkeyId: idSchema }),
   z.object({ kind: z.literal('bootstrap-passkey'), orgId: idSchema, passkeyId: idSchema }),
   z.object({ kind: z.literal('trust-passkey'), orgId: idSchema, passkeyId: idSchema }),
+  // Only needed while the environment (or one of the project) is protected: the
+  // approve page shows these names, and a deleted environment loses its protection.
+  z.object({ kind: z.literal('rename-environment'), environmentId: idSchema, name: z.string().nullable(), slug: z.string().nullable() }),
+  z.object({ kind: z.literal('delete-environment'), environmentId: idSchema }),
+  z.object({ kind: z.literal('rename-project'), projectId: idSchema, name: z.string().min(1) }),
   ...accessIntentSchemas,
 ])
 export type PasskeyIntent = z.infer<typeof passkeyIntentSchema>
@@ -214,9 +219,16 @@ async function getIntentOrgIds({ userId, intent }: { userId: string; intent: Pas
     }
     case 'unlock':
     case 'set-read-approval':
-    case 'remove-secret-approval': {
+    case 'remove-secret-approval':
+    case 'rename-environment':
+    case 'delete-environment': {
       const orgId = await getOrgIdForEnvironment(intent.environmentId)
       if (!orgId) throw new Error('Environment not found')
+      return [orgId]
+    }
+    case 'rename-project': {
+      const orgId = await getOrgIdForProject(intent.projectId)
+      if (!orgId) throw new Error('Project not found')
       return [orgId]
     }
     case 'bootstrap-passkey':

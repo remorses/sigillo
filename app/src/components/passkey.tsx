@@ -28,18 +28,19 @@ import {
   trustOrgPasskeyAction,
   unlockEnvironmentAction,
 } from '../approval-actions.ts'
-import type { AccessIntent, PasskeyIntent, WebAuthnResponse } from '../passkey.ts'
+import type { PasskeyIntent, WebAuthnResponse } from '../passkey.ts'
 
 export async function confirmWithPasskey(intent: PasskeyIntent) {
   const { options } = await startPasskeyAssertionAction({ intent })
   return startAuthentication({ optionsJSON: options })
 }
 
-// Runs a change that hands out access. The server asks for a passkey only once
-// the org has trust set up, so the first try goes without one. `intent` must
-// describe exactly what `run` sends.
+// Runs a change the server gates only in some states: access changes once the
+// org has trust set up, renames and deletes while something is protected. So
+// the first try goes without a passkey. `intent` must describe exactly what
+// `run` sends.
 export async function withAccessPasskey<T>({ intent, run }: {
-  intent: AccessIntent
+  intent: PasskeyIntent
   run: (assertion?: WebAuthnResponse) => Promise<T>
 }): Promise<T> {
   try {

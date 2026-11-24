@@ -51,6 +51,12 @@ trusted than a CLI token. Initial setup on an already compromised device is not 
   Raising protection requires an already-trusted key. Deny and revoke do not need an assertion.
 - **A grant never transfers.** It is bound to `sessionId` or `apiTokenId`. The FKs are
   `ON DELETE SET NULL`: a deleted credential leaves a dead audit row, never a wider grant.
+- **Never return another session's token.** better-auth's `/list-sessions` does, so `getAuth()`
+  disables it. With that token a CLI session could act as the browser session and use its grants.
+- **Names on the approve page need a passkey to change.** While an environment is protected,
+  renaming it, changing its slug, deleting it, or renaming its project calls `requirePasskey()`.
+  REST refuses these changes: it cannot carry an assertion. Otherwise the requester renames
+  `Production` to `Development` before it asks. The environment description stays free.
 - **`''` as `approval_item.secret_name` means every secret of the environment.** It is only
   created for a whole-environment read in an `all` environment.
 - **The 403 body is a CLI contract.** `error` (human text with the URL, the only field old CLIs
@@ -107,7 +113,11 @@ On hosted Sigillo, contact the operator. Keep a second trusted admin key before 
 - Initial setup depends on the human using a trusted device before protection starts.
 - Trust is checked when an action is authorized. Removing a key does not undo earlier grants
   or settings. Revoke existing grants separately when a key is compromised.
-- Writes are not gated: an agent can overwrite or delete a protected secret.
+- Writes are not gated: an agent can overwrite or delete a protected secret. It can also delete
+  a whole project or organization.
+- The passkey prompt of the OS does not show the intent. An agent that controls the page when
+  the human touches the sensor can ask for a different intent, also `trust-passkey` for its own
+  key. Approve only in a browser that no agent drives.
 - A grant in constant use has no hard stop (open decision in
   `plans/decisions/approval-expiry.md`).
 

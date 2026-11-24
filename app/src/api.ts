@@ -41,10 +41,13 @@ import {
 } from './db.ts'
 import {
   APPROVAL_LABEL_MAX_LENGTH,
+  PROTECTED_ENVIRONMENT_ERROR,
+  PROTECTED_PROJECT_ERROR,
   addToPendingRequest,
   approvalRequiredBody,
   getApprovalUrl,
   getRequestState,
+  hasProtectedEnvironment,
   requestReadApproval,
 } from './approvals.ts'
 import { memoize } from './lib/memoize.ts'
@@ -616,6 +619,7 @@ export const apiApp = new Spiceflow()
       // getMemberProjectAccess also verifies org membership (single query),
       // so no separate requireApiOrgMember round-trip is needed.
       if (!await getMemberProjectAccess({ userId: session.userId, orgId, projectId: params.id })) return json({ error: 'forbidden' }, { status: 403 })
+      if (await hasProtectedEnvironment(params.id)) return json({ error: PROTECTED_PROJECT_ERROR }, { status: 403 })
       const db = getDb()
       const [updated] = await db.update(schema.project)
         .set({ name: body.name, updatedAt: Date.now() })
@@ -742,6 +746,7 @@ export const apiApp = new Spiceflow()
     async handler({ params, request }) {
       const session = await requireApiSession(request)
       const environment = await requireApiEnvironmentAccess({ userId: session.userId, environmentRef: params.id, projectId: params.projectId })
+      if (environment.readApproval !== 'off') return json({ error: PROTECTED_ENVIRONMENT_ERROR }, { status: 403 })
       const db = getDb()
       const [deleted] = await db.delete(schema.environment).where(orm.eq(schema.environment.id, environment.id)).returning({ id: schema.environment.id })
       if (!deleted) return json({ error: 'not found' }, { status: 404 })
@@ -762,6 +767,7 @@ export const apiApp = new Spiceflow()
       }
       const session = await requireApiSession(request)
       const environment = await requireApiEnvironmentAccess({ userId: session.userId, environmentRef: params.id, projectId: params.projectId })
+      if ((body.name || body.slug) && environment.readApproval !== 'off') return json({ error: PROTECTED_ENVIRONMENT_ERROR }, { status: 403 })
       const db = getDb()
       const updates: Partial<{ name: string; slug: string; description: string; updatedAt: number }> = { updatedAt: Date.now() }
       if (body.name) updates.name = body.name

@@ -97,10 +97,18 @@ function EditableEnvCell({ env, field }: { env: Environment; field: "name" | "sl
       return;
     }
     try {
-      await updateEnvAction({ id: env.id, [field]: trimmed });
+      await withAccessPasskey({
+        intent: {
+          kind: "rename-environment",
+          environmentId: env.id,
+          name: field === "name" ? trimmed : null,
+          slug: field === "slug" ? trimmed : null,
+        },
+        run: (assertion) => updateEnvAction({ id: env.id, [field]: trimmed, assertion }),
+      });
       setEditing(false);
-    } catch (e: any) {
-      alert(e?.message || `Failed to rename ${field}`);
+    } catch (e) {
+      alert(passkeyErrorMessage(e));
       setValue(env[field]);
       setEditing(false);
     }
@@ -322,9 +330,12 @@ export function EnvironmentsTable() {
             e.stopPropagation();
             if (confirm(`Delete environment "${row.original.name}"? All secrets in this environment will be lost.`)) {
               try {
-                await deleteEnvAction({ id: row.original.id });
-              } catch (e: any) {
-                alert(e?.message || "Failed to delete environment");
+                await withAccessPasskey({
+                  intent: { kind: "delete-environment", environmentId: row.original.id },
+                  run: (assertion) => deleteEnvAction({ id: row.original.id, assertion }),
+                });
+              } catch (e) {
+                alert(passkeyErrorMessage(e));
               }
             }
           }}

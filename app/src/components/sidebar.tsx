@@ -48,6 +48,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from "sigillo-app/src/components/ui/dropdown-menu";
+import { passkeyErrorMessage, withAccessPasskey } from "sigillo-app/src/components/passkey";
 import { createProjectAction, renameProjectAction } from "../actions.ts";
 
 // ── Shared sidebar content ─────────────────────────────────────
@@ -381,10 +382,13 @@ export function ProjectTitle() {
     }
     setSaving(true);
     try {
-      await renameProjectAction({ id: projectId, name });
+      await withAccessPasskey({
+        intent: { kind: "rename-project", projectId, name },
+        run: (assertion) => renameProjectAction({ id: projectId, name, assertion }),
+      });
       setEditing(false);
-    } catch (e: any) {
-      alert(e?.message || "Failed to rename project");
+    } catch (e) {
+      alert(passkeyErrorMessage(e));
       input.value = projectName;
     } finally {
       setSaving(false);

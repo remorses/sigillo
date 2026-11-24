@@ -15,7 +15,10 @@ import { app } from './app.js'
 import { getAuth, getDb, getSession, generateApiToken } from './db.js'
 import {
   createInviteAction,
+  deleteEnvAction,
   removeOrgMemberAction,
+  renameProjectAction,
+  updateEnvAction,
   syncMissingSecretsAction,
   updateEnvironmentAccessRoleAction,
   updateMemberAccessAction,
@@ -727,7 +730,7 @@ describe('org passkey trust', () => {
     expect((await read(cli, `/api/v0/projects/${b.projectId}/environments/prod/secrets/download`)).status).toBe(403)
   })
 
-  test('after setup every access change needs a trusted passkey signed for its exact payload', async () => {
+  test('after setup every access change, and every rename or delete of something protected, needs a trusted passkey signed for its exact payload', async () => {
     const admin = await createUser()
     const { orgId, projectId, envId } = await createProject(admin.token, { prod: {} })
     const db = getDb()
@@ -742,6 +745,32 @@ describe('org passkey trust', () => {
     await db.update(schema.user).set({ emailVerified: true }).where(orm.eq(schema.user.id, admin.userId)).limit(1)
     await db.update(schema.orgMember).set({ projectAccess: 'selected' }).where(orm.eq(schema.orgMember.id, member.memberId))
     await db.update(schema.environment).set({ accessRole: 'admin' }).where(orm.eq(schema.environment.id, envId('prod')))
+    await db.update(schema.environment).set({ readApproval: 'all' }).where(orm.eq(schema.environment.id, envId('dev')))
+
+    // The approve page shows these names. REST cannot carry a passkey, so it refuses.
+    const rest = async ({ method, path, body }: { method: string; path: string; body?: object }) => {
+      const res = await app.handle(new Request(`${ORIGIN}/api/v0/projects/${projectId}${path}`, {
+        method, headers: { authorization: `Bearer ${admin.token}`, 'content-type': 'application/json' }, body: body && JSON.stringify(body),
+      }))
+      const json: { error?: string } = await res.json()
+      return `${res.status} ${json.error ?? 'ok'}`
+    }
+    expect([
+      await rest({ method: 'PATCH', path: '/environments/dev', body: { name: 'Harmless' } }),
+      await rest({ method: 'PATCH', path: '/environments/dev', body: { slug: 'harmless' } }),
+      await rest({ method: 'PATCH', path: '/environments/dev', body: { description: 'Still allowed' } }),
+      await rest({ method: 'DELETE', path: '/environments/dev' }),
+      await rest({ method: 'PATCH', path: '', body: { name: 'Harmless' } }),
+    ]).toMatchInlineSnapshot(`
+      [
+        "403 this environment is protected. Rename or delete it in the dashboard, with your passkey",
+        "403 this environment is protected. Rename or delete it in the dashboard, with your passkey",
+        "200 ok",
+        "403 this environment is protected. Rename or delete it in the dashboard, with your passkey",
+        "403 this project has protected environments. Rename it in the dashboard, with your passkey",
+      ]
+    `)
+
     // Each change: the intent the server expects, the same kind signed for other values, the action.
     // Order matters: promotion last, member access refuses admins.
     const changes: Array<[string, PasskeyIntent, PasskeyIntent, (assertion?: Awaited<ReturnType<Authenticator['assert']>>) => Promise<unknown>]> = [
@@ -753,6 +782,13 @@ describe('org passkey trust', () => {
         (assertion) => updateMemberAccessAction({ memberId: member.memberId, projectIds: [projectId], assertion })],
       ['environment role', { kind: 'set-environment-access-role', orgId, environmentId: envId('prod'), accessRole: 'member' }, { kind: 'set-environment-access-role', orgId, environmentId: envId('prod'), accessRole: 'admin' },
         (assertion) => updateEnvironmentAccessRoleAction({ environmentId: envId('prod'), accessRole: 'member', assertion })],
+      ['rename environment', { kind: 'rename-environment', environmentId: envId('dev'), name: 'Development', slug: null }, { kind: 'rename-environment', environmentId: envId('dev'), name: 'Harmless', slug: null },
+        (assertion) => updateEnvAction({ id: envId('dev'), name: 'Development', assertion })],
+      ['rename project', { kind: 'rename-project', projectId, name: 'site' }, { kind: 'rename-project', projectId, name: 'harmless' },
+        (assertion) => renameProjectAction({ id: projectId, name: 'site', assertion })],
+      // After the renames: with dev gone nothing is protected and renames are free again.
+      ['delete environment', { kind: 'delete-environment', environmentId: envId('dev') }, { kind: 'delete-environment', environmentId: envId('prod') },
+        (assertion) => deleteEnvAction({ id: envId('dev'), assertion })],
       ['promote', { kind: 'promote-admin', orgId, memberId: member.memberId }, { kind: 'promote-admin', orgId, memberId: admin.userId },
         (assertion) => updateOrgMemberRoleAction({ memberId: member.memberId, role: 'admin', assertion })],
     ]
@@ -770,6 +806,12 @@ describe('org passkey trust', () => {
     expect(results).toMatchInlineSnapshot(`
       {
         "auto-join": [
+          "Passkey confirmation required",
+          "This passkey is not trusted in this organization. Ask an admin to trust it in Settings.",
+          "This passkey confirmation was made for a different action.",
+          "ok",
+        ],
+        "delete environment": [
           "Passkey confirmation required",
           "This passkey is not trusted in this organization. Ask an admin to trust it in Settings.",
           "This passkey confirmation was made for a different action.",
@@ -794,6 +836,18 @@ describe('org passkey trust', () => {
           "ok",
         ],
         "promote": [
+          "Passkey confirmation required",
+          "This passkey is not trusted in this organization. Ask an admin to trust it in Settings.",
+          "This passkey confirmation was made for a different action.",
+          "ok",
+        ],
+        "rename environment": [
+          "Passkey confirmation required",
+          "This passkey is not trusted in this organization. Ask an admin to trust it in Settings.",
+          "This passkey confirmation was made for a different action.",
+          "ok",
+        ],
+        "rename project": [
           "Passkey confirmation required",
           "This passkey is not trusted in this organization. Ask an admin to trust it in Settings.",
           "This passkey confirmation was made for a different action.",
