@@ -28,6 +28,7 @@ It exits 0 when they approve. Then run your command again.
 - Concurrent request edits cannot append secrets to an approved grant. Stale policy changes cannot overwrite stronger protection.
 - Domain auto-join checks the current domain when it adds a member, so a stale request cannot bypass trusted setup disabling auto-join.
 - API tokens immediately lose access when their creator leaves the organization or loses project access.
+- The approval page marks items in an organization that trusts none of your passkeys. For a request that spans organizations, you can approve the part that one passkey covers.
 - The approval page loads its data before rendering and keeps its timestamp and footer stable to prevent layout shifts.
 
 Also in this release:

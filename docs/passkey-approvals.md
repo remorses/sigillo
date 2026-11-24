@@ -44,7 +44,10 @@ trusted than a CLI token. Initial setup on an already compromised device is not 
   Today: `GET secrets/:name`, `GET secrets/download`, the secrets page loader, the event log
   loader, `syncMissingSecretsAction`, `unlockEnvironmentAction`.
 - **Anything that lowers protection needs an org-trusted `requirePasskey()` assertion.**
-  Access-expanding changes use `requireOrgAccessPasskey()` once org protection is configured.
+  Access-expanding changes use `guardAccessChange()` once org protection is configured. It
+  returns a condition that the write must include.
+- **Every gated action has its own typed intent** in `passkeyIntentSchema`. The browser and the
+  server build the same object; never sign a hand-built string.
   Raising protection requires an already-trusted key. Deny and revoke do not need an assertion.
 - **A grant never transfers.** It is bound to `sessionId` or `apiTokenId`. The FKs are
   `ON DELETE SET NULL`: a deleted credential leaves a dead audit row, never a wider grant.
