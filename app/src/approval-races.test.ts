@@ -8,6 +8,7 @@ import { ulid } from 'ulid'
 import { schema } from 'db'
 import { getDb, joinOrgByEmailDomain } from './db.js'
 import { addToPendingRequest, appendToPendingRequest, setReadApproval } from './approvals.js'
+import { guardAccessChange } from './passkey.js'
 
 async function createEnvironment() {
   const db = getDb()
@@ -56,6 +57,42 @@ describe('approval races', () => {
     await joinOrgByEmailDomain({ orgId, userId, domain })
     await joinOrgByEmailDomain({ orgId, userId, domain })
     expect(await db.query.orgMember.findMany({ where: { orgId, userId } })).toHaveLength(1)
+  })
+
+  test('an access change checked while the org was open is refused when protection or trusted setup lands first', async () => {
+    const { userId, orgId, credential, environmentId } = await createEnvironment()
+    const db = getDb()
+    const session = { userId, sessionId: credential.sessionId, kind: 'cli' as const, user: { id: userId, name: 'Ada', email: 'ada@example.com', emailVerified: true } }
+    // The action saw an org with no trust setup and no protection: no passkey asked.
+    const guard = await guardAccessChange({
+      request: new Request('http://e.ly'), session, assertion: undefined,
+      intent: { kind: 'enable-auto-join', orgId, autoJoinDomain: 'example.com' },
+    })
+    // The guard inside writes to the two tables it also reads.
+    const guardedWrites = async () => {
+      const results = await db.batch([
+        db.update(schema.org).set({ autoJoinDomain: 'example.com' })
+          .where(orm.and(orm.eq(schema.org.id, orgId), guard)).returning({ id: schema.org.id }),
+        db.update(schema.environment).set({ accessRole: 'member' })
+          .where(orm.and(orm.eq(schema.environment.id, environmentId), guard)).returning({ id: schema.environment.id }),
+      ] as const)
+      return results.map((rows) => rows.length)
+    }
+    expect(await guardedWrites()).toEqual([1, 1])
+
+    await db.update(schema.environment).set({ readApproval: 'all' }).where(orm.eq(schema.environment.id, environmentId)).limit(1)
+    expect(await guardedWrites()).toEqual([0, 0])
+
+    await db.batch([
+      db.update(schema.environment).set({ readApproval: 'off' }).where(orm.eq(schema.environment.id, environmentId)).limit(1),
+      db.update(schema.org).set({ trustInitializedAt: Date.now() }).where(orm.eq(schema.org.id, orgId)).limit(1),
+    ] as const)
+    expect(await guardedWrites()).toEqual([0, 0])
+    // From now on the same change needs a passkey.
+    expect(await guardAccessChange({
+      request: new Request('http://e.ly'), session, assertion: undefined,
+      intent: { kind: 'enable-auto-join', orgId, autoJoinDomain: 'example.com' },
+    }).catch(message)).toMatchInlineSnapshot(`"Passkey confirmation required"`)
   })
 
   test('a blocked read never adds items to a request approved after it looked the request up', async () => {

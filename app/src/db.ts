@@ -419,9 +419,11 @@ export async function getMemberProjectAccess({ userId, orgId, projectId }: {
   orgId: string
   projectId: string
 }): Promise<boolean> {
-  const access = await getMemberAccess({ userId, orgId })
-  if (!access) return false
-  return access.accessibleProjectIds === null || access.accessibleProjectIds.includes(projectId)
+  return canAccessProject(await getMemberAccess({ userId, orgId }), projectId)
+}
+
+function canAccessProject(access: MemberAccess | null, projectId: string): access is MemberAccess {
+  return !!access && (access.accessibleProjectIds === null || access.accessibleProjectIds.includes(projectId))
 }
 
 // Get list of project IDs a member can access, or null if unrestricted.
@@ -781,11 +783,9 @@ export async function requireSecretsApiAuth(
     if (apiToken.environmentIds && !apiToken.environmentIds.includes(env.id)) {
       throw forbiddenResponse('token is scoped to a different environment')
     }
-    // verifyApiToken checks current project access; admin-only envs also need the current role.
-    if (env.accessRole === 'admin') {
-      const creator = env.orgId ? await getMemberAccess({ userId: apiToken.createdBy, orgId: env.orgId }) : null
-      if (creator?.role !== 'admin') throw forbiddenResponse('admin access required for this environment')
-    }
+    // The token acts for its creator: same rule as a session of that user.
+    const error = getEnvironmentAccessError(apiToken.creatorAccess, env)
+    if (error) throw forbiddenResponse(error)
     return {
       userId: null, apiTokenId: apiToken.tokenId, sessionId: null, requesterId: apiToken.createdBy,
       environmentId: env.id, readApproval: env.readApproval,
@@ -829,12 +829,16 @@ export async function generateApiToken(): Promise<{ key: string; hashedKey: stri
   return { key, hashedKey, prefix }
 }
 
-export async function verifyApiToken(key: string): Promise<{
+type VerifiedApiToken = {
   tokenId: string
   projectId: string
   createdBy: string
+  // What the creator can access right now. A token never outlives it.
+  creatorAccess: MemberAccess
   environmentIds: string[] | null
-} | null> {
+}
+
+export async function verifyApiToken(key: string): Promise<VerifiedApiToken | null> {
   const hashedKey = await hashTokenKey(key)
   const db = getDb()
   const token = await db.query.apiToken.findFirst({
@@ -843,12 +847,13 @@ export async function verifyApiToken(key: string): Promise<{
     with: { environments: { columns: { environmentId: true } } },
   })
   if (!token) return null
-  const access = await getProjectMemberAccess(token.createdBy, token.projectId)
-  if (getEnvironmentAccessError(access, { projectId: token.projectId, accessRole: 'member' })) return null
+  const creatorAccess = await getProjectMemberAccess(token.createdBy, token.projectId)
+  if (!canAccessProject(creatorAccess, token.projectId)) return null
   return {
     tokenId: token.id,
     projectId: token.projectId,
     createdBy: token.createdBy,
+    creatorAccess,
     environmentIds: token.environments.length === 0
       ? null
       : token.environments.map((row) => row.environmentId),
@@ -858,12 +863,7 @@ export async function verifyApiToken(key: string): Promise<{
 // Reads a sig_ bearer token from the request. Returns null when the request
 // is not token auth (cookie session or BetterAuth bearer). Invalid sig_
 // tokens throw 401 so they never fall through to session auth.
-export async function getRequestApiToken(request: Request): Promise<{
-  tokenId: string
-  projectId: string
-  createdBy: string
-  environmentIds: string[] | null
-} | null> {
+export async function getRequestApiToken(request: Request): Promise<VerifiedApiToken | null> {
   const authHeader = request.headers.get('authorization')
   const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
   if (!bearer?.startsWith('sig_')) return null

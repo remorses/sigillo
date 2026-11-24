@@ -14,7 +14,7 @@ import { useLoaderData } from 'spiceflow/react'
 import { Button } from 'sigillo-app/src/components/ui/button'
 import { NativeSelect } from 'sigillo-app/src/components/ui/native-select'
 import { TimeAgo } from 'sigillo-app/src/components/ui/time-ago'
-import { cn } from 'sigillo-app/src/lib/utils'
+import { cn, PASSKEY_REQUIRED_MESSAGE } from 'sigillo-app/src/lib/utils'
 import { getEnvColor } from 'sigillo-app/src/components/environments-table'
 import {
   addSecretApprovalAction,
@@ -28,25 +28,25 @@ import {
   trustOrgPasskeyAction,
   unlockEnvironmentAction,
 } from '../approval-actions.ts'
-import type { PasskeyIntent, WebAuthnResponse } from '../passkey.ts'
+import type { AccessIntent, PasskeyIntent, WebAuthnResponse } from '../passkey.ts'
 
 export async function confirmWithPasskey(intent: PasskeyIntent) {
   const { options } = await startPasskeyAssertionAction({ intent })
   return startAuthentication({ optionsJSON: options })
 }
 
-export async function withAccessPasskey<T>({ orgId, action, payload, run }: {
-  orgId: string
-  action: string
-  payload: string
+// Runs a change that hands out access. The server asks for a passkey only once
+// the org has trust set up, so the first try goes without one. `intent` must
+// describe exactly what `run` sends.
+export async function withAccessPasskey<T>({ intent, run }: {
+  intent: AccessIntent
   run: (assertion?: WebAuthnResponse) => Promise<T>
 }): Promise<T> {
   try {
     return await run()
   } catch (error) {
-    if (!(error instanceof Error) || error.message !== 'Passkey confirmation required') throw error
-    const assertion = await confirmWithPasskey({ kind: 'change-access', orgId, action, payload })
-    return run(assertion)
+    if (!(error instanceof Error) || error.message !== PASSKEY_REQUIRED_MESSAGE) throw error
+    return run(await confirmWithPasskey(intent))
   }
 }
 

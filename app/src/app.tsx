@@ -32,11 +32,12 @@ import {
   getApprovableItemIds,
   getLockedNames,
   getRequestDetails,
+  getRequestOrgIds,
   getRequestRole,
   getRequestState,
   listProjectRequests,
 } from './approvals.ts'
-import { listPasskeys } from './passkey.ts'
+import { listOrgPasskeys, listPasskeys, listTrustedPasskeys } from './passkey.ts'
 import { rememberCacheOrigin } from './lib/memoize.ts'
 import { cn, formatTime } from 'sigillo-app/src/lib/utils'
 import { CreateOrgForm } from 'sigillo-app/src/components/create-org-form'
@@ -604,7 +605,7 @@ export const app = new Spiceflow({ tracer })
     if (!orgId) throw redirect('/')
     const { role } = await requirePageOrgMember(session.userId, orgId)
 
-    const [orgRow, projects, projectEnvironments, passkeys, access] = await Promise.all([
+    const [orgRow, projects, projectEnvironments, passkeys, access, orgPasskeys] = await Promise.all([
       db.query.org.findFirst({ where: { id: orgId }, columns: { name: true, autoJoinDomain: true } }),
       db.query.project.findMany({ where: { orgId }, columns: { name: true }, orderBy: { createdAt: 'asc' } }),
       db.query.environment.findMany({
@@ -614,12 +615,11 @@ export const app = new Spiceflow({ tracer })
       }),
       listPasskeys({ request, userId: session.userId }),
       getProjectMemberAccess(session.userId, params.projectId),
+      listOrgPasskeys({ request, session, orgId }),
     ])
     // Loaders run in parallel: never show environments (or their secret
     // names) the user cannot access, e.g. admin-only ones to members.
     const approvalEnvironments = projectEnvironments.filter((env) => !getEnvironmentAccessError(access, env))
-    const { listOrgPasskeys } = await import('./passkey.ts')
-    const orgPasskeys = await listOrgPasskeys({ request, session, orgId })
     // Names offered by "+ Add secret". Names are not secret, values are.
     const { allNames: secretNames } = await deriveEnvironmentSecretsAndNames({
       environmentIds: approvalEnvironments.map((env) => env.id),
@@ -661,31 +661,29 @@ export const app = new Spiceflow({ tracer })
   .loader('/dash/projects/:projectId/approvals', async ({ params, request }) => {
     const db = getDb()
     const session = await requirePageSession(request)
-    const [requests, protectedEnvironment, trustedKey] = await Promise.all([
+    const [requests, protectedEnvironment] = await Promise.all([
       listProjectRequests({ projectId: params.projectId, userId: session.userId }),
       db.query.environment.findFirst({ where: { projectId: params.projectId, readApproval: { ne: 'off' } } }),
-      db.query.orgPasskey.findFirst({
-        where: {
-          org: { projects: { id: params.projectId }, members: { userId: session.userId } },
-          passkey: { userId: session.userId, rpId: new URL(getRequestOrigin(request)).hostname },
-        },
-      }),
     ])
     // Only requests this user can act on, same rule as /approve/:id. The row
-    // approves inline when every item is allowed.
+    // approves inline when one trusted passkey covers every item.
     const visible = (await Promise.all(requests.map(async (approvalRequest) => {
       const approvable = await getApprovableItemIds(approvalRequest, session.userId)
       return getRequestRole(approvalRequest, session, approvable) ? { approvalRequest, approvable } : null
     }))).filter((entry) => entry !== null)
+    const trustRows = await listTrustedPasskeys({
+      request,
+      userId: session.userId,
+      orgIds: visible.flatMap(({ approvalRequest }) => getRequestOrgIds(approvalRequest)),
+    })
     return {
       hasProtection: !!protectedEnvironment,
-      hasPasskey: !!trustedKey,
       requests: visible.map(({ approvalRequest, approvable }) => ({
         id: approvalRequest.id,
         status: approvalRequest.status === 'pending' ? 'pending' as const : 'active' as const,
         requester: describeRequester(approvalRequest),
         label: approvalRequest.label,
-        items: describeItems(approvalRequest.items).map((item) => ({ ...item, allowed: approvable.has(item.id) })),
+        items: describeItems({ items: approvalRequest.items, approvable, trustRows }),
         createdAt: approvalRequest.createdAt,
         lastUsedAt: approvalRequest.lastUsedAt,
         expiry: approvalRequest.expiry,
@@ -717,13 +715,9 @@ export const app = new Spiceflow({ tracer })
     const approvable = approvalRequest ? await getApprovableItemIds(approvalRequest, session.userId) : new Set<string>()
     // Same answer for a missing request and for one that is not yours.
     const visible = approvalRequest && getRequestRole(approvalRequest, session, approvable)
-    const trustedKey = visible ? await getDb().query.orgPasskey.findFirst({
-      where: {
-        orgId: { in: approvalRequest.items.flatMap((item) => item.environment?.project?.orgId ?? []) },
-        org: { members: { userId: session.userId } },
-        passkey: { userId: session.userId, rpId: new URL(getRequestOrigin(request)).hostname },
-      },
-    }) : undefined
+    const trustRows = visible
+      ? await listTrustedPasskeys({ request, userId: session.userId, orgIds: getRequestOrgIds(approvalRequest) })
+      : []
     return {
       request: visible ? {
         id: approvalRequest.id,
@@ -733,9 +727,8 @@ export const app = new Spiceflow({ tracer })
         createdAt: approvalRequest.createdAt,
         userAgent: approvalRequest.session?.userAgent ?? null,
         createdAtLabel: formatTime({ ts: approvalRequest.createdAt, now: Date.now(), timeZone: 'UTC' }),
-        items: describeItems(approvalRequest.items).map((item) => ({ ...item, allowed: approvable.has(item.id) })),
+        items: describeItems({ items: approvalRequest.items, approvable, trustRows }),
       } : null,
-      hasPasskey: !!trustedKey,
     }
   })
   .page('/approve/:id', async ({ loaderData }) => {
@@ -757,7 +750,6 @@ export const app = new Spiceflow({ tracer })
         <ApproveRequest
           key={loaderData.request.items.map((item) => item.id).join()}
           request={loaderData.request}
-          hasPasskey={loaderData.hasPasskey}
         />
       </ContentFrame>
     )

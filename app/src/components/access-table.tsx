@@ -72,9 +72,7 @@ export function AccessTable() {
     setPendingRoleId(member.id)
     try {
       await withAccessPasskey({
-        orgId,
-        action: "promote-admin",
-        payload: JSON.stringify({ memberId: member.id }),
+        intent: { kind: "promote-admin", orgId, memberId: member.id },
         run: (assertion) => updateOrgMemberRoleAction({ memberId: member.id, role: nextRole, assertion }),
       })
     } catch (error) {
@@ -271,9 +269,7 @@ function ManageAccessDialog({
       const memberId = member.id
       const projectIds = fullAccess ? null : orgProjects.filter((p) => projectChecked[p.id]).map((p) => p.id)
       await withAccessPasskey({
-        orgId,
-        action: 'update-member-access',
-        payload: JSON.stringify({ memberId, projectIds }),
+        intent: { kind: 'update-member-access', orgId, memberId, projectIds },
         run: (assertion) => updateMemberAccessAction({ memberId, projectIds, assertion }),
       })
       onClose()

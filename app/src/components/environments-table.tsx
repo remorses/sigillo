@@ -278,9 +278,7 @@ export function EnvironmentsTable() {
             const environmentId = row.original.id
             try {
               await withAccessPasskey({
-                orgId,
-                action: 'set-environment-access-role',
-                payload: JSON.stringify({ environmentId, accessRole: nextRole }),
+                intent: { kind: 'set-environment-access-role', orgId, environmentId, accessRole: nextRole },
                 run: (assertion) => updateEnvironmentAccessRoleAction({ environmentId, accessRole: nextRole, assertion }),
               })
             } catch (err) {

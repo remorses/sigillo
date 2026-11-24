@@ -5,6 +5,10 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+// Thrown by the server when an action needs a passkey assertion and got none.
+// The browser reads it to open the passkey prompt and try again.
+export const PASSKEY_REQUIRED_MESSAGE = 'Passkey confirmation required'
+
 // ── Time formatting ─────────────────────────────────────────────────
 //
 // LESSON — both of these take `now` and `timeZone` as REQUIRED arguments on

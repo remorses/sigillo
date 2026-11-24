@@ -175,12 +175,13 @@ function AutoJoinSection() {
     setError(null)
     startTransition(async () => {
       try {
-        const result = await withAccessPasskey({
-          orgId,
-          action: 'enable-auto-join',
-          payload: JSON.stringify({ autoJoinDomain: userDomain }),
-          run: (assertion) => updateAutoJoinDomainAction({ orgId, enabled: newEnabled, assertion }),
-        })
+        // Only enabling hands out access.
+        const result = newEnabled && userDomain
+          ? await withAccessPasskey({
+            intent: { kind: 'enable-auto-join', orgId, autoJoinDomain: userDomain },
+            run: (assertion) => updateAutoJoinDomainAction({ orgId, enabled: true, assertion }),
+          })
+          : await updateAutoJoinDomainAction({ orgId, enabled: newEnabled })
         setCurrentDomain(result.autoJoinDomain)
       } catch (error) {
         setError(passkeyErrorMessage(error))

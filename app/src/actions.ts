@@ -37,10 +37,9 @@ import {
   getMemberAccess,
   getUserEnvironmentAccess,
   getEnvironmentAccessError,
-  type Session,
 } from './db.ts'
 import { getLockedNames } from './approvals.ts'
-import { requireOrgAccessPasskey, webAuthnResponseSchema, type WebAuthnResponse } from './passkey.ts'
+import { guardAccessChange, keepsTrustedAdmin, webAuthnResponseSchema } from './passkey.ts'
 
 const idSchema = z.string().min(1)
 const idListSchema = z.array(idSchema)
@@ -107,57 +106,14 @@ async function requireAdminRole(userId: string, orgId: string) {
   if (role !== 'admin') throw new Error('Only admins can manage access')
 }
 
-// Changes that give someone more access need a trusted org passkey once the org
-// has trust set up (org.trustInitializedAt, never cleared). `payload` must be the
-// exact string the browser signed with withAccessPasskey(): JSON.stringify of
-// the same object literal, same key order.
-//
-// Returns a condition the write MUST include. When the helper skipped the
-// passkey, it only saw an org with no trust setup and no protection, and setup
-// can finish before the write lands. So the write applies only if that still
-// holds at write time. Trust setup is sticky, so a verified passkey needs none.
-async function guardAccessChange({ session, orgId, action, payload, assertion }: {
-  session: Session
-  orgId: string
-  action: string
-  payload: string
-  assertion: WebAuthnResponse | undefined
-}): Promise<orm.SQL> {
-  const verified = await requireOrgAccessPasskey({ request: getActionRequest(), session, orgId, action, payload, assertion })
-  if (verified) return orm.sql`1 = 1`
-  // Same skip rule as requireOrgAccessPasskey, evaluated inside the write.
-  return orm.sql`(
-    exists (select 1 from ${schema.org} where ${schema.org.id} = ${orgId} and ${schema.org.trustInitializedAt} is null)
-    and not exists (
-      select 1 from ${schema.environment} join ${schema.project} on ${schema.project.id} = ${schema.environment.projectId}
-      where ${schema.project.orgId} = ${orgId} and ${schema.environment.readApproval} != 'off'
-    )
-  )`
-}
+// Changes that give someone more access go through guardAccessChange()
+// (passkey.ts): the intent built here must equal the one the browser signed
+// with withAccessPasskey(), and the returned condition goes into the write.
 
 // A guarded write matched nothing: org trust was set up, or the row changed, meanwhile.
 const CHANGED_ERROR = 'Access settings changed while saving. Reload and try again.'
 
 const LAST_TRUSTED_ADMIN_ERROR = 'This admin holds the last trusted admin passkey of this organization. Trust another admin passkey first.'
-
-// False only when `userId` is the last admin with a trusted passkey in the org:
-// without one, nobody could trust a new key. Same rule as removePasskey(). Put
-// it in the write itself, so two concurrent changes cannot drop the last two.
-function keepsTrustedAdmin(orgId: string, userId: string) {
-  return orm.sql`(
-    not exists (
-      select 1 from org_passkey o
-      join passkey p on p.id = o.passkey_id
-      join org_member m on m.org_id = o.org_id and m.user_id = p.user_id and m.role = 'admin'
-      where o.org_id = ${orgId} and p.user_id = ${userId}
-    ) or exists (
-      select 1 from org_passkey o
-      join passkey p on p.id = o.passkey_id
-      join org_member m on m.org_id = o.org_id and m.user_id = p.user_id and m.role = 'admin'
-      where o.org_id = ${orgId} and p.user_id != ${userId}
-    )
-  )`
-}
 
 async function ensureAnotherAdminExists(orgId: string, userId: string) {
   const db = getDb()
@@ -395,9 +351,8 @@ export async function createInviteAction(input: z.input<typeof createInviteInput
   const { role } = await requireOrgMember(session.userId, orgId)
   if (role !== 'admin') throw new Error('Only admins can create invites')
   const guard = await guardAccessChange({
-    session, orgId, action: 'create-invite',
-    payload: JSON.stringify({ projectIds: projectIds ?? null }),
-    assertion,
+    request: getActionRequest(), session, assertion,
+    intent: { kind: 'create-invite', orgId, projectIds: projectIds ?? null },
   })
 
   // Validate project IDs belong to this org if provided
@@ -524,11 +479,10 @@ export async function updateOrgMemberRoleAction(input: z.input<typeof updateOrgM
   }
   const guard = role === 'admin'
     ? await guardAccessChange({
-      session, orgId: member.orgId, action: 'promote-admin',
-      payload: JSON.stringify({ memberId: member.id }),
-      assertion,
+      request: getActionRequest(), session, assertion,
+      intent: { kind: 'promote-admin', orgId: member.orgId, memberId: member.id },
     })
-    : keepsTrustedAdmin(member.orgId, member.userId)
+    : keepsTrustedAdmin({ orgId: member.orgId, userId: member.userId })
 
   const [updated] = await db.update(schema.orgMember)
     .set({ role })
@@ -566,7 +520,7 @@ export async function removeOrgMemberAction(input: z.input<typeof removeOrgMembe
   // so a refused removal keeps them.
   const [[deleted]] = await db.batch([
     db.delete(schema.orgMember)
-      .where(orm.and(orm.eq(schema.orgMember.id, member.id), keepsTrustedAdmin(member.orgId, member.userId)))
+      .where(orm.and(orm.eq(schema.orgMember.id, member.id), keepsTrustedAdmin({ orgId: member.orgId, userId: member.userId })))
       .limit(1)
       .returning({ id: schema.orgMember.id }),
     db.delete(schema.orgPasskey).where(orm.and(
@@ -749,9 +703,8 @@ export async function updateAutoJoinDomainAction(input: z.input<typeof updateAut
     }
     // Everyone with this domain joins, so enabling it hands out access.
     guard = await guardAccessChange({
-      session, orgId, action: 'enable-auto-join',
-      payload: JSON.stringify({ autoJoinDomain: domain }),
-      assertion,
+      request: getActionRequest(), session, assertion,
+      intent: { kind: 'enable-auto-join', orgId, autoJoinDomain: domain },
     })
     autoJoinDomain = domain
   }
@@ -806,9 +759,8 @@ export async function updateMemberAccessAction(input: z.input<typeof updateMembe
   // replaces the whole list, so "narrows what I read" can still widen a list
   // another admin narrowed meanwhile. The human approves the exact final list.
   const guard = await guardAccessChange({
-    session, orgId: member.orgId, action: 'update-member-access',
-    payload: JSON.stringify({ memberId: member.id, projectIds }),
-    assertion,
+    request: getActionRequest(), session, assertion,
+    intent: { kind: 'update-member-access', orgId: member.orgId, memberId: member.id, projectIds },
   })
 
   // Mode and rules in one batch, so a failure keeps the old access. Every
@@ -860,9 +812,8 @@ export async function updateEnvironmentAccessRoleAction(input: z.input<typeof up
   // Opening an admin-only environment to members gives them access.
   const guard = accessRole === 'member'
     ? await guardAccessChange({
-      session, orgId, action: 'set-environment-access-role',
-      payload: JSON.stringify({ environmentId, accessRole }),
-      assertion,
+      request: getActionRequest(), session, assertion,
+      intent: { kind: 'set-environment-access-role', orgId, environmentId, accessRole },
     })
     : undefined
   // Compare-and-set on the role this check saw, so a restrict that lands

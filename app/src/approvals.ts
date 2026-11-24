@@ -270,12 +270,15 @@ export function describeRequester(request: Pick<RequestDetails, 'user' | 'sessio
   return { kind: 'gone' as const, name }
 }
 
+export function getRequestOrgIds(request: RequestDetails): string[] {
+  return [...new Set(request.items.map((item) => item.environment?.project?.orgId).filter((id): id is string => !!id))]
+}
+
 // Items the viewer may approve: the normal environment access rule (org
 // member, project access, admin for admin-only environments).
 export async function getApprovableItemIds(request: RequestDetails, userId: string): Promise<Set<string>> {
-  const orgIds = [...new Set(request.items.map((item) => item.environment?.project?.orgId).filter((id): id is string => !!id))]
   const accessByOrg = new Map(await Promise.all(
-    orgIds.map(async (orgId) => [orgId, await getMemberAccess({ userId, orgId })] as const),
+    getRequestOrgIds(request).map(async (orgId) => [orgId, await getMemberAccess({ userId, orgId })] as const),
   ))
   const allowed = new Set<string>()
   for (const item of request.items) {
@@ -396,7 +399,15 @@ export async function listProjectRequests({ projectId, userId }: { projectId: st
   })
 }
 
-export function describeItems(items: RequestDetails['items']) {
+// What a human sees for each item. `allowed`: the viewer has access to the
+// environment. `trustedKeyIds`: the viewer's passkeys the item's org trusts
+// (`trustRows` comes from listTrustedPasskeys). The page offers an approval
+// only when one passkey covers every selected item, the same rule as the server.
+export function describeItems({ items, approvable, trustRows }: {
+  items: RequestDetails['items']
+  approvable: Set<string>
+  trustRows: { orgId: string; passkeyId: string }[]
+}) {
   return items
     .filter((item) => item.environment)
     .map((item) => ({
@@ -406,6 +417,8 @@ export function describeItems(items: RequestDetails['items']) {
       projectId: item.environment!.projectId,
       projectName: item.environment!.project?.name ?? '',
       secretName: item.secretName,
+      allowed: approvable.has(item.id),
+      trustedKeyIds: trustRows.filter((row) => row.orgId === item.environment!.project?.orgId).map((row) => row.passkeyId),
     }))
     .sort((a, b) => a.projectName.localeCompare(b.projectName) || a.environmentName.localeCompare(b.environmentName) || a.secretName.localeCompare(b.secretName))
 }

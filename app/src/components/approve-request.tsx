@@ -11,7 +11,7 @@ import { useState, useTransition } from 'react'
 import { CheckIcon } from 'lucide-react'
 import { Button } from 'sigillo-app/src/components/ui/button'
 import { cn } from 'sigillo-app/src/lib/utils'
-import { groupRequestItems, requesterTitle } from 'sigillo-app/src/components/approvals-page'
+import { canSignItems, groupRequestItems, requesterTitle } from 'sigillo-app/src/components/approvals-page'
 import { confirmWithPasskey, passkeyErrorMessage } from 'sigillo-app/src/components/passkey'
 import { approveRequestAction, denyRequestAction } from '../approval-actions.ts'
 
@@ -22,6 +22,15 @@ type Item = {
   projectName: string
   secretName: string
   allowed: boolean
+  // The viewer's passkeys that the organization of this item trusts.
+  trustedKeyIds: string[]
+}
+
+// Why the viewer cannot approve this item, or null.
+function blockedReason(item: Item) {
+  if (!item.allowed) return 'no access'
+  if (item.trustedKeyIds.length === 0) return 'no trusted passkey'
+  return null
 }
 
 type RequestView = {
@@ -42,7 +51,7 @@ const CLOSED_TEXT = {
   expired: { title: 'Expired', text: 'This request expired. Run the command again to get a new link.' },
 } as const
 
-export function ApproveRequest({ request, hasPasskey }: { request: RequestView; hasPasskey: boolean }) {
+export function ApproveRequest({ request }: { request: RequestView }) {
   const [unchecked, setUnchecked] = useState<Record<string, boolean>>({})
   const [keep, setKeep] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -60,7 +69,10 @@ export function ApproveRequest({ request, hasPasskey }: { request: RequestView; 
     )
   }
 
-  const itemIds = request.items.filter((item) => item.allowed && !unchecked[item.id]).map((item) => item.id)
+  const selected = request.items.filter((item) => !blockedReason(item) && !unchecked[item.id])
+  const itemIds = selected.map((item) => item.id)
+  const canSign = canSignItems(selected)
+  const needsTrust = request.items.some((item) => blockedReason(item) === 'no trusted passkey')
   const isToken = request.requester.kind === 'token'
 
   function run(action: () => Promise<unknown>) {
@@ -98,13 +110,14 @@ export function ApproveRequest({ request, hasPasskey }: { request: RequestView; 
               {group.projectName} · <span className="font-medium text-foreground">{group.environmentName}</span>
             </p>
             {group.items.map((item) => {
-              const checked = item.allowed && !unchecked[item.id]
+              const blocked = blockedReason(item)
+              const checked = !blocked && !unchecked[item.id]
               return (
                 <label
                   key={item.id}
                   className={cn(
                     'flex min-h-11 items-center gap-3 border-t border-border px-4 py-2 text-sm',
-                    item.allowed ? 'cursor-pointer' : 'opacity-60',
+                    blocked ? 'opacity-60' : 'cursor-pointer',
                   )}
                 >
                   <span
@@ -120,13 +133,13 @@ export function ApproveRequest({ request, hasPasskey }: { request: RequestView; 
                     type="checkbox"
                     className="sr-only"
                     checked={checked}
-                    disabled={!item.allowed || isPending}
+                    disabled={!!blocked || isPending}
                     onChange={() => setUnchecked((prev) => ({ ...prev, [item.id]: !prev[item.id] }))}
                   />
                   {item.secretName === ''
                     ? <span>All secrets</span>
                     : <span className="mono-sm break-all">{item.secretName}</span>}
-                  {!item.allowed && <span className="ml-auto text-xs text-muted-foreground">no access</span>}
+                  {blocked && <span className="ml-auto shrink-0 text-xs text-muted-foreground">{blocked}</span>}
                 </label>
               )
             })}
@@ -154,6 +167,19 @@ export function ApproveRequest({ request, hasPasskey }: { request: RequestView; 
         <p className="text-xs text-muted-foreground">Access ends 1 hour after the last use. You can revoke it in the Approvals tab.</p>
       )}
 
+      {needsTrust && (
+        <p className="text-xs text-muted-foreground">
+          The organization of an item marked "no trusted passkey" trusts none of your passkeys.
+          Ask an admin there to trust one in Settings.
+        </p>
+      )}
+      {selected.length > 0 && !canSign && (
+        <p className="text-xs text-muted-foreground">
+          No single passkey of yours is trusted by every organization in this selection.
+          Uncheck items, approve the rest, then run the command again for what is left.
+        </p>
+      )}
+
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
@@ -168,16 +194,15 @@ export function ApproveRequest({ request, hasPasskey }: { request: RequestView; 
         <Button
           size="lg"
           loading={isPending}
-          disabled={itemIds.length === 0}
+          disabled={!canSign}
           onClick={() => run(async () => {
-            if (!hasPasskey) throw new Error('Open project Settings and ask an organization admin to trust your exact passkey before approving.')
             const assertion = await confirmWithPasskey({ kind: 'approve', requestId: request.id, itemIds, keep })
             await approveRequestAction({
               requestId: request.id, itemIds, seenItemIds: request.items.map((item) => item.id), keep, assertion,
             })
           })}
         >
-          {hasPasskey ? 'Approve with passkey' : 'Trusted passkey required'}
+          Approve with passkey
         </Button>
       </div>
     </div>

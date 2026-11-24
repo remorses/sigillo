@@ -195,7 +195,9 @@ export async function approveRequestAction(input: z.input<typeof approveRequestI
   const approvalRequest = await requireRequest(requestId)
   await approveRequest({
     request: approvalRequest, session, itemIds, seenItemIds, keep,
-    confirm: () => requirePasskey({ request, session, intent: { kind: 'approve', requestId, itemIds, keep }, assertion }),
+    confirm: async () => {
+      await requirePasskey({ request, session, intent: { kind: 'approve', requestId, itemIds, keep }, assertion })
+    },
   })
   return { id: requestId }
 }

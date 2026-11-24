@@ -296,7 +296,7 @@ describe('passkeys', () => {
     expect(await db.query.passkey.findMany({ where: { userId: user.userId } })).toHaveLength(2)
 
     // An assertion made for one action does not authorize another.
-    const wrongIntent = await confirm(user.token, authenticator, { kind: 'add-passkey' })
+    const wrongIntent = await confirm(user.token, authenticator, { kind: 'remove-passkey', passkeyId: second.passkeyId })
     expect(await act(user.token, () => removePasskeyAction({ passkeyId, assertion: wrongIntent })).catch(message)).toMatchInlineSnapshot(`"This passkey confirmation was made for a different action."`)
 
     const removeAssertion = await confirm(user.token, second.authenticator, { kind: 'remove-passkey', passkeyId })
@@ -497,7 +497,7 @@ describe('read approvals', () => {
 
     // Lowering protection needs the passkey. Raising it did not.
     expect(await act(user.token, async () => removeSecretApprovalAction({
-      environmentId: envId('prod'), name: 'STRIPE_KEY', assertion: await confirm(user.token, authenticator, { kind: 'add-passkey' }),
+      environmentId: envId('prod'), name: 'STRIPE_KEY', assertion: await confirm(user.token, authenticator, { kind: 'unlock', environmentId: envId('prod') }),
     })).catch(message)).toMatchInlineSnapshot(`"This passkey confirmation was made for a different action."`)
     expect(await act(user.token, () => setReadApprovalAction({ environmentId: envId('prod'), readApproval: 'off' })).catch(message)).toMatchInlineSnapshot(`"Passkey confirmation required"`)
 
@@ -702,7 +702,25 @@ describe('org passkey trust', () => {
     const assertion = await confirm(user.token, keyA.authenticator, intent)
     await getDb().delete(schema.orgPasskey).where(orm.and(orm.eq(schema.orgPasskey.orgId, b.orgId), orm.eq(schema.orgPasskey.passkeyId, keyA.passkeyId)))
     expect(await act(user.token, () => approveRequestAction({ requestId, itemIds, seenItemIds: itemIds, keep: false, assertion })).catch(message)).toMatchInlineSnapshot(`"This passkey is not trusted in this organization. Ask an admin to trust it in Settings."`)
-    expect((await pendingRequest(requestId)).status).toBe('pending')
+    const pending = await pendingRequest(requestId)
+    expect(pending.status).toBe('pending')
+
+    // The approve page tells which keys the org of each item trusts, so it only
+    // offers a selection that one key can sign.
+    const page = await api(user.token)('/approve/:id', { params: { id: requestId } })
+    if (page instanceof Error) throw page
+    const keyNames = new Map([[keyA.passkeyId, 'Key A'], [keyB.passkeyId, 'Key B']])
+    expect(page.loaderData.request?.items.map((item: { projectId: string; allowed: boolean; trustedKeyIds: string[] }) =>
+      `${item.projectId === a.projectId ? 'a' : 'b'}:${item.allowed}:${item.trustedKeyIds.map((id) => keyNames.get(id))}`).sort()).toEqual(['a:true:Key A', 'b:true:Key B'])
+
+    // Key A approves the part in the org that trusts it. The rest is dropped.
+    const itemA = pending.items.find((item) => item.environmentId === a.envId('prod'))!.id
+    await act(user.token, async () => approveRequestAction({
+      requestId, itemIds: [itemA], seenItemIds: itemIds, keep: false,
+      assertion: await confirm(user.token, keyA.authenticator, { kind: 'approve', requestId, itemIds: [itemA], keep: false }),
+    }))
+    expect((await read(cli, `/api/v0/projects/${a.projectId}/environments/prod/secrets/download`)).status).toBe(200)
+    expect((await read(cli, `/api/v0/projects/${b.projectId}/environments/prod/secrets/download`)).status).toBe(403)
   })
 
   test('after setup every access change needs a trusted passkey signed for its exact payload', async () => {
@@ -720,25 +738,26 @@ describe('org passkey trust', () => {
     await db.update(schema.user).set({ emailVerified: true }).where(orm.eq(schema.user.id, admin.userId)).limit(1)
     await db.update(schema.orgMember).set({ projectAccess: 'selected' }).where(orm.eq(schema.orgMember.id, member.memberId))
     await db.update(schema.environment).set({ accessRole: 'admin' }).where(orm.eq(schema.environment.id, envId('prod')))
-    const change = (action: string, payload: unknown): PasskeyIntent => ({ kind: 'change-access', orgId, action, payload: JSON.stringify(payload) })
+    // Each change: the intent the server expects, the same kind signed for other values, the action.
     // Order matters: promotion last, member access refuses admins.
-    const changes: Array<[string, PasskeyIntent, (assertion?: Awaited<ReturnType<Authenticator['assert']>>) => Promise<unknown>]> = [
-      ['invite', change('create-invite', { projectIds: null }), (assertion) => createInviteAction({ orgId, assertion })],
-      ['auto-join', change('enable-auto-join', { autoJoinDomain: 'example.com' }),
+    const changes: Array<[string, PasskeyIntent, PasskeyIntent, (assertion?: Awaited<ReturnType<Authenticator['assert']>>) => Promise<unknown>]> = [
+      ['invite', { kind: 'create-invite', orgId, projectIds: null }, { kind: 'create-invite', orgId, projectIds: [projectId] },
+        (assertion) => createInviteAction({ orgId, assertion })],
+      ['auto-join', { kind: 'enable-auto-join', orgId, autoJoinDomain: 'example.com' }, { kind: 'enable-auto-join', orgId, autoJoinDomain: 'other.com' },
         (assertion) => updateAutoJoinDomainAction({ orgId, enabled: true, assertion })],
-      ['member access', change('update-member-access', { memberId: member.memberId, projectIds: [projectId] }),
+      ['member access', { kind: 'update-member-access', orgId, memberId: member.memberId, projectIds: [projectId] }, { kind: 'update-member-access', orgId, memberId: member.memberId, projectIds: [] },
         (assertion) => updateMemberAccessAction({ memberId: member.memberId, projectIds: [projectId], assertion })],
-      ['environment role', change('set-environment-access-role', { environmentId: envId('prod'), accessRole: 'member' }),
+      ['environment role', { kind: 'set-environment-access-role', orgId, environmentId: envId('prod'), accessRole: 'member' }, { kind: 'set-environment-access-role', orgId, environmentId: envId('prod'), accessRole: 'admin' },
         (assertion) => updateEnvironmentAccessRoleAction({ environmentId: envId('prod'), accessRole: 'member', assertion })],
-      ['promote', change('promote-admin', { memberId: member.memberId }),
+      ['promote', { kind: 'promote-admin', orgId, memberId: member.memberId }, { kind: 'promote-admin', orgId, memberId: admin.userId },
         (assertion) => updateOrgMemberRoleAction({ memberId: member.memberId, role: 'admin', assertion })],
     ]
     const results: Record<string, string[]> = {}
-    for (const [name, intent, run] of changes) {
+    for (const [name, intent, otherValues, run] of changes) {
       const attempts = [
         () => act(admin.token, () => run()),
         async () => act(admin.token, async () => run(await confirm(admin.token, rogue.authenticator, intent))),
-        async () => act(admin.token, async () => run(await confirm(admin.token, human.authenticator, { ...intent, payload: '{}' } as PasskeyIntent))),
+        async () => act(admin.token, async () => run(await confirm(admin.token, human.authenticator, otherValues))),
         async () => act(admin.token, async () => run(await confirm(admin.token, human.authenticator, intent))),
       ]
       results[name] = []

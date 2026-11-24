@@ -54,9 +54,7 @@ function InviteDialog({ open, onOpenChange, orgId }: {
         ? orgProjects.filter((p) => selectedProjects[p.id]).map((p) => p.id)
         : undefined
       const result = await withAccessPasskey({
-        orgId,
-        action: 'create-invite',
-        payload: JSON.stringify({ projectIds: projectIds ?? null }),
+        intent: { kind: 'create-invite', orgId, projectIds: projectIds ?? null },
         run: (assertion) => createInviteAction({ orgId, projectIds, assertion }),
       })
       setInviteUrl(`${window.location.origin}${router.href('/invite/:id', { id: result.id })}`)

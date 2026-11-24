@@ -29,6 +29,12 @@ export function groupRequestItems<T extends { environmentId: string; environment
   return [...groups.entries()].map(([environmentId, group]) => ({ environmentId, ...group }))
 }
 
+// Same rule as the server: ONE passkey must be trusted by the org of every approved item.
+export function canSignItems(items: { trustedKeyIds: string[] }[]) {
+  const [first] = items
+  return !!first && first.trustedKeyIds.some((id) => items.every((item) => item.trustedKeyIds.includes(id)))
+}
+
 export function requesterTitle(requester: { kind: 'token' | 'cli' | 'browser' | 'gone'; name: string }) {
   if (requester.kind === 'token') return <>API token <span className="font-semibold">{requester.name}</span></>
   if (requester.kind === 'cli') return <span className="font-semibold">{requester.name}'s CLI session</span>
@@ -42,7 +48,7 @@ function useApprovals() {
 
 export function ApprovalsPage() {
   const { projectId } = useLoaderData('/dash/projects/:projectId/*')
-  const { requests, hasProtection, hasPasskey } = useApprovals()
+  const { requests, hasProtection } = useApprovals()
   const settingsHref = router.href('/dash/projects/:projectId/settings', { projectId })
 
   return (
@@ -72,7 +78,7 @@ export function ApprovalsPage() {
       ) : (
         <div className="rounded-lg border border-border bg-background overflow-hidden">
           {requests.map((request) => (
-            <RequestRow key={request.id} request={request} projectId={projectId} hasPasskey={hasPasskey} />
+            <RequestRow key={request.id} request={request} projectId={projectId} />
           ))}
         </div>
       )}
@@ -80,18 +86,17 @@ export function ApprovalsPage() {
   )
 }
 
-function RequestRow({ request, projectId, hasPasskey }: {
+function RequestRow({ request, projectId }: {
   request: ReturnType<typeof useApprovals>['requests'][number]
   projectId: string
-  hasPasskey: boolean
 }) {
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const isPendingRequest = request.status === 'pending'
   const reviewHref = router.href('/approve/:id', { id: request.id })
   const itemIds = request.items.map((item) => item.id)
-  // Items the user cannot approve are only handled on the review page.
-  const canApproveAll = request.items.every((item) => item.allowed)
+  // Items the user cannot approve, or not with one passkey, are only handled on the review page.
+  const canApproveAll = request.items.every((item) => item.allowed) && canSignItems(request.items)
 
   function run(action: () => Promise<unknown>) {
     setError(null)
@@ -157,12 +162,11 @@ function RequestRow({ request, projectId, hasPasskey }: {
             className="w-full sm:w-auto"
             loading={isPending}
             onClick={() => run(async () => {
-              if (!hasPasskey) throw new Error('Open Settings and ask an organization admin to trust your exact passkey before approving.')
               const assertion = await confirmWithPasskey({ kind: 'approve', requestId: request.id, itemIds, keep: false })
               await approveRequestAction({ requestId: request.id, itemIds, seenItemIds: itemIds, keep: false, assertion })
             })}
           >
-            {hasPasskey ? 'Approve' : 'Trusted key required'}
+            Approve
           </Button>
           <Link href={reviewHref} className="text-center text-xs text-muted-foreground hover:text-foreground">
             Review details
