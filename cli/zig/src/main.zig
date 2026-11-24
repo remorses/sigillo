@@ -1847,7 +1847,8 @@ fn awaitApproval(allocator: std.mem.Allocator, stderr: Writer, api: ApiContext, 
     // Reset each poll so a long wait reuses the same memory.
     var poll_arena = std.heap.ArenaAllocator.init(allocator);
     defer poll_arena.deinit();
-    var waited: u32 = 0;
+    // Wall clock: counting sleeps alone ran 20% over, each status read takes time too.
+    var timer = try std.time.Timer.start();
     while (true) {
         _ = poll_arena.reset(.retain_capacity);
         const poll_allocator = poll_arena.allocator();
@@ -1873,9 +1874,8 @@ fn awaitApproval(allocator: std.mem.Allocator, stderr: Writer, api: ApiContext, 
             std.process.exit(1);
         }
 
-        if (waited >= timeout_seconds) break;
+        if (timer.read() >= @as(u64, timeout_seconds) * std.time.ns_per_s) break;
         std.Thread.sleep(approval_poll_interval_seconds * std.time.ns_per_s);
-        waited += approval_poll_interval_seconds;
     }
 
     try stderr.writeAll("\n");
