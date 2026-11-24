@@ -20,7 +20,11 @@ export function getDb() {
   return drizzle(
     async (sql, params, method) => {
       const stmt = env.DB.prepare(sql).bind(...params)
-      if (method === 'run') { await stmt.run(); return { rows: [] as any[] } }
+      // Better Auth reads `changes` to know how many rows a write touched.
+      if (method === 'run') {
+        const result = await stmt.run()
+        return { rows: [] as any[], changes: result.meta.changes }
+      }
       const rows = await stmt.raw()
       // https://github.com/drizzle-team/drizzle-orm/issues/5461
       if (method === 'get') return { rows: rows[0] as any }

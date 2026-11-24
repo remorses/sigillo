@@ -19,6 +19,10 @@ export const epochMs = sqliteCore.customType<{ data: number; driverParam: number
   fromDriver(value: unknown): number { return value as number },
 })
 
+// Better Auth date field. Same INTEGER ms on disk as epochMs, but reads back
+// as a Date: the session cookie cache is rejected when its dates are numbers.
+const authDate = (name: string) => sqliteCore.integer(name, { mode: 'timestamp_ms' })
+
 // ── BetterAuth core tables ──────────────────────────────────────────
 
 export const user = sqliteCore.sqliteTable('user', {
@@ -27,22 +31,22 @@ export const user = sqliteCore.sqliteTable('user', {
   email: sqliteCore.text('email').notNull().unique(),
   emailVerified: sqliteCore.integer('email_verified', { mode: 'boolean' }).notNull().default(false),
   image: sqliteCore.text('image'),
-  createdAt: epochMs('created_at').notNull().$defaultFn(() => Date.now()),
-  updatedAt: epochMs('updated_at').notNull().$defaultFn(() => Date.now()),
+  createdAt: authDate('created_at').notNull().$defaultFn(() => new Date()),
+  updatedAt: authDate('updated_at').notNull().$defaultFn(() => new Date()),
 })
 
 export const session = sqliteCore.sqliteTable('session', {
   id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
   userId: sqliteCore.text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
   token: sqliteCore.text('token').notNull().unique(),
-  expiresAt: epochMs('expires_at').notNull(),
+  expiresAt: authDate('expires_at').notNull(),
   ipAddress: sqliteCore.text('ip_address'),
   userAgent: sqliteCore.text('user_agent'),
   // 'cli' = created by the device flow (CLI, agents). A cli session can never
   // enroll the first passkey: its token sits in a file agents can read.
   kind: sqliteCore.text('kind', { enum: ['browser', 'cli'] }).notNull().default('browser'),
-  createdAt: epochMs('created_at').notNull().$defaultFn(() => Date.now()),
-  updatedAt: epochMs('updated_at').notNull().$defaultFn(() => Date.now()),
+  createdAt: authDate('created_at').notNull().$defaultFn(() => new Date()),
+  updatedAt: authDate('updated_at').notNull().$defaultFn(() => new Date()),
 }, (table) => [
   sqliteCore.index('session_user_id_idx').on(table.userId),
 ])
@@ -54,13 +58,13 @@ export const account = sqliteCore.sqliteTable('account', {
   providerId: sqliteCore.text('provider_id').notNull(),
   accessToken: sqliteCore.text('access_token'),
   refreshToken: sqliteCore.text('refresh_token'),
-  accessTokenExpiresAt: epochMs('access_token_expires_at'),
-  refreshTokenExpiresAt: epochMs('refresh_token_expires_at'),
+  accessTokenExpiresAt: authDate('access_token_expires_at'),
+  refreshTokenExpiresAt: authDate('refresh_token_expires_at'),
   scope: sqliteCore.text('scope'),
   idToken: sqliteCore.text('id_token'),
   password: sqliteCore.text('password'),
-  createdAt: epochMs('created_at').notNull().$defaultFn(() => Date.now()),
-  updatedAt: epochMs('updated_at').notNull().$defaultFn(() => Date.now()),
+  createdAt: authDate('created_at').notNull().$defaultFn(() => new Date()),
+  updatedAt: authDate('updated_at').notNull().$defaultFn(() => new Date()),
 }, (table) => [
   sqliteCore.index('account_user_id_idx').on(table.userId),
 ])
@@ -69,9 +73,9 @@ export const verification = sqliteCore.sqliteTable('verification', {
   id: sqliteCore.text('id').primaryKey().notNull().$defaultFn(() => ulid()),
   identifier: sqliteCore.text('identifier').notNull(),
   value: sqliteCore.text('value').notNull(),
-  expiresAt: epochMs('expires_at').notNull(),
-  createdAt: epochMs('created_at').notNull().$defaultFn(() => Date.now()),
-  updatedAt: epochMs('updated_at').notNull().$defaultFn(() => Date.now()),
+  expiresAt: authDate('expires_at').notNull(),
+  createdAt: authDate('created_at').notNull().$defaultFn(() => new Date()),
+  updatedAt: authDate('updated_at').notNull().$defaultFn(() => new Date()),
 })
 
 // ── Org tables ──────────────────────────────────────────────────────
@@ -362,9 +366,9 @@ export const deviceCode = sqliteCore.sqliteTable('device_code', {
   deviceCode: sqliteCore.text('device_code').notNull().unique(),
   userCode: sqliteCore.text('user_code').notNull().unique(),
   userId: sqliteCore.text('user_id').references(() => user.id, { onDelete: 'cascade' }),
-  expiresAt: epochMs('expires_at').notNull(),
+  expiresAt: authDate('expires_at').notNull(),
   status: sqliteCore.text('status', { enum: ['pending', 'approved', 'denied', 'expired'] }).notNull().default('pending'),
-  lastPolledAt: epochMs('last_polled_at'),
+  lastPolledAt: authDate('last_polled_at'),
   pollingInterval: sqliteCore.integer('polling_interval', { mode: 'number' }),
   clientId: sqliteCore.text('client_id'),
   scope: sqliteCore.text('scope'),

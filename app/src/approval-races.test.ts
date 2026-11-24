@@ -19,7 +19,7 @@ async function createEnvironment() {
   const environmentId = ulid()
   await db.batch([
     db.insert(schema.user).values({ id: userId, name: 'Ada', email: `races-${userId}@example.com` }),
-    db.insert(schema.session).values({ id: sessionId, userId, token: ulid(), expiresAt: Date.now() + 60_000, kind: 'cli' }),
+    db.insert(schema.session).values({ id: sessionId, userId, token: ulid(), expiresAt: new Date(Date.now() + 60_000), kind: 'cli' }),
     db.insert(schema.org).values({ id: orgId, name: 'Races org' }),
     db.insert(schema.project).values({ id: projectId, orgId, name: 'website' }),
     db.insert(schema.environment).values({ id: environmentId, projectId, name: 'Prod', slug: 'prod' }),

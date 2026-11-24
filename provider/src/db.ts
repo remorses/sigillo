@@ -2,9 +2,7 @@
 //
 // getDb() creates a drizzle-orm/sqlite-proxy client bound to env.DB.
 // Uses sqlite-proxy instead of drizzle-orm/d1 to avoid the batch findFirst
-// crash (drizzle-team/drizzle-orm#2721). The schema uses epochMs custom
-// columns that accept both Date and number inputs, so BetterAuth's Date
-// params are converted to epoch ms before reaching D1.
+// crash (drizzle-team/drizzle-orm#2721). Dates are timestamp_ms columns.
 // getAuth() creates a BetterAuth instance backed by the same drizzle client
 // with oauthProvider + jwt + Google social.
 
@@ -14,7 +12,7 @@ import * as schema from './schema.ts'
 import { betterAuth } from 'better-auth/minimal'
 import { jwt } from 'better-auth/plugins'
 import { oauthProvider } from '@better-auth/oauth-provider'
-import { drizzleAdapter } from 'better-auth-drizzle-adapter'
+import { drizzleAdapter } from '@better-auth/drizzle-adapter/relations-v2'
 
 // ── Drizzle client via D1 ───────────────────────────────────────────
 
@@ -26,7 +24,11 @@ export function getDb() {
   return drizzle(
     async (sql, params, method) => {
       const stmt = env.DB.prepare(sql).bind(...params)
-      if (method === 'run') { await stmt.run(); return { rows: [] as any[] } }
+      // Better Auth reads `changes` to know how many rows a write touched.
+      if (method === 'run') {
+        const result = await stmt.run()
+        return { rows: [] as any[], changes: result.meta.changes }
+      }
       const rows = await stmt.raw()
       if (method === 'get') return { rows: rows[0] as any }
       return { rows: rows as any[] }
@@ -45,6 +47,8 @@ export function getDb() {
 }
 
 // ── BetterAuth ──────────────────────────────────────────────────────
+
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
 
 export function getAuth() {
   const db = getDb()
@@ -86,6 +90,9 @@ export function getAuth() {
         },
         allowDynamicClientRegistration: true,
         allowUnauthenticatedClientRegistration: true,
+        // Since 1.7 a web client cannot register an http://localhost callback.
+        // Every app in local dev registers one, so loopback hosts stay allowed.
+        allowInsecureRedirectUri: (url) => LOOPBACK_HOSTS.has(url.hostname),
         scopes: ['openid', 'email', 'profile', 'offline_access'],
         clientRegistrationDefaultScopes: ['openid', 'email', 'profile'],
       }),

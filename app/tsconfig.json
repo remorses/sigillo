@@ -4,6 +4,10 @@
     "rootDir": "src",
     "outDir": "dist",
     "noEmit": true,
+    // This app emits no .d.ts. With declaration on, tsc fails with TS2883 on
+    // getAuth(): its inferred type names better-call internals.
+    "declaration": false,
+    "declarationMap": false,
     "lib": ["ESNext", "DOM"],
     "types": ["@cloudflare/vitest-pool-workers/types"],
     "module": "esnext",

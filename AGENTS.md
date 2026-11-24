@@ -15,7 +15,7 @@ Two Cloudflare Workers in a pnpm monorepo, each backed by a D1 database:
 - **`app`** — The secret manager users self-host. Authenticates via the provider using `genericOAuth` + PKCE. Encrypts secrets with AES-256-GCM (Web Crypto). Supports RFC 8628 device flow for CLI/agent login.
 - **`db`** — Shared Drizzle schemas and migrations for the app's D1 database.
 
-Each worker uses `drizzle-orm/d1` directly — no Durable Objects or proxy layers. The drizzle client is created via `drizzle(env.DB)` in the worker.
+Each worker talks to D1 through `drizzle-orm/sqlite-proxy` (`db/src/workerd.ts`, `provider/src/db.ts`). No Durable Objects.
 
 ## Stack
 
@@ -134,11 +134,12 @@ Rules:
 
 ## better-auth version alignment (never use `latest`)
 
-`better-auth` and `@better-auth/oauth-provider` are published from the same repo and **must stay on the same release line**. `provider/package.json` pins the plugin to an exact version (`1.7.0-beta.4`) on purpose:
+`better-auth`, `@better-auth/oauth-provider` and `@better-auth/drizzle-adapter` are published from the same repo and **must stay on the same version**. `app/package.json` and `provider/package.json` pin all of them exactly:
 
 ```json
-"@better-auth/oauth-provider": "1.7.0-beta.4",
-"better-auth": "^1.7.0-beta.4",
+"@better-auth/drizzle-adapter": "1.7.28",
+"@better-auth/oauth-provider": "1.7.28",
+"better-auth": "1.7.28",
 ```
 
 `@better-auth/oauth-provider` used to be `"latest"`, which silently floated onto the **stable 1.6.x line** while `better-auth` stayed on `1.7.0-beta`. That mismatch produced two separate failures that look unrelated but share one cause:
@@ -153,8 +154,9 @@ Rules:
 The two release lines pin **different exact versions** of `@better-fetch/fetch`, `better-call`, and `@better-auth/utils`, so pnpm installed both copies and the duplicate types stopped unifying. A previous attempt papered over this with `pnpm.overrides` forcing the newer trio; that only masked the symptom and left `better-auth` running against transitive deps it does not pin. Aligning the release lines removed the need for any override.
 
 Rules:
-- Never use `latest` or a floating range for `@better-auth/oauth-provider`. Pin it exactly.
-- When bumping `better-auth`, bump `@better-auth/oauth-provider` to the **same version string** in the same commit.
+- Never use `latest` or a range for any of the three packages. Pin them exactly.
+- Bump all three to the **same version string** in the same commit: `pnpm update -r better-auth@x @better-auth/oauth-provider@x @better-auth/drizzle-adapter@x`.
+- Read `https://www.better-auth.com/docs/guides/1-7-upgrade-guide` and the package changelogs before a bump. The oauth-provider plugin adds columns and tables in minor and patch releases.
 - After any better-auth change run both `pnpm --dir provider typecheck` and `pnpm --dir provider build`. Typecheck alone does not catch the missing-export failure.
 - If duplicate peer variants reappear (e.g. two `jose` copies causing `TS2883`), run `pnpm dedupe` before reaching for `pnpm.overrides`.
 
@@ -162,7 +164,7 @@ The remaining `unmet peer drizzle-orm@^0.45.2: found 1.0.0-rc.1` warning from `p
 
 ## better-auth `string[]` and `json` columns MUST be drizzle json mode
 
-The provider uses `better-auth-drizzle-adapter` (a fork of better-auth#9489), not the stock `better-auth/adapters/drizzle`. Since `1.2.0` its adapter config is byte-identical to upstream's **relations-v2** entrypoint:
+Both workers import `drizzleAdapter` from `@better-auth/drizzle-adapter/relations-v2`, the official adapter for drizzle 1.0. Its config sets:
 
 ```ts
 supportsJSON: true,
@@ -185,13 +187,18 @@ So every field better-auth types as `string[]`, `number[]` or `json` must be dec
 | insert | `D1_TYPE_ERROR: Type 'object' not supported for value '...'` on `/oauth2/register` |
 | select | `TypeError: registered.find is not a function` in `findRegisteredRedirectUri` → `/oauth2/authorize` 500s and **every login dies at the provider** |
 
-Beware the **stock** adapter (`@better-auth/drizzle-adapter`, the default export) sets both flags to `provider === 'pg'`, which is the opposite contract: it wants plain `text()` columns. Pointing this schema at it would double-encode every one of these fields. That mismatch is a live upstream bug (better-auth#8655, #8107, #7440 — all open, its own CLI generator emits json-mode columns), so do not "fix" the fork by switching to the stock adapter.
+Beware the **default** export of `@better-auth/drizzle-adapter` (without `/relations-v2`). It sets both flags to `provider === 'pg'`, which is the opposite contract: it wants plain `text()` columns and would double-encode every one of these fields.
+
+`better-auth-drizzle-adapter` (the fork used before 1.7.28) must not come back. Better Auth 1.7 requires `updateMany` to return a row count; the fork returns the raw driver result, so sign-out on the provider failed to revoke tokens.
 
 Rules:
 
 - Use the `jsonArray()` helper in `provider/src/schema.ts` for `string[]` fields; it keeps the TS type as `string[]`.
-- `string[]` columns have the same on-disk bytes either way (TEXT holding single-encoded JSON), so flipping one to `{ mode: 'json' }` needs **no data migration**. `json` columns do not: before adapter `1.2.0` they were double-encoded as `"{\"a\":1}"`, and pre-1.2.0 rows now decode to a **string** instead of an object. `oauthClient.metadata` is the only `json` column here and is always NULL, because the oauth-provider plugin only fills it from unrecognized registration fields and `ensureOAuthClient` sends just the standard RFC 7591 keys.
-- After bumping `better-auth` or `@better-auth/oauth-provider`, diff the drizzle schema against the plugin schema. `getAuthTables({ plugins: [...] })` from `better-auth/db` gives the authoritative field list; compare it with `getTableColumns()` to catch both missing columns and wrong column modes. Any column whose drizzle `dataType` is not `object json` while better-auth types it `string[]`/`number[]`/`json` is a bug. 1.7 added `oauth_client.jwks`, `oauth_client.jwks_uri`, `resources` on the consent/token tables, and `jwks.expires_at`.
+- `string[]` columns have the same on-disk bytes either way (TEXT holding single-encoded JSON), so flipping one to `{ mode: 'json' }` needs **no data migration**.
+- After bumping Better Auth, diff the drizzle schema against the plugin schema. `getAuthTables({ plugins: [...] })` from `better-auth/db` gives the authoritative field list; compare it with `getTableColumns()` to catch missing columns, missing tables and wrong column modes. Any column whose drizzle `dataType` is not `object json` while better-auth types it `string[]`/`number[]`/`json` is a bug. 1.7.28 added `oauth_resource`, `oauth_client_resource`, `oauth_client_assertion`, `jwks.alg`/`crv`, and many columns on the client and token tables (`provider/drizzle/0003_powerful_moondragon.sql`).
+- **Date fields are `integer(name, { mode: 'timestamp_ms' })`** (the `authDate()` helper), in every Better Auth table of both workers. Better Auth rejects the session cookie cache when a date reads back as a number, so every request would hit D1. App tables keep `epochMs` (number).
+- **The sqlite-proxy `run` callback must return `changes`** (from `result.meta.changes`). The adapter reads it as the affected row count of `updateMany` and `deleteMany`.
+- **Provider migrations must only add.** The migration runs before the new worker is live, so the old worker still reads the old columns. Drop a column one release later. `oauth_client.type` and `oauth_client.public` wait for this: 1.7 does not read them.
 - Typecheck and build both pass with the wrong mode. Only a real request against D1 catches it, so exercise `/oauth2/register` plus `/oauth2/authorize` locally after any schema or adapter change.
 
 ## Direct `auth.api.oauth2*` calls need `request` AND `asResponse: false`

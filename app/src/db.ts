@@ -1,8 +1,7 @@
 // Worker-level database client, auth, encryption, and authorization guards.
 //
-// getDb() creates a drizzle-orm/d1 client bound to env.DB. The schema uses
-// epochMs custom columns that accept both Date and number inputs, so
-// BetterAuth's Date params are converted to epoch ms before reaching D1.
+// getDb() creates a drizzle-orm/d1 client bound to env.DB. Better Auth tables
+// use timestamp_ms columns (Date in JS); app tables use epochMs (number).
 // getAuth(request) creates a BetterAuth instance backed by the same drizzle
 // client for the current request host. encrypt()/decrypt() use ENCRYPTION_KEY
 // when set, otherwise derive a stable AES-256 key from BETTER_AUTH_SECRET.
@@ -13,7 +12,7 @@ import { ulid } from 'ulid'
 import { getDb, schema } from 'db'
 import { betterAuth } from 'better-auth/minimal'
 import { genericOAuth, deviceAuthorization, bearer } from 'better-auth/plugins'
-import { drizzleAdapter } from 'better-auth-drizzle-adapter'
+import { drizzleAdapter } from '@better-auth/drizzle-adapter/relations-v2'
 import { redirect } from 'spiceflow'
 import { memoize } from './lib/memoize.ts'
 import { COMMON_EMAIL_DOMAINS, getEmailDomain } from './lib/utils.ts'

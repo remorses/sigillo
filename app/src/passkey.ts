@@ -119,12 +119,12 @@ async function storeChallenge({ userId, challenge, purpose }: { userId: string; 
     // Expired challenges of this user are dropped here, so the table stays small.
     db.delete(schema.verification).where(orm.and(
       orm.like(schema.verification.identifier, `passkey:${userId}:%`),
-      orm.lt(schema.verification.expiresAt, now),
+      orm.lt(schema.verification.expiresAt, new Date(now)),
     )),
     db.insert(schema.verification).values({
       identifier: challengeIdentifier(userId, challenge),
       value: purpose,
-      expiresAt: now + CHALLENGE_TTL_MS,
+      expiresAt: new Date(now + CHALLENGE_TTL_MS),
     }),
   ] as const)
 }
@@ -142,7 +142,7 @@ async function consumeChallenge({ userId, response, purpose }: { userId: string;
     .where(orm.eq(schema.verification.identifier, challengeIdentifier(userId, challenge)))
     .limit(1)
     .returning({ value: schema.verification.value, expiresAt: schema.verification.expiresAt })
-  if (!row || row.expiresAt < Date.now()) throw new Error('Passkey prompt expired. Try again.')
+  if (!row || row.expiresAt.getTime() < Date.now()) throw new Error('Passkey prompt expired. Try again.')
   if (row.value !== purpose) throw new Error('This passkey confirmation was made for a different action.')
   return challenge
 }
